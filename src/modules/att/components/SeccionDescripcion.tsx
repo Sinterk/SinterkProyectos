@@ -150,13 +150,27 @@ export function SeccionDescripcion({ recordId, processFotoAerea }: Props) {
 
       {/* Foto aérea */}
       <div className="pt-2 border-t border-slate-700">
-        <p className="text-xs font-medium text-slate-300 mb-2">Foto aérea</p>
+        <div className="flex items-center justify-between mb-2">
+          <p className="text-xs font-medium text-slate-300">Foto aérea / de calle</p>
+          <div className="flex rounded-lg overflow-hidden border border-slate-600">
+            <button type="button"
+              onClick={() => update(recordId, { fotoAereaTipo: 'aerea' })}
+              className={`px-2.5 py-1 text-xs font-medium transition-colors ${(record.fotoAereaTipo ?? 'aerea') === 'aerea' ? 'bg-brand-600 text-white' : 'bg-slate-700 text-slate-400 hover:text-white'}`}>
+              🛸 Aérea
+            </button>
+            <button type="button"
+              onClick={() => update(recordId, { fotoAereaTipo: 'calle' })}
+              className={`px-2.5 py-1 text-xs font-medium transition-colors ${record.fotoAereaTipo === 'calle' ? 'bg-brand-600 text-white' : 'bg-slate-700 text-slate-400 hover:text-white'}`}>
+              🛣 Calle
+            </button>
+          </div>
+        </div>
         {record.fotoAerea?.previewUrl ? (
           <div className="relative rounded-xl overflow-hidden border border-slate-600">
             <img src={record.fotoAerea.previewUrl} alt="Foto aérea"
               className="w-full max-h-48 object-contain bg-slate-900" />
             <div className="absolute bottom-0 left-0 right-0 bg-black/60 px-3 py-1.5 flex items-center justify-between">
-              <span className="text-xs text-white">🛸 Aérea</span>
+              <span className="text-xs text-white">{record.fotoAereaTipo === 'calle' ? '🛣 Calle' : '🛸 Aérea'}</span>
               <button type="button" onClick={() => removeFotoAerea(recordId)}
                 className="text-red-400 text-xs font-bold hover:text-red-300">✕ Quitar</button>
             </div>

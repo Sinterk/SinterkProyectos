@@ -131,11 +131,13 @@ function drawHeader(doc: jsPDF, titulo: string, fecha: string, ott: string, csNo
   doc.line(x+c1+c2, y,        x+c1+c2, y+HDR_H)
   doc.line(x,       y+HDR_R1, x+CW,    y+HDR_R1)
 
-  // Logo (row 1, col 1)
+  // Logo (row 1, col 1) — conserva la proporción original 315×92
   try {
+    const lw = c1 - 10
+    const lh = lw * 92 / 315
     doc.addImage(
       `data:image/jpeg;base64,${ATT_LOGO_B64}`, 'JPEG',
-      x + 4, y + 4, c1 - 8, HDR_R1 - 8,
+      x + 5, y + (HDR_R1 - lh) / 2, lw, lh,
     )
   } catch (_) { /* logo load failure is non-fatal */ }
 
@@ -146,14 +148,14 @@ function drawHeader(doc: jsPDF, titulo: string, fecha: string, ott: string, csNo
 
   // Date (row 1, col 3) — recentered for taller row
   const dx = x + c1 + c2
-  doc.setFont('helvetica', 'bold'); doc.setFontSize(8)
+  doc.setFont('helvetica', 'bold'); doc.setFontSize(9)
   doc.text('FECHA INFORME', dx + c3 / 2, y + HDR_R1 / 2 - 5, { align: 'center' })
   doc.setFont('helvetica', 'normal')
-  doc.text(fecha, dx + c3 / 2, y + HDR_R1 / 2 + 8, { align: 'center' })
+  doc.text(fecha, dx + c3 / 2, y + HDR_R1 / 2 + 9, { align: 'center' })
 
   // Row 2: OTT code
   const y2 = y + HDR_R1
-  doc.setFont('helvetica', 'normal'); doc.setFontSize(8)
+  doc.setFont('helvetica', 'normal'); doc.setFontSize(9)
   doc.text(ott, x + c1 / 2, y2 + HDR_R2 / 2, { align: 'center', baseline: 'middle' })
 
   // Row 2: CS name
@@ -180,10 +182,10 @@ function chk(doc: jsPDF, y: number, need: number, ha: HdrArgs): number {
 
 // ── Section heading ───────────────────────────────────────────────────────────
 function heading(doc: jsPDF, text: string, y: number): number {
-  doc.setFont('helvetica', 'bold'); doc.setFontSize(10.5); setTxt(doc, SBLU)
-  doc.text(text, ML, y + 10)
+  doc.setFont('helvetica', 'bold'); doc.setFontSize(12); setTxt(doc, SBLU)
+  doc.text(text, ML, y + 11)
   setTxt(doc, BLACK)
-  return y + 24
+  return y + 26
 }
 
 // ── Section 1: Tipo de proyecto ───────────────────────────────────────────────
@@ -194,7 +196,7 @@ function drawTipo(doc: jsPDF, tipo: string, y: number): number {
     ['proyectos_acceso', 'modernizacion'],
     ['vulnerabilidad', 'adaptacion'],
   ]
-  const rH = 22
+  const rH = 26
   const c1 = Math.round(CW * 0.38), c2 = Math.round(CW * 0.12)
 
   for (const [l, r] of GRID) {
@@ -203,19 +205,19 @@ function drawTipo(doc: jsPDF, tipo: string, y: number): number {
     const lblR = TIPO_PROYECTO_LABELS[r as keyof typeof TIPO_PROYECTO_LABELS] || r
 
     filledBox(doc, ML,            y, c1, rH, sL ? DBLUE : BLUE)
-    doc.setFont('helvetica', 'bold'); doc.setFontSize(7.5); setTxt(doc, WHITE)
+    doc.setFont('helvetica', 'bold'); doc.setFontSize(9); setTxt(doc, WHITE)
     cellText(doc, doc.splitTextToSize(lblL, c1 - 6), ML + c1 / 2, y + rH / 2, c1 - 6)
 
     strokedBox(doc, ML + c1,      y, c2, rH)
-    doc.setFont('helvetica', 'bold'); doc.setFontSize(9); setTxt(doc, BLACK)
+    doc.setFont('helvetica', 'bold'); doc.setFontSize(11); setTxt(doc, BLACK)
     if (sL) doc.text('X', ML + c1 + c2 / 2, y + rH / 2, { align: 'center', baseline: 'middle' })
 
     filledBox(doc, ML + c1 + c2,  y, c1, rH, sR ? DBLUE : BLUE)
-    doc.setFont('helvetica', 'bold'); doc.setFontSize(7.5); setTxt(doc, WHITE)
+    doc.setFont('helvetica', 'bold'); doc.setFontSize(9); setTxt(doc, WHITE)
     cellText(doc, doc.splitTextToSize(lblR, c1 - 6), ML + c1 + c2 + c1 / 2, y + rH / 2, c1 - 6)
 
     strokedBox(doc, ML + c1*2+c2, y, c2, rH)
-    doc.setFont('helvetica', 'bold'); doc.setFontSize(9); setTxt(doc, BLACK)
+    doc.setFont('helvetica', 'bold'); doc.setFontSize(11); setTxt(doc, BLACK)
     if (sR) doc.text('X', ML + c1*2+c2 + c2 / 2, y + rH / 2, { align: 'center', baseline: 'middle' })
 
     y += rH
@@ -225,7 +227,7 @@ function drawTipo(doc: jsPDF, tipo: string, y: number): number {
 
 // ── Section 4: Infraestructura ─────────────────────────────────────────────────
 function drawInfra(doc: jsPDF, infra: AttRecord['infraestructura'], y: number): number {
-  const rH = 18
+  const rH = 22
   const c1 = Math.round(CW * 0.55), c234 = Math.round(CW * 0.15)
   const xs = [ML, ML + c1, ML + c1 + c234, ML + c1 + c234 * 2]
   const ws = [c1, c234, c234, c234]
@@ -234,7 +236,7 @@ function drawInfra(doc: jsPDF, infra: AttRecord['infraestructura'], y: number): 
   const headers = ['Infraestructura', 'Sí / No', 'Cantidad', 'Compañía']
   headers.forEach((h, idx) => {
     filledBox(doc, xs[idx], y, ws[idx], rH, BLUE)
-    doc.setFont('helvetica', 'bold'); doc.setFontSize(8); setTxt(doc, WHITE)
+    doc.setFont('helvetica', 'bold'); doc.setFontSize(10); setTxt(doc, WHITE)
     cellText(doc, [h], xs[idx] + ws[idx] / 2, y + rH / 2, ws[idx] - 4)
   })
   y += rH
@@ -251,13 +253,13 @@ function drawInfra(doc: jsPDF, infra: AttRecord['infraestructura'], y: number): 
 
   for (const [lbl, usa, cant, comp] of rows) {
     strokedBox(doc, xs[0], y, ws[0], rH)
-    doc.setFont('helvetica', 'normal'); doc.setFontSize(7.5); setTxt(doc, BLACK)
+    doc.setFont('helvetica', 'normal'); doc.setFontSize(9.5); setTxt(doc, BLACK)
     cellText(doc, doc.splitTextToSize(lbl, ws[0] - 8), xs[0] + 5, y + rH / 2, ws[0] - 8, 'left')
 
     const vals = [usa ? 'SI' : 'NO', cant, comp]
     for (let k = 1; k <= 3; k++) {
       strokedBox(doc, xs[k], y, ws[k], rH)
-      doc.setFont('helvetica', 'normal'); doc.setFontSize(8); setTxt(doc, BLACK)
+      doc.setFont('helvetica', 'normal'); doc.setFontSize(9.5); setTxt(doc, BLACK)
       cellText(doc, [vals[k-1] || ''], xs[k] + ws[k] / 2, y + rH / 2, ws[k] - 4)
     }
     y += rH
@@ -274,7 +276,7 @@ function photoBox(doc: jsPDF, x: number, y: number, w: number, label: string, ci
   strokedBox(doc, x, y, w, ROW_H)
   setDraw(doc, BLACK); doc.setLineWidth(0.4)
   doc.line(x, y + LBL_H, x + w, y + LBL_H)
-  doc.setFont('helvetica', 'bold'); doc.setFontSize(8); setTxt(doc, BLACK)
+  doc.setFont('helvetica', 'bold'); doc.setFontSize(9.5); setTxt(doc, BLACK)
   cellText(doc, doc.splitTextToSize(label, w - 6).slice(0, 2), x + w / 2, y + LBL_H / 2, w - 6)
   if (ci?.src) {
     try { placeImg(doc, ci, x + 3, y + LBL_H + 3, w - 6, IMG_H - 6) } catch (_) { /* image error non-fatal */ }
@@ -344,12 +346,12 @@ export async function generarPdfAtt(record: AttRecord): Promise<void> {
     ['Coordenadas término: Latitud ',  `${record.coordsTermino.lat} S   Longitud ${record.coordsTermino.lng} W`],
   ]
   for (const [label, val] of datos) {
-    y = chk(doc, y, 14, ha)
-    doc.setFont('helvetica', 'normal'); doc.setFontSize(10); setTxt(doc, BLACK)
+    y = chk(doc, y, 16, ha)
+    doc.setFont('helvetica', 'normal'); doc.setFontSize(11); setTxt(doc, BLACK)
     doc.text(label, ML, y)
     doc.setFont('helvetica', 'bold')
     doc.text(val || '', ML + doc.getTextWidth(label), y)
-    y += 13
+    y += 15
   }
   y += 6
 
@@ -364,10 +366,10 @@ export async function generarPdfAtt(record: AttRecord): Promise<void> {
     const end = ti === validTramos.length - 1 ? '.' : ';'
     const txt = `Se realiza tendido de ${t.metraje||'___'}m de cable ${t.tipoCable||'___'} desde ${t.desde||'___'} hasta ${t.hasta||'___'}${end}`
     const lines = doc.splitTextToSize(txt, CW)
-    y = chk(doc, y, 12 * lines.length + 2, ha)
-    doc.setFont('helvetica', 'normal'); doc.setFontSize(10); setTxt(doc, BLACK)
+    y = chk(doc, y, 14 * lines.length + 2, ha)
+    doc.setFont('helvetica', 'normal'); doc.setFontSize(11); setTxt(doc, BLACK)
     doc.text(lines, ML, y)
-    y += 12 * lines.length + 2
+    y += 14 * lines.length + 2
   }
 
   const descItems: string[] = []
@@ -383,18 +385,18 @@ export async function generarPdfAtt(record: AttRecord): Promise<void> {
     if (fo)   descItems.push(`    FO      ${fo}`)
   }
   for (const item of descItems) {
-    y = chk(doc, y, 14, ha)
-    doc.setFont('helvetica', 'normal'); doc.setFontSize(10); setTxt(doc, BLACK)
+    y = chk(doc, y, 16, ha)
+    doc.setFont('helvetica', 'normal'); doc.setFontSize(11); setTxt(doc, BLACK)
     doc.text(item, ML, y)
-    y += 13
+    y += 15
   }
   for (const h of record.hitos) {
     const text = [h.fecha, h.descripcion].filter(Boolean).join(' — ')
     if (!text) continue
-    y = chk(doc, y, 14, ha)
-    doc.setFont('helvetica', 'normal'); doc.setFontSize(10); setTxt(doc, BLACK)
+    y = chk(doc, y, 16, ha)
+    doc.setFont('helvetica', 'normal'); doc.setFontSize(11); setTxt(doc, BLACK)
     doc.text(`• ${text}`, ML + 12, y)
-    y += 13
+    y += 15
   }
 
   // ── Page 2: Aerial + Section 4 ───────────────────────────────────────────────
@@ -402,7 +404,7 @@ export async function generarPdfAtt(record: AttRecord): Promise<void> {
 
   const aereoImg = ci(record.fotoAerea?.previewUrl)
   if (aereoImg) {
-    y = heading(doc, 'FOTO AÉREA', y)
+    y = heading(doc, record.fotoAereaTipo === 'calle' ? 'FOTO DE CALLE' : 'FOTO AÉREA', y)
     y += 6
     const aW = 300, aH = 200
     placeImg(doc, aereoImg, ML + (CW - aW) / 2, y, aW, aH)
