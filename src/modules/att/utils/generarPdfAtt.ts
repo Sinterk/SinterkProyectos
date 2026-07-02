@@ -8,10 +8,10 @@ import type { AttRecord, FotoEntry } from '../types'
 const PW = 612, PH = 792
 const ML = 72, MR = 72
 const CW = PW - ML - MR                   // 468pt content width
-const HDR_Y  = 32
-const HDR_R1 = 32, HDR_R2 = 24
-const HDR_H  = HDR_R1 + HDR_R2            // 56pt total header
-const CONT_Y = HDR_Y + HDR_H + 12         // ≈ 100pt
+const HDR_Y  = 28
+const HDR_R1 = 42, HDR_R2 = 28
+const HDR_H  = HDR_R1 + HDR_R2            // 70pt total header
+const CONT_Y = HDR_Y + HDR_H + 12         // ≈ 110pt
 const CONT_B = PH - 38                    // ≈ 754pt
 
 // ── Colors ────────────────────────────────────────────────────────────────────
@@ -139,17 +139,17 @@ function drawHeader(doc: jsPDF, titulo: string, fecha: string, ott: string, csNo
     )
   } catch (_) { /* logo load failure is non-fatal */ }
 
-  // Title (row 1, col 2)
-  doc.setFont('helvetica', 'bold'); doc.setFontSize(11); setTxt(doc, BLACK)
-  const titleLines = doc.splitTextToSize(titulo, c2 - 8)
+  // Title (row 1, col 2) — uppercase + larger font
+  doc.setFont('helvetica', 'bold'); doc.setFontSize(14); setTxt(doc, BLACK)
+  const titleLines = doc.splitTextToSize(titulo.toUpperCase(), c2 - 8)
   cellText(doc, titleLines.slice(0, 2), x + c1 + c2 / 2, y + HDR_R1 / 2, c2 - 8)
 
-  // Date (row 1, col 3)
+  // Date (row 1, col 3) — recentered for taller row
   const dx = x + c1 + c2
-  doc.setFontSize(8)
-  doc.text('FECHA INFORME', dx + c3 / 2, y + 11, { align: 'center' })
+  doc.setFont('helvetica', 'bold'); doc.setFontSize(8)
+  doc.text('FECHA INFORME', dx + c3 / 2, y + HDR_R1 / 2 - 5, { align: 'center' })
   doc.setFont('helvetica', 'normal')
-  doc.text(fecha, dx + c3 / 2, y + 23, { align: 'center' })
+  doc.text(fecha, dx + c3 / 2, y + HDR_R1 / 2 + 8, { align: 'center' })
 
   // Row 2: OTT code
   const y2 = y + HDR_R1
@@ -181,9 +181,9 @@ function chk(doc: jsPDF, y: number, need: number, ha: HdrArgs): number {
 // ── Section heading ───────────────────────────────────────────────────────────
 function heading(doc: jsPDF, text: string, y: number): number {
   doc.setFont('helvetica', 'bold'); doc.setFontSize(10.5); setTxt(doc, SBLU)
-  doc.text(text, ML, y + 8)
+  doc.text(text, ML, y + 10)
   setTxt(doc, BLACK)
-  return y + 18
+  return y + 24
 }
 
 // ── Section 1: Tipo de proyecto ───────────────────────────────────────────────
@@ -266,9 +266,9 @@ function drawInfra(doc: jsPDF, infra: AttRecord['infraestructura'], y: number): 
 }
 
 // ── Photo box ─────────────────────────────────────────────────────────────────
-const LBL_H = 20   // label bar height (pt)
-const IMG_H = 220  // photo area height (pt)
-const ROW_H = LBL_H + IMG_H  // 240pt per photo row
+const LBL_H = 22   // label bar height (pt)
+const IMG_H = 278  // photo area height (pt)
+const ROW_H = LBL_H + IMG_H  // 300pt per photo row — fills page with 2 rows
 
 function photoBox(doc: jsPDF, x: number, y: number, w: number, label: string, ci?: CImg | null) {
   strokedBox(doc, x, y, w, ROW_H)
@@ -323,13 +323,13 @@ export async function generarPdfAtt(record: AttRecord): Promise<void> {
 
   // Section 1
   y = heading(doc, '1. TIPO DE PROYECTO', y)
-  y += 4
+  y += 6
   y = drawTipo(doc, record.tipoProyecto, y)
 
   // Section 2
   y = chk(doc, y, 150, ha)
   y = heading(doc, '2. DATOS DEL PROYECTO', y)
-  y += 2
+  y += 6
 
   const datos: [string, string][] = [
     ['Nombre del proyecto: ',          record.nombreProyecto],
@@ -356,7 +356,7 @@ export async function generarPdfAtt(record: AttRecord): Promise<void> {
   // Section 3
   y = chk(doc, y, 60, ha)
   y = heading(doc, '3. DESCRIPCIÓN GENERAL DEL PROYECTO', y)
-  y += 2
+  y += 6
 
   const validTramos = record.tramos.filter(t => t.tipoCable || t.metraje || t.desde || t.hasta)
   for (let ti = 0; ti < validTramos.length; ti++) {
@@ -403,7 +403,7 @@ export async function generarPdfAtt(record: AttRecord): Promise<void> {
   const aereoImg = ci(record.fotoAerea?.previewUrl)
   if (aereoImg) {
     y = heading(doc, 'FOTO AÉREA', y)
-    y += 4
+    y += 6
     const aW = 300, aH = 200
     placeImg(doc, aereoImg, ML + (CW - aW) / 2, y, aW, aH)
     y += aH + 12
@@ -411,7 +411,7 @@ export async function generarPdfAtt(record: AttRecord): Promise<void> {
 
   y = chk(doc, y, 140, ha)
   y = heading(doc, '4. INFRAESTRUCTURA PARA UTILIZAR', y)
-  y += 4
+  y += 6
   y = drawInfra(doc, record.infraestructura, y)
 
   // ── Pages 3+: Section 5 ───────────────────────────────────────────────────────
@@ -419,7 +419,8 @@ export async function generarPdfAtt(record: AttRecord): Promise<void> {
   y = heading(doc, '5. DETALLE DE SINGULARIDADES Y REGISTROS FOTOGRÁFICOS.', y)
   y += 6
 
-  const PORT_W_D = (CW - 10) / 2   // portrait column width ≈ 229pt
+  const PORT_GAP = 14               // horizontal gap between portrait pair
+  const PORT_W_D = (CW - PORT_GAP) / 2  // portrait column width ≈ 227pt
   const LAND_W_D = CW               // landscape full width = 468pt
 
   for (let i = 0; i < fotos.length; ) {
@@ -428,7 +429,7 @@ export async function generarPdfAtt(record: AttRecord): Promise<void> {
 
     // Page break check: need room for a row (+ gap if not first)
     if (i > 0) {
-      const gap = 8
+      const gap = 10
       if (y + gap + ROW_H > CONT_B) {
         y = newPage(doc, ha)
         y = heading(doc, '5. DETALLE DE SINGULARIDADES Y REGISTROS FOTOGRÁFICOS. (cont.)', y)
@@ -443,8 +444,8 @@ export async function generarPdfAtt(record: AttRecord): Promise<void> {
       y += ROW_H; i++
     } else if (i + 1 < fotos.length && !isLand(fotos[i + 1])) {
       const f2 = fotos[i + 1]
-      photoBox(doc, ML,              y, PORT_W_D, fotoLabel(f),  ci(f.previewUrl))
-      photoBox(doc, ML+PORT_W_D+10,  y, PORT_W_D, fotoLabel(f2), ci(f2.previewUrl))
+      photoBox(doc, ML,                    y, PORT_W_D, fotoLabel(f),  ci(f.previewUrl))
+      photoBox(doc, ML+PORT_W_D+PORT_GAP, y, PORT_W_D, fotoLabel(f2), ci(f2.previewUrl))
       y += ROW_H; i += 2
     } else {
       photoBox(doc, ML, y, PORT_W_D, fotoLabel(f), ci(f.previewUrl))
