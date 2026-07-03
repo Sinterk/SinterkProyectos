@@ -99,7 +99,9 @@ create table public.projects (
   region             text,
   contratista        text,
   ingeniero_proyecto text,
-  jefe_proyecto_id   uuid references public.profiles(id),
+  jefe_proyecto      text,                                  -- nombre mostrado en el informe
+  jefe_proyecto_id   uuid references public.profiles(id),   -- FK opcional cuando el JP sea usuario
+
   coords_inicio      jsonb,          -- {lat,lng}
   coords_termino     jsonb,
   estado             text not null default 'activo' check (estado in ('activo','cerrado')),
