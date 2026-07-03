@@ -11,6 +11,7 @@ const CW = PW - ML - MR                   // 468pt content width
 const HDR_Y  = 28
 const HDR_R1 = 42, HDR_R2 = 28
 const HDR_H  = HDR_R1 + HDR_R2            // 70pt total header
+const HDR_C1 = 74, HDR_C3 = 100          // anchos col logo/OTT y col fecha/página
 const CONT_Y = HDR_Y + HDR_H + 12         // ≈ 110pt
 const CONT_B = PH - 38                    // ≈ 754pt
 
@@ -119,7 +120,7 @@ function placeImg(doc: jsPDF, ci: CImg, x: number, y: number, boxW: number, boxH
 // ── Header ────────────────────────────────────────────────────────────────────
 function drawHeader(doc: jsPDF, titulo: string, fecha: string, ott: string, csNombre: string) {
   const x = ML, y = HDR_Y
-  const c1 = 66, c3 = 100, c2 = CW - c1 - c3   // 66 | 302 | 100
+  const c1 = HDR_C1, c3 = HDR_C3, c2 = CW - c1 - c3   // logo/OTT | titulo/CS | fecha/pag
 
   // Thick outer border (simulates double line)
   setDraw(doc, BLACK); doc.setLineWidth(2)
@@ -153,18 +154,34 @@ function drawHeader(doc: jsPDF, titulo: string, fecha: string, ott: string, csNo
   doc.setFont('helvetica', 'normal')
   doc.text(fecha, dx + c3 / 2, y + HDR_R1 / 2 + 9, { align: 'center' })
 
-  // Row 2: OTT code
+  // Row 2 col 1: OTT (código) — negrita, con prefijo; reduce tamaño si no cabe
   const y2 = y + HDR_R1
-  doc.setFont('helvetica', 'normal'); doc.setFontSize(9)
-  doc.text(ott, x + c1 / 2, y2 + HDR_R2 / 2, { align: 'center', baseline: 'middle' })
+  doc.setFont('helvetica', 'bold'); setTxt(doc, BLACK)
+  const ottLabel = `OTT ${ott}`
+  let ottFs = 9
+  doc.setFontSize(ottFs)
+  while (doc.getTextWidth(ottLabel) > c1 - 6 && ottFs > 6) { ottFs--; doc.setFontSize(ottFs) }
+  doc.text(ottLabel, x + c1 / 2, y2 + HDR_R2 / 2, { align: 'center', baseline: 'middle' })
 
-  // Row 2: CS name
+  // Row 2 col 2: CS name
+  doc.setFont('helvetica', 'normal'); doc.setFontSize(9)
   const csLines = doc.splitTextToSize(csNombre, c2 - 8)
   cellText(doc, csLines.slice(0, 2), x + c1 + c2 / 2, y2 + HDR_R2 / 2, c2 - 8)
 
-  // Row 2: OTT label
-  doc.setFont('helvetica', 'bold')
-  doc.text(`OTT ${ott}`, dx + c3 / 2, y2 + HDR_R2 / 2, { align: 'center', baseline: 'middle' })
+  // Row 2 col 3: la paginación "Página X de Y" se estampa al final (stampPageNumbers),
+  // cuando ya se conoce el total de páginas.
+}
+
+// Estampa "Página X de Y" en la col 3 fila 2 del encabezado, en todas las páginas.
+function stampPageNumbers(doc: jsPDF) {
+  const total = doc.getNumberOfPages()
+  const cx = ML + CW - HDR_C3 / 2
+  const cy = HDR_Y + HDR_R1 + HDR_R2 / 2
+  for (let p = 1; p <= total; p++) {
+    doc.setPage(p)
+    doc.setFont('helvetica', 'bold'); doc.setFontSize(9); setTxt(doc, BLACK)
+    doc.text(`Página ${p} de ${total}`, cx, cy, { align: 'center', baseline: 'middle' })
+  }
 }
 
 // ── Page management ───────────────────────────────────────────────────────────
@@ -454,6 +471,9 @@ export async function generarPdfAtt(record: AttRecord): Promise<void> {
       y += ROW_H; i++
     }
   }
+
+  // Paginación en el encabezado (ya se conoce el total de páginas)
+  stampPageNumbers(doc)
 
   // Direct download — no print dialog
   doc.save(`Informe OTT ${ott || 'sin-ott'}.pdf`)

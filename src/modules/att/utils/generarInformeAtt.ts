@@ -195,7 +195,7 @@ function makeHeader(record: AttRecord, fecha: string): Header {
                 width: { size: HDR_COLS[0], type: WidthType.DXA },
                 children: [new Paragraph({
                   alignment: AlignmentType.CENTER,
-                  children: [new TextRun({ text: ott, size: 20, font: 'Cambria' })],
+                  children: [new TextRun({ text: `OTT ${ott}`, bold: true, size: 20, font: 'Cambria' })],
                   spacing: { before: 40, after: 40 },
                 })],
               }),
