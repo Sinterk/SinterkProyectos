@@ -421,7 +421,7 @@ export async function generarPdfAtt(record: AttRecord): Promise<void> {
 
   const aereoImg = ci(record.fotoAerea?.previewUrl)
   if (aereoImg) {
-    y = heading(doc, 'FOTO GENERAL', y)
+    y = heading(doc, '', y)   // rótulo en blanco (a pedido)
     y += 6
     const aW = 300, aH = 200
     placeImg(doc, aereoImg, ML + (CW - aW) / 2, y, aW, aH)
