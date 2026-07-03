@@ -5,6 +5,8 @@ interface ImportMetaEnv {
   readonly VITE_PROXY_URL: string
   readonly VITE_ANNOTATION_PHASE: string
   readonly VITE_APP_MODE: 'office' | 'field'
+  readonly VITE_SUPABASE_URL: string
+  readonly VITE_SUPABASE_ANON_KEY: string
 }
 
 interface ImportMeta {

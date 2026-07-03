@@ -1,8 +1,30 @@
-interface Props {
-  onEnter: () => void
-}
+import { useState } from 'react'
+import { useAuth } from '@/lib/auth'
 
-export function LoginScreen({ onEnter }: Props) {
+export function LoginScreen() {
+  const signIn = useAuth((s) => s.signIn)
+  const [email, setEmail] = useState('')
+  const [password, setPassword] = useState('')
+  const [error, setError] = useState<string | null>(null)
+  const [busy, setBusy] = useState(false)
+
+  async function handleSubmit(e: React.FormEvent) {
+    e.preventDefault()
+    if (busy) return
+    setError(null)
+    setBusy(true)
+    const { error } = await signIn(email, password)
+    if (error) {
+      setError(
+        error.toLowerCase().includes('invalid')
+          ? 'Correo o contraseña incorrectos.'
+          : error,
+      )
+      setBusy(false)
+    }
+    // si es correcto, onAuthStateChange actualiza la sesión y App re-renderiza
+  }
+
   return (
     <div className="min-h-screen bg-slate-900 flex flex-col items-center justify-center px-6">
       <div className="w-full max-w-sm">
@@ -13,51 +35,47 @@ export function LoginScreen({ onEnter }: Props) {
           <p className="text-slate-400 text-sm mt-2">Gestión de proyectos de telecomunicaciones</p>
         </div>
 
-        {/* Formulario (futuro: usuario + contraseña) */}
-        <div className="bg-slate-800 rounded-2xl border border-slate-700 p-6 space-y-4">
+        <form onSubmit={handleSubmit} className="bg-slate-800 rounded-2xl border border-slate-700 p-6 space-y-4">
           <div className="space-y-1">
             <label className="text-xs text-slate-500 font-medium">Usuario</label>
             <input
-              type="text"
-              disabled
+              type="email"
+              autoComplete="username"
+              value={email}
+              onChange={(e) => setEmail(e.target.value)}
               placeholder="usuario@empresa.cl"
-              className="w-full bg-slate-700/50 border border-slate-600/50 rounded-xl px-3 py-2.5 text-sm text-slate-500 placeholder-slate-600 cursor-not-allowed"
+              className="w-full bg-slate-700 border border-slate-600 rounded-xl px-3 py-2.5 text-sm text-white placeholder-slate-500 focus:border-brand-500 focus:outline-none"
             />
           </div>
           <div className="space-y-1">
             <label className="text-xs text-slate-500 font-medium">Contraseña</label>
             <input
               type="password"
-              disabled
+              autoComplete="current-password"
+              value={password}
+              onChange={(e) => setPassword(e.target.value)}
               placeholder="••••••••"
-              className="w-full bg-slate-700/50 border border-slate-600/50 rounded-xl px-3 py-2.5 text-sm text-slate-500 placeholder-slate-600 cursor-not-allowed"
+              className="w-full bg-slate-700 border border-slate-600 rounded-xl px-3 py-2.5 text-sm text-white placeholder-slate-500 focus:border-brand-500 focus:outline-none"
             />
           </div>
-          <button
-            type="button"
-            disabled
-            className="w-full py-2.5 rounded-xl bg-brand-700/40 text-brand-400/50 font-semibold text-sm cursor-not-allowed"
-          >
-            Ingresar
-          </button>
 
-          <div className="flex items-center gap-3 py-1">
-            <div className="flex-1 h-px bg-slate-700" />
-            <span className="text-xs text-slate-600">o</span>
-            <div className="flex-1 h-px bg-slate-700" />
-          </div>
+          {error && (
+            <p className="text-xs text-red-400 bg-red-500/10 border border-red-500/30 rounded-lg px-3 py-2">
+              {error}
+            </p>
+          )}
 
           <button
-            type="button"
-            onClick={onEnter}
-            className="w-full py-2.5 rounded-xl bg-slate-700 hover:bg-slate-600 border border-slate-600 hover:border-slate-500 text-white font-semibold text-sm transition-colors"
+            type="submit"
+            disabled={busy || !email || !password}
+            className="w-full py-2.5 rounded-xl bg-brand-600 hover:bg-brand-700 text-white font-semibold text-sm transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
           >
-            Ingresar como invitado
+            {busy ? 'Ingresando…' : 'Ingresar'}
           </button>
-        </div>
+        </form>
 
         <p className="text-center text-[11px] text-slate-600 mt-6">
-          Inicio de sesión con usuario disponible próximamente
+          ¿Sin cuenta? Solicítala a un administrador.
         </p>
       </div>
     </div>
