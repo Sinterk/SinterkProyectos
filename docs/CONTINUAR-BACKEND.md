@@ -39,6 +39,7 @@ Ya hecho:
 - **Primer admin**: Supabase → Authentication → Add user (marcar *Auto Confirm*), luego `update public.profiles set rol='admin', nombre='...' where email='...';`
 
 ## Setup en un PC nuevo
+Prerrequisitos: **Node 22** (el que usa el deploy) y **git**. No hace falta copiar nada a mano salvo el `.env`.
 ```bash
 git clone https://github.com/Sinterk/TelecomCatalog.git
 cd TelecomCatalog
@@ -49,6 +50,13 @@ npm install
 #   VITE_SUPABASE_ANON_KEY=sb_publishable_x01p7hsYvNKlWklAQ11H-Q_KPenq-XW
 npm run dev   # sin certs mkcert corre en http://localhost:5173
 ```
+> **NO re-ejecutar** `supabase/migrations/0001_init.sql`: ya está aplicado en el proyecto Supabase compartido (`xwawplezarrfonuyaaxu`). Ese archivo es solo para instalaciones nuevas o de referencia del esquema.
+
+## Convenciones y reglas
+- **Commits en español**, terminando con el trailer `Co-Authored-By: Claude <noreply@anthropic.com>`. No commitear `.claude/launch.json` ni `.env`.
+- **Subir la versión** (`APP_VERSION` en `vite.config.ts`) en cada cambio visible.
+- **NO hacer push/merge a `main` todavía**: push a `main` dispara el deploy y publica el gate de login, dejando fuera a los usuarios actuales (que aún no tienen cuenta). Trabajar en `backend-supabase`; recién fusionar a `main` cuando datos + usuarios estén listos, como cutover coordinado.
+- **Gotcha PWA/caché**: la app instalada suele servir el bundle viejo hasta cerrarla del todo (no solo minimizar) o borrar datos del sitio; por eso se sube `APP_VERSION` para confirmar el bundle nuevo.
 
 ## Próximos pasos (en orden)
 1. **Capa de datos** `src/modules/att/data/attRepo.ts`: mapear `AttRecord` ↔ `projects` + `informes` + `tramos`/`hitos`/`fotos`; CRUD (list/load/save/delete). Mapeo clave: `jefeProyecto`→`projects.jefe_proyecto` (texto), `fotoAerea`→`informes.foto_general_path`, `ingresoRed`/`infraestructura`→jsonb.
@@ -59,7 +67,7 @@ npm run dev   # sin certs mkcert corre en http://localhost:5173
 
 ## Verificar conexión (PowerShell)
 ```powershell
-$h = @{ apikey = $env:VITE_SUPABASE_ANON_KEY }
+$h = @{ apikey = "sb_publishable_x01p7hsYvNKlWklAQ11H-Q_KPenq-XW" }
 Invoke-WebRequest -Uri "https://xwawplezarrfonuyaaxu.supabase.co/rest/v1/materiales?select=*&limit=1" -Headers $h -UseBasicParsing
 # esperado: HTTP 200, body [] (RLS bloquea filas sin login)
 ```
