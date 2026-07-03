@@ -105,7 +105,6 @@ export interface AttRecord {
   tieneReparacionDucto: boolean
   hitos: Hito[]
   fotoAerea?: FotoEntry
-  fotoAereaTipo?: 'aerea' | 'calle'   // etiqueta en informes: FOTO AÉREA / FOTO DE CALLE
 
   // Sección 4 — Infraestructura
   infraestructura: Infraestructura

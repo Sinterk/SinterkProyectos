@@ -637,10 +637,7 @@ async function makeAereoBlock(r: AttRecord, pageBreak: boolean): Promise<(Paragr
   return [
     new Paragraph({
       pageBreakBefore: pageBreak,
-      children: [new TextRun({
-        text: r.fotoAereaTipo === 'calle' ? 'FOTO DE CALLE' : 'FOTO AÉREA',
-        bold: true, color: '4F81BD', size: 22, font: FONT,
-      })],
+      children: [new TextRun({ text: 'FOTO GENERAL', bold: true, color: '4F81BD', size: 22, font: FONT })],
       spacing: { before: 0, after: 80 },
     }),
     new Paragraph({

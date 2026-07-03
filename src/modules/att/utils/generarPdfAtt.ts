@@ -421,7 +421,7 @@ export async function generarPdfAtt(record: AttRecord): Promise<void> {
 
   const aereoImg = ci(record.fotoAerea?.previewUrl)
   if (aereoImg) {
-    y = heading(doc, record.fotoAereaTipo === 'calle' ? 'FOTO DE CALLE' : 'FOTO AÉREA', y)
+    y = heading(doc, 'FOTO GENERAL', y)
     y += 6
     const aW = 300, aH = 200
     placeImg(doc, aereoImg, ML + (CW - aW) / 2, y, aW, aH)
