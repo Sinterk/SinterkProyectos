@@ -4,6 +4,7 @@ import { registry } from '@/core/registry/projectRegistry'
 import { Layout } from '@/ui/Layout'
 import { ProjectHome } from '@/ui/ProjectHome'
 import { LoginScreen } from '@/ui/LoginScreen'
+import { AdminScreen } from '@/ui/AdminScreen'
 import { useAuth } from '@/lib/auth'
 
 import '@/modules/preventivos'
@@ -45,6 +46,7 @@ export function App() {
     <Layout>
       <Routes>
         <Route path="/" element={<ProjectHome />} />
+        <Route path="/admin" element={<AdminScreen />} />
         {modules.flatMap((mod) =>
           mod.routes.map((route) => {
             const Component = route.component

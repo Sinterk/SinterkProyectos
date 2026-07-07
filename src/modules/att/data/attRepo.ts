@@ -67,6 +67,8 @@ interface ProjectRow {
   jefe_proyecto: string | null
   coords_inicio: { lat: string; lng: string } | null
   coords_termino: { lat: string; lng: string } | null
+  estado: 'activo' | 'cerrado'
+  fecha_cierre: string | null
   created_at: string
   updated_at: string
   informes?: InformeRow[]
@@ -145,6 +147,8 @@ function rowToRecord(p: ProjectRow): AttRecord {
     id: p.id,
     createdAt: toMs(p.created_at),
     updatedAt: toMs(p.updated_at),
+    estado: p.estado,
+    fechaCierre: p.fecha_cierre ?? undefined,
 
     // Sección 1–2 — projects
     tipoProyecto: (p.tipo_proyecto ?? '') as TipoProyecto | '',
@@ -210,8 +214,10 @@ function rowToRecord(p: ProjectRow): AttRecord {
 // AttRecord → fila (escritura)
 // ---------------------------------------------------------------------------
 
-/** Campos de `projects`. No incluye version/estado/created_by (los gestiona otro flujo). */
-function recordToProjectRow(r: AttRecord): Omit<ProjectRow, 'id' | 'created_at' | 'updated_at' | 'informes'> {
+/** Campos de `projects`. No incluye version/estado/fecha_cierre/created_by (los gestiona otro flujo: `close`/`remove`). */
+function recordToProjectRow(
+  r: AttRecord,
+): Omit<ProjectRow, 'id' | 'created_at' | 'updated_at' | 'informes' | 'estado' | 'fecha_cierre'> {
   return {
     ott: r.ott,
     tipo_proyecto: r.tipoProyecto || null,
@@ -306,14 +312,17 @@ async function replaceFotos(informeId: string, fotos: FotoEntry[]): Promise<void
 // ---------------------------------------------------------------------------
 
 export const attRepo = {
-  /** Lista los informes activos visibles para el usuario (según RLS), recientes primero. */
-  async list(): Promise<AttRecord[]> {
-    const { data, error } = await supabase
-      .from('projects')
-      .select(SELECT_NESTED)
-      .eq('area', 'ATT')
-      .eq('estado', 'activo')
-      .order('updated_at', { ascending: false })
+  /**
+   * Lista los informes visibles para el usuario (según RLS), recientes primero.
+   * `estado` por defecto 'activo' (uso normal: caché editable del store). Para
+   * "ver cerrados"/"ver todos" en Home se pide explícito 'cerrado'/'todos' —
+   * esos resultados no se guardan en el store, son de solo consulta.
+   */
+  async list(opts?: { estado?: 'activo' | 'cerrado' | 'todos' }): Promise<AttRecord[]> {
+    const estado = opts?.estado ?? 'activo'
+    let query = supabase.from('projects').select(SELECT_NESTED).eq('area', 'ATT')
+    if (estado !== 'todos') query = query.eq('estado', estado)
+    const { data, error } = await query.order('updated_at', { ascending: false })
     if (error) throw new Error(`projects.list: ${error.message}`)
     return (data as ProjectRow[]).map(rowToRecord)
   },

@@ -1,4 +1,5 @@
 import { useEffect, useRef, useState } from 'react'
+import { Link } from 'react-router-dom'
 import { useAuth, guestPassword, ROL_LABELS } from '@/lib/auth'
 
 export function UserMenu() {
@@ -44,6 +45,13 @@ export function UserMenu() {
             <p className="text-[10px] uppercase tracking-wide text-slate-500 mt-2">Tipo de usuario</p>
             <p className="text-sm text-white">{rolLabel}{isGuest && ' · cuenta compartida'}</p>
           </div>
+
+          {profile?.rol === 'admin' && (
+            <Link to="/admin" onClick={() => setOpen(false)}
+              className="block px-4 py-3 text-sm text-brand-400 hover:bg-slate-700/60 border-b border-slate-700 transition-colors">
+              ⚙️ Administración
+            </Link>
+          )}
 
           {isGuest ? (
             <GuestPasswordRow />

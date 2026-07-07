@@ -1,18 +1,41 @@
 import { useEffect, useState } from 'react'
 import { useNavigate } from 'react-router-dom'
 import { useAttStore, hasPendingSync } from '../store'
+import { attRepo } from '../data/attRepo'
 import { useAuth } from '@/lib/auth'
 import { TIPO_PROYECTO_LABELS } from '../types'
 import type { AttRecord } from '../types'
+
+type EstadoFilter = 'activo' | 'cerrado' | 'todos'
+
+function matchesSearch(r: AttRecord, query: string): boolean {
+  const q = query.trim().toLowerCase()
+  if (!q) return true
+  return r.ott.toLowerCase().includes(q) || r.nombreProyecto.toLowerCase().includes(q)
+}
 
 export function Home() {
   const navigate = useNavigate()
   const { records, createNew, remove, syncList } = useAttStore()
   const isAdmin = useAuth((s) => s.profile?.rol === 'admin')
-  const list = Object.values(records).sort((a, b) => b.updatedAt - a.updatedAt)
-  const pending = list.filter(hasPendingSync)
+
+  const [estadoFilter, setEstadoFilter] = useState<EstadoFilter>('activo')
+  const [search, setSearch] = useState('')
+  // Cerrados/todos no viven en el store (que solo cachea activos editables):
+  // se piden aparte, de solo consulta, y se refrescan al cambiar el filtro.
+  const [extra, setExtra] = useState<AttRecord[]>([])
 
   useEffect(() => { syncList().catch(console.error) }, [syncList])
+
+  async function reloadExtra() {
+    if (estadoFilter === 'activo') return
+    try { setExtra(await attRepo.list({ estado: estadoFilter })) } catch (err) { console.error(err) }
+  }
+  useEffect(() => { reloadExtra().catch(console.error) }, [estadoFilter])
+
+  const base = estadoFilter === 'activo' ? Object.values(records) : extra
+  const list = base.filter((r) => matchesSearch(r, search)).sort((a, b) => b.updatedAt - a.updatedAt)
+  const pending = Object.values(records).filter(hasPendingSync)
 
   function handleNew() {
     const id = createNew()
@@ -25,7 +48,8 @@ export function Home() {
       : '¿Cerrar este informe? Se ocultará de la lista; solo un administrador puede eliminarlo definitivamente.'
     if (!confirm(msg)) return
     const result = await remove(r.id)
-    if (!result.ok) alert(result.error)
+    if (!result.ok) { alert(result.error); return }
+    reloadExtra().catch(console.error)
   }
 
   return (
@@ -41,12 +65,26 @@ export function Home() {
         </button>
       </div>
 
+      <div className="flex gap-2">
+        <input value={search} onChange={(e) => setSearch(e.target.value)}
+          placeholder="Buscar por OTT o nombre…"
+          className="flex-1 min-w-0 bg-slate-800 text-white text-sm rounded-xl px-3 py-2 border border-slate-700 placeholder-slate-500 focus:border-brand-500 focus:outline-none" />
+        <select value={estadoFilter} onChange={(e) => setEstadoFilter(e.target.value as EstadoFilter)}
+          className="bg-slate-800 text-white text-sm rounded-xl px-2 py-2 border border-slate-700 focus:border-brand-500 focus:outline-none shrink-0">
+          <option value="activo">Activos</option>
+          <option value="cerrado">Cerrados</option>
+          <option value="todos">Todos</option>
+        </select>
+      </div>
+
       {pending.length > 0 && <MigrationBanner pending={pending} />}
 
       {list.length === 0 ? (
         <div className="text-center py-16 text-slate-500 space-y-2">
           <div className="text-5xl">🔌</div>
-          <p className="text-sm">Crea tu primer informe ATT.</p>
+          <p className="text-sm">
+            {search || estadoFilter !== 'activo' ? 'Sin resultados.' : 'Crea tu primer informe ATT.'}
+          </p>
         </div>
       ) : (
         <div className="space-y-3">
@@ -131,9 +169,16 @@ function AttCard({ record, onSelect, onDelete }: {
     <div className="bg-slate-800 rounded-2xl border border-slate-700 p-4 hover:border-brand-500 transition-colors">
       <div className="flex items-start gap-2">
         <button type="button" onClick={onSelect} className="flex-1 text-left min-w-0">
-          {tipoLabel && (
-            <div className="text-[10px] font-medium text-brand-400 uppercase tracking-wide mb-1">{tipoLabel}</div>
-          )}
+          <div className="flex items-center gap-1.5 mb-1">
+            {tipoLabel && (
+              <span className="text-[10px] font-medium text-brand-400 uppercase tracking-wide">{tipoLabel}</span>
+            )}
+            {record.estado === 'cerrado' && (
+              <span className="text-[10px] font-medium text-slate-400 bg-slate-700 rounded px-1.5 py-0.5">
+                🔒 Cerrado{record.fechaCierre ? ` ${record.fechaCierre}` : ''}
+              </span>
+            )}
+          </div>
           <div className="text-sm font-semibold text-white">
             {record.ott
               ? <>OTT <span className="font-mono">{record.ott}</span></>

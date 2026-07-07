@@ -17,7 +17,7 @@ export function Layout({ children }: Props) {
   const { pathname } = useLocation()
 
   // Nav solo visible en pantallas de inicio, no en editores (/preventivos/:id, /att/:id, etc.)
-  const homeScreens = ['/', ...modules.map((m) => m.indexPath)]
+  const homeScreens = ['/', '/admin', ...modules.map((m) => m.indexPath)]
   const showNav = homeScreens.includes(pathname)
 
   return (

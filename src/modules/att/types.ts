@@ -80,6 +80,10 @@ export interface AttRecord {
   id: string
   createdAt: number
   updatedAt: number
+  /** Ciclo de vida del proyecto en el servidor. Solo lectura desde el Editor:
+   *  se cambia vía attRepo.close()/remove(), nunca por un save() normal. */
+  estado: 'activo' | 'cerrado'
+  fechaCierre?: string
 
   // Sección 1 — Tipo de proyecto
   tipoProyecto: TipoProyecto | ''

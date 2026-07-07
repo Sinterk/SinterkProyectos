@@ -1,12 +1,25 @@
+import { useState } from 'react'
 import { useNavigate } from 'react-router-dom'
 import { usePreventivoStore } from '../store'
 import { ImportZip } from './ImportZip'
 import type { Preventivo } from '../types'
 
+function matchesSearch(r: Preventivo, query: string): boolean {
+  const q = query.trim().toLowerCase()
+  if (!q) return true
+  const { comuna, cuadrante, nombreCuadrante } = r.cuadrante
+  return (comuna ?? '').toLowerCase().includes(q)
+    || (cuadrante ?? '').toLowerCase().includes(q)
+    || (nombreCuadrante ?? '').toLowerCase().includes(q)
+}
+
 export function Home() {
   const navigate = useNavigate()
   const { records, createNew, remove } = usePreventivoStore()
-  const list = Object.values(records).sort((a, b) => b.updatedAt - a.updatedAt)
+  const [search, setSearch] = useState('')
+  const list = Object.values(records)
+    .filter((r) => matchesSearch(r, search))
+    .sort((a, b) => b.updatedAt - a.updatedAt)
 
   function handleNew() {
     const id = createNew()
@@ -26,6 +39,10 @@ export function Home() {
         </button>
       </div>
 
+      <input value={search} onChange={(e) => setSearch(e.target.value)}
+        placeholder="Buscar por comuna, cuadrante o nombre…"
+        className="w-full bg-slate-800 text-white text-sm rounded-xl px-3 py-2 border border-slate-700 placeholder-slate-500 focus:border-brand-500 focus:outline-none" />
+
       <div className="bg-slate-800 rounded-2xl border border-slate-700 p-4 space-y-2">
         <p className="text-sm font-medium text-white">Importar ZIP existente</p>
         <ImportZip onImported={(id) => navigate(`/preventivos/${id}`)} />
@@ -37,7 +54,7 @@ export function Home() {
       {list.length === 0 ? (
         <div className="text-center py-16 text-slate-500 space-y-2">
           <div className="text-5xl">🔌</div>
-          <p className="text-sm">Crea tu primer levantamiento o importa un ZIP.</p>
+          <p className="text-sm">{search ? 'Sin resultados.' : 'Crea tu primer levantamiento o importa un ZIP.'}</p>
         </div>
       ) : (
         <div className="space-y-3">

@@ -73,6 +73,7 @@ function emptyInfra(): Infraestructura {
 export function emptyAttRecord(id: string, now: number): AttRecord {
   return {
     id, createdAt: now, updatedAt: now,
+    estado: 'activo',
     tipoProyecto: '',
     ott: '', nombreProyecto: '', iniciativa: '',
     ingenieroProyecto: '', jefeProyecto: '',
