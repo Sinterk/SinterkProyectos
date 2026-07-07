@@ -1,7 +1,5 @@
 import { useEffect, useRef, useState } from 'react'
 import { useAttStore } from '../store'
-import { isUuid, attRepo } from '../data/attRepo'
-import { uploadRecordPhotos } from '../data/photoStorage'
 
 export type AutosaveStatus = 'idle' | 'saving' | 'saved' | 'error'
 
@@ -10,21 +8,17 @@ const DEBOUNCE_MS = 800
 /**
  * Autoguardado online-first para un informe abierto en el Editor: cada cambio
  * de campo actualiza el store local al instante (UI ágil, sin red de por
- * medio); pasado `DEBOUNCE_MS` sin nuevos cambios, sube las fotos pendientes
- * y persiste el informe completo en Supabase vía `attRepo.save`.
+ * medio); pasado `DEBOUNCE_MS` sin nuevos cambios, `store.persistToServer`
+ * sube las fotos pendientes y persiste el informe completo en Supabase.
  *
  * Si el informe era un borrador local (id nanoid, aún no existe en el
- * servidor), el primer guardado lo inserta y devuelve el uuid canónico; el
- * hook "rekea" el store y avisa por `onIdChange` para que el Editor actualice
- * la URL. En guardados posteriores (id ya es uuid) no hay nada que fusionar:
- * el store local ya es la versión que se acaba de enviar.
+ * servidor), el primer guardado lo inserta y el store lo rekea al uuid
+ * canónico; este hook avisa por `onIdChange` para que el Editor actualice
+ * la URL.
  */
 export function useAttAutosave(recordId: string, onIdChange?: (newId: string) => void) {
   const record = useAttStore((s) => s.records[recordId])
   const syncedAt = useAttStore((s) => s.syncedAt[recordId])
-  const rekey = useAttStore((s) => s.rekey)
-  const setFotoStoragePath = useAttStore((s) => s.setFotoStoragePath)
-  const setFotoAereaStoragePath = useAttStore((s) => s.setFotoAereaStoragePath)
 
   const [status, setStatus] = useState<AutosaveStatus>('idle')
   const [errorMessage, setErrorMessage] = useState<string | null>(null)
@@ -41,29 +35,12 @@ export function useAttAutosave(recordId: string, onIdChange?: (newId: string) =>
     setErrorMessage(null)
     let resultId = id
     try {
-      const current = useAttStore.getState().records[id]
-      if (!current) return // se borró/navegó fuera mientras esperaba el debounce
-
-      const withPhotos = await uploadRecordPhotos(current)
-      // Persistir los storagePath recién subidos en el store ANTES de guardar,
-      // para que un intento fallido no vuelva a re-subir fotos ya subidas.
-      withPhotos.fotos.forEach((f, i) => {
-        if (f.storagePath && f.storagePath !== current.fotos[i]?.storagePath) {
-          setFotoStoragePath(id, i, f.storagePath)
-        }
-      })
-      if (withPhotos.fotoAerea?.storagePath && withPhotos.fotoAerea.storagePath !== current.fotoAerea?.storagePath) {
-        setFotoAereaStoragePath(id, withPhotos.fotoAerea.storagePath)
-      }
-
-      const saved = await attRepo.save(withPhotos)
-
+      if (!useAttStore.getState().records[id]) return // se borró/navegó fuera mientras esperaba el debounce
+      const saved = await useAttStore.getState().persistToServer(id)
       if (saved.id !== id) {
-        rekey(id, saved) // borrador local promovido a uuid del servidor
         resultId = saved.id
         onIdChange?.(saved.id)
       }
-
       setStatus('saved')
     } catch (err) {
       console.error('[useAttAutosave]', err)

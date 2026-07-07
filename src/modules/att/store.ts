@@ -3,6 +3,7 @@ import { persist } from 'zustand/middleware'
 import { nanoid } from '@/core/utils/nanoid'
 import { useAuth } from '@/lib/auth'
 import { attRepo, isUuid } from './data/attRepo'
+import { uploadRecordPhotos } from './data/photoStorage'
 import type {
   AttRecord, FotoEntry,
   TramoCable, Hito, InfraItem, Infraestructura,
@@ -11,6 +12,19 @@ import type {
 export type RemoveResult =
   | { ok: true; mode: 'deleted' | 'closed' }
   | { ok: false; error: string }
+
+/**
+ * ¿Le falta a este record algo por sincronizar? Cubre dos casos: nunca llegó
+ * al servidor (id sigue siendo el nanoid de creación local), o ya existe allá
+ * pero le quedó una foto capturada localmente sin subir a Storage (p. ej. un
+ * guardado anterior falló a medio camino). Lo usa el aviso de migración en
+ * Home para saber qué informes ofrecer a sincronizar.
+ */
+export function hasPendingSync(record: AttRecord): boolean {
+  if (!isUuid(record.id)) return true
+  const pendingFoto = (f?: FotoEntry) => !!f?.blobId && !f.storagePath
+  return pendingFoto(record.fotoAerea) || record.fotos.some(pendingFoto)
+}
 
 /**
  * Fusiona un record recién leído del servidor con lo que ya hay en cache:
@@ -103,6 +117,13 @@ interface AttState {
   syncOne: (id: string) => Promise<void>
   /** Tras el primer guardado de un borrador local, reemplaza su id nanoid por el uuid del servidor. */
   rekey: (oldId: string, saved: AttRecord) => void
+  /**
+   * Sube las fotos pendientes y persiste el informe en Supabase (usado por el
+   * autoguardado y por la migración manual de borradores locales). Si el id
+   * era un borrador local, lo rekea y devuelve el record ya con el uuid.
+   * Lanza si falla — quien llama decide cómo mostrar el error.
+   */
+  persistToServer: (id: string) => Promise<AttRecord>
 
   setFotoAereaStoragePath: (id: string, storagePath: string) => void
   setFotoStoragePath: (id: string, index: number, storagePath: string) => void
@@ -131,7 +152,7 @@ function touch(rec: AttRecord, extra?: Partial<AttRecord>): AttRecord {
 
 export const useAttStore = create<AttState>()(
   persist(
-    (set) => ({
+    (set, get) => ({
       records: {},
       syncedAt: {},
 
@@ -220,6 +241,27 @@ export const useAttStore = create<AttState>()(
           // El uuid recién asignado por el servidor no es una edición pendiente.
           return { records: next, syncedAt: { ...s.syncedAt, [saved.id]: saved.updatedAt } }
         })
+      },
+
+      async persistToServer(id) {
+        const current = get().records[id]
+        if (!current) throw new Error('persistToServer: el informe ya no está en el store local')
+
+        const withPhotos = await uploadRecordPhotos(current)
+        // Persistir los storagePath recién subidos ANTES de guardar, para que
+        // un intento fallido no vuelva a re-subir fotos ya subidas.
+        withPhotos.fotos.forEach((f, i) => {
+          if (f.storagePath && f.storagePath !== current.fotos[i]?.storagePath) {
+            get().setFotoStoragePath(id, i, f.storagePath)
+          }
+        })
+        if (withPhotos.fotoAerea?.storagePath && withPhotos.fotoAerea.storagePath !== current.fotoAerea?.storagePath) {
+          get().setFotoAereaStoragePath(id, withPhotos.fotoAerea.storagePath)
+        }
+
+        const saved = await attRepo.save(withPhotos)
+        if (saved.id !== id) get().rekey(id, saved) // borrador local promovido a uuid del servidor
+        return saved
       },
 
       setFotoAereaStoragePath(id, storagePath) {
