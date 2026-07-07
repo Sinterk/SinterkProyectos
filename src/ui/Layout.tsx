@@ -1,5 +1,6 @@
 import { NavLink, useLocation } from 'react-router-dom'
 import { registry } from '@/core/registry/projectRegistry'
+import { UserMenu } from './UserMenu'
 import { OfflineBanner } from './OfflineBanner'
 
 interface Props { children: React.ReactNode }
@@ -24,6 +25,7 @@ export function Layout({ children }: Props) {
       <header className="bg-slate-900 border-b border-slate-800 px-4 py-3 flex items-center gap-3 sticky top-0 z-30">
         <span className="text-xl">📡</span>
         <span className="font-bold text-base tracking-tight flex-1">TelecomCatalog</span>
+        <UserMenu />
         <span className="text-[10px] font-mono text-slate-500 leading-tight text-right shrink-0">
           <span className="text-brand-400 font-semibold">{__APP_VERSION__}</span>
           <br />

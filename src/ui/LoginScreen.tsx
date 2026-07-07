@@ -1,12 +1,14 @@
 import { useState } from 'react'
-import { useAuth } from '@/lib/auth'
+import { useAuth, guestEnabled } from '@/lib/auth'
 
 export function LoginScreen() {
   const signIn = useAuth((s) => s.signIn)
+  const signInAsGuest = useAuth((s) => s.signInAsGuest)
   const [email, setEmail] = useState('')
   const [password, setPassword] = useState('')
   const [error, setError] = useState<string | null>(null)
   const [busy, setBusy] = useState(false)
+  const [guestBusy, setGuestBusy] = useState(false)
 
   async function handleSubmit(e: React.FormEvent) {
     e.preventDefault()
@@ -23,6 +25,21 @@ export function LoginScreen() {
       setBusy(false)
     }
     // si es correcto, onAuthStateChange actualiza la sesión y App re-renderiza
+  }
+
+  async function handleGuest() {
+    if (guestBusy) return
+    setError(null)
+    setGuestBusy(true)
+    const { error } = await signInAsGuest()
+    if (error) {
+      setError(
+        error.toLowerCase().includes('invalid')
+          ? 'La cuenta de invitado no está disponible. Avisa al administrador.'
+          : error,
+      )
+      setGuestBusy(false)
+    }
   }
 
   return (
@@ -67,12 +84,33 @@ export function LoginScreen() {
 
           <button
             type="submit"
-            disabled={busy || !email || !password}
+            disabled={busy || guestBusy || !email || !password}
             className="w-full py-2.5 rounded-xl bg-brand-600 hover:bg-brand-700 text-white font-semibold text-sm transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
           >
             {busy ? 'Ingresando…' : 'Ingresar'}
           </button>
         </form>
+
+        {guestEnabled && (
+          <div className="mt-4">
+            <div className="flex items-center gap-3 text-[11px] text-slate-600">
+              <span className="h-px flex-1 bg-slate-700" />
+              o
+              <span className="h-px flex-1 bg-slate-700" />
+            </div>
+            <button
+              type="button"
+              onClick={handleGuest}
+              disabled={busy || guestBusy}
+              className="mt-4 w-full py-2.5 rounded-xl border border-slate-600 hover:border-slate-500 hover:bg-slate-800 text-slate-200 font-medium text-sm transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
+            >
+              {guestBusy ? 'Entrando…' : 'Continuar como invitado'}
+            </button>
+            <p className="text-center text-[11px] text-slate-600 mt-2">
+              Cuenta compartida temporal para trabajar sin usuario propio.
+            </p>
+          </div>
+        )}
 
         <p className="text-center text-[11px] text-slate-600 mt-6">
           ¿Sin cuenta? Solicítala a un administrador.

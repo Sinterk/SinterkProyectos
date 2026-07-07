@@ -61,18 +61,21 @@ function b64ToBuffer(b64: string): ArrayBuffer {
   return bytes.buffer
 }
 
-function resizeToBuffer(url: string, dw: number, dh: number): Promise<ArrayBuffer> {
+function resizeToBuffer(url: string, dw: number, dh: number, quality = 0.92): Promise<ArrayBuffer> {
   return new Promise((resolve, reject) => {
     const img = new Image()
     img.onload = () => {
       const canvas = document.createElement('canvas')
       canvas.width = dw
       canvas.height = dh
-      canvas.getContext('2d')!.drawImage(img, 0, 0, dw, dh)
+      const ctx = canvas.getContext('2d')!
+      ctx.imageSmoothingEnabled = true
+      ctx.imageSmoothingQuality = 'high'  // menos aliasing al reducir la foto
+      ctx.drawImage(img, 0, 0, dw, dh)
       canvas.toBlob(blob => {
         if (!blob) { reject(new Error('canvas toBlob failed')); return }
         blob.arrayBuffer().then(resolve, reject)
-      }, 'image/jpeg', 0.9)
+      }, 'image/jpeg', quality)
     }
     img.onerror = reject
     img.src = url
@@ -176,8 +179,21 @@ const NO_SIDE     = { style: 'thin' as const,   color: { argb: 'FFFFFFFF' } }
 
 // ── Image sizing ──────────────────────────────────────────────────────────────
 
-const PORTRAIT_H  = 327  // px — vertical images (small margin within 9-row block)
-const LANDSCAPE_W = 452  // px — horizontal images
+// Medidas EXACTAS del marco (bloque de celdas fusionado donde va la foto):
+// alto = 9 filas (333 px); ancho = la columna (A ≈ 459 px, C ≈ 462 px).
+// La foto calza justo a estas medidas (antes se dejaba un pelo de margen para
+// no pisar las líneas del cuadro; ahora se pide que llene el marco).
+const FRAME_H  = 37 * 9      // 333 px — alto del bloque (9 filas)
+const COL_A_PX = 64.9 * 7 + 5  // ~459 px — ancho columna A (marco izquierdo)
+const COL_C_PX = 65.3 * 7 + 5  // ~462 px — ancho columna C (marco derecho)
+
+// Supersampling: la imagen se incrusta a SUPERSAMPLE× la resolución de despliegue
+// para que no se vea pixelada en pantallas de alta densidad ni al imprimir/zoom.
+// El tamaño MOSTRADO NO cambia: el anclaje (tl/br) sigue usando dw/dh; solo sube
+// la densidad de píxeles dentro del mismo rectángulo de celdas.
+// El master en IndexedDB es ~1600 px (ver compressImage), así que 2× (≤ ~900 px)
+// siempre reduce, nunca inventa detalle. Subir a 3× pesa más el .xlsx.
+const SUPERSAMPLE = 2
 
 function getImgSize(url: string): Promise<{ w: number; h: number }> {
   return new Promise((resolve) => {
@@ -188,14 +204,11 @@ function getImgSize(url: string): Promise<{ w: number; h: number }> {
   })
 }
 
-function displaySize(w: number, h: number): { dw: number; dh: number } {
-  if (h >= w) {
-    return { dw: Math.round(w * PORTRAIT_H / h), dh: PORTRAIT_H }
-  }
-  // landscape: constrain by width first; if that exceeds PORTRAIT_H, constrain by height instead
-  const dh = Math.round(h * LANDSCAPE_W / w)
-  if (dh <= PORTRAIT_H) return { dw: LANDSCAPE_W, dh }
-  return { dw: Math.round(w * PORTRAIT_H / h), dh: PORTRAIT_H }
+function displaySize(w: number, h: number, maxW: number, maxH: number): { dw: number; dh: number } {
+  // Fit "contain": la foto llena el marco tocando el borde en la dimensión que
+  // manda, preservando el aspecto (nunca deforma ni sobresale del cuadro).
+  const scale = Math.min(maxW / w, maxH / h)
+  return { dw: Math.round(w * scale), dh: Math.round(h * scale) }
 }
 
 type ImgData = { buf: ArrayBuffer; dw: number; dh: number; col0: 0 | 2 }
@@ -207,11 +220,13 @@ async function prepareImage(
   if (!foto?.previewUrl) return null
   try {
     const size = await getImgSize(foto.previewUrl)
-    const { dw, dh } = displaySize(size.w, size.h)
-    // Resize buffer to exact display dimensions so Excel renders at the correct
-    // size regardless of whether it respects <xdr:ext> or uses native resolution.
-    const buf = await resizeToBuffer(foto.previewUrl, dw, dh)
-    console.log(`[Entel IMG] col=${col0} natural=${size.w}×${size.h} display=${dw}×${dh}`)
+    const colPx = col0 === 0 ? COL_A_PX : COL_C_PX
+    const { dw, dh } = displaySize(size.w, size.h, colPx, FRAME_H)
+    // El buffer va a SUPERSAMPLE× la resolución de despliegue, pero se devuelven
+    // dw/dh sin escalar: el anclaje (tl/br) mantiene el tamaño visible, la imagen
+    // solo gana densidad de píxeles → misma dimensión, sin pixelarse.
+    const buf = await resizeToBuffer(foto.previewUrl, dw * SUPERSAMPLE, dh * SUPERSAMPLE)
+    console.log(`[Entel IMG] col=${col0} natural=${size.w}×${size.h} display=${dw}×${dh} buffer=${dw * SUPERSAMPLE}×${dh * SUPERSAMPLE}`)
     return { buf, dw, dh, col0 }
   } catch { return null }
 }
@@ -318,9 +333,8 @@ async function writeBlock(
 
   // Fixed row height based on a full-block PORTRAIT reference (333px), NOT on the
   // actual image height, so the block stays the same size regardless of image content.
-  const BLOCK_REF_PX = 37 * 9  // 333 px — reference block height (image is PORTRAIT_H ≤ this)
-  const ROW_H = (BLOCK_REF_PX * 0.75) / N_IMG_ROWS  // 27.75 pt always
-  console.log(`[Entel BLK] base=${base} ROW_H=${ROW_H.toFixed(2)}pt PORTRAIT_H=${PORTRAIT_H}px`)
+  const ROW_H = (FRAME_H * 0.75) / N_IMG_ROWS  // 27.75 pt always (FRAME_H = 333px)
+  console.log(`[Entel BLK] base=${base} ROW_H=${ROW_H.toFixed(2)}pt FRAME_H=${FRAME_H}px`)
   for (let r = imgRow; r < imgRow + N_IMG_ROWS; r++) ws.getRow(r).height = ROW_H
 
   ws.mergeCells(imgRow, 1, imgRow + N_IMG_ROWS - 1, 1)
@@ -331,9 +345,7 @@ async function writeBlock(
   ws.getCell(imgRow, 1).fill = whiteFill
   ws.getCell(imgRow, 3).fill = whiteFill
 
-  // Column pixel widths (chars × 7 + 5, matching Python EMU calc)
-  const COL_A_PX = 64.9 * 7 + 5   // ~459 px
-  const COL_C_PX = 65.3 * 7 + 5   // ~462 px
+  // Column pixel widths (COL_A_PX/COL_C_PX definidos a nivel de módulo)
   const rowPx    = ROW_H * (96 / 72) // pt → px
   const blockPx  = N_IMG_ROWS * rowPx
 
