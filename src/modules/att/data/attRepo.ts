@@ -24,8 +24,13 @@ const UUID_RE =
   /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i
 
 /** ¿el id ya es un uuid de Postgres (registro existente) o un id de cliente? */
-function isUuid(id: string): boolean {
+export function isUuid(id: string): boolean {
   return UUID_RE.test(id)
+}
+
+/** 'YYYY-MM-DD' de hoy, para columnas `date` (fecha_cierre). */
+function todayISO(): string {
+  return new Date().toISOString().slice(0, 10)
 }
 
 /** timestamptz de Postgres → epoch ms (para createdAt/updatedAt del store). */
@@ -301,12 +306,13 @@ async function replaceFotos(informeId: string, fotos: FotoEntry[]): Promise<void
 // ---------------------------------------------------------------------------
 
 export const attRepo = {
-  /** Lista todos los informes visibles para el usuario (según RLS), recientes primero. */
+  /** Lista los informes activos visibles para el usuario (según RLS), recientes primero. */
   async list(): Promise<AttRecord[]> {
     const { data, error } = await supabase
       .from('projects')
       .select(SELECT_NESTED)
       .eq('area', 'ATT')
+      .eq('estado', 'activo')
       .order('updated_at', { ascending: false })
     if (error) throw new Error(`projects.list: ${error.message}`)
     return (data as ProjectRow[]).map(rowToRecord)
@@ -393,10 +399,37 @@ export const attRepo = {
     return saved
   },
 
-  /** Borra un informe (el cascade de `projects` arrastra informe + hijos). */
+  /**
+   * Borra un informe (el cascade de `projects` arrastra informe + hijos).
+   * La RLS reserva el DELETE al rol `admin`: para cualquier otro rol, Postgres
+   * no arroja error, simplemente afecta 0 filas. Se detecta con `.select()`
+   * (devuelve las filas realmente borradas) y se lanza un error explícito en
+   * vez de fallar en silencio.
+   */
   async remove(id: string): Promise<void> {
     if (!isUuid(id)) return
-    const { error } = await supabase.from('projects').delete().eq('id', id)
+    const { data, error } = await supabase.from('projects').delete().eq('id', id).select('id')
     if (error) throw new Error(`projects.delete: ${error.message}`)
+    if (!data || data.length === 0) {
+      throw new Error('No tienes permiso para eliminar este informe (requiere rol admin).')
+    }
+  },
+
+  /**
+   * "Cierra" un informe (estado=cerrado + fecha_cierre) en vez de borrarlo.
+   * Vía para jp/invitado, a quienes la RLS sí deja hacer UPDATE. Mismo chequeo
+   * de 0 filas afectadas que `remove`, por si el rol tampoco alcanza para esto.
+   */
+  async close(id: string): Promise<void> {
+    if (!isUuid(id)) return
+    const { data, error } = await supabase
+      .from('projects')
+      .update({ estado: 'cerrado', fecha_cierre: todayISO() })
+      .eq('id', id)
+      .select('id')
+    if (error) throw new Error(`projects.close: ${error.message}`)
+    if (!data || data.length === 0) {
+      throw new Error('No tienes permiso para cerrar este informe.')
+    }
   },
 }

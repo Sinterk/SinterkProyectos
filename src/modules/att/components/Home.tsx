@@ -1,16 +1,30 @@
+import { useEffect } from 'react'
 import { useNavigate } from 'react-router-dom'
 import { useAttStore } from '../store'
+import { useAuth } from '@/lib/auth'
 import { TIPO_PROYECTO_LABELS } from '../types'
 import type { AttRecord } from '../types'
 
 export function Home() {
   const navigate = useNavigate()
-  const { records, createNew, remove } = useAttStore()
+  const { records, createNew, remove, syncList } = useAttStore()
+  const isAdmin = useAuth((s) => s.profile?.rol === 'admin')
   const list = Object.values(records).sort((a, b) => b.updatedAt - a.updatedAt)
+
+  useEffect(() => { syncList().catch(console.error) }, [syncList])
 
   function handleNew() {
     const id = createNew()
     navigate(`/att/${id}`)
+  }
+
+  async function handleDelete(r: AttRecord) {
+    const msg = isAdmin
+      ? '¿Eliminar este informe? Esta acción no se puede deshacer.'
+      : '¿Cerrar este informe? Se ocultará de la lista; solo un administrador puede eliminarlo definitivamente.'
+    if (!confirm(msg)) return
+    const result = await remove(r.id)
+    if (!result.ok) alert(result.error)
   }
 
   return (
@@ -36,7 +50,7 @@ export function Home() {
           {list.map((r) => (
             <AttCard key={r.id} record={r}
               onSelect={() => navigate(`/att/${r.id}`)}
-              onDelete={() => { if (confirm('¿Eliminar este informe?')) remove(r.id) }} />
+              onDelete={() => { handleDelete(r).catch(console.error) }} />
           ))}
         </div>
       )}

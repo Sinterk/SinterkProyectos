@@ -2,6 +2,9 @@ import { useEffect, useRef, useState } from 'react'
 import { useNavigate, useParams } from 'react-router-dom'
 import { useAtt } from '../hooks/useAtt'
 import { useRestoreAttPhotos } from '../hooks/useRestoreAttPhotos'
+import { useResolveAttPhotoUrls } from '../hooks/useResolveAttPhotoUrls'
+import { useAttAutosave } from '../hooks/useAttAutosave'
+import { useAttStore } from '../store'
 import { generarInformeAtt } from '../utils/generarInformeAtt'
 import { generarPdfAtt } from '../utils/generarPdfAtt'
 import { SeccionTipo } from './SeccionTipo'
@@ -10,34 +13,37 @@ import { SeccionDescripcion } from './SeccionDescripcion'
 import { SeccionInfra } from './SeccionInfra'
 import { SeccionFotos } from './SeccionFotos'
 
-type SaveStatus = 'saved' | 'saving'
 type GenStatus = 'idle' | 'generating' | 'error'
 
 export function Editor() {
   const { id } = useParams<{ id: string }>()
   const navigate = useNavigate()
   const { record, processPhoto, processFotoAerea } = useAtt(id ?? '')
+  const syncOne = useAttStore((s) => s.syncOne)
   useRestoreAttPhotos()
+  useResolveAttPhotoUrls()
 
-  const [saveStatus, setSaveStatus] = useState<SaveStatus>('saved')
+  const { status: saveStatus, errorMessage: saveError, retryNow } = useAttAutosave(
+    id ?? '',
+    (newId) => navigate(`/att/${newId}`, { replace: true }),
+  )
   const [genStatus, setGenStatus] = useState<GenStatus>('idle')
   const [pdfStatus, setPdfStatus] = useState<GenStatus>('idle')
-  const prevUpdatedAt = useRef<number | null>(null)
-  const saveTimer = useRef<ReturnType<typeof setTimeout> | null>(null)
 
+  // El primer guardado de un borrador local "rekea" su id (nanoid → uuid del
+  // servidor) en el store; ese instante deja momentáneamente sin record al id
+  // viejo de la URL, en carrera con la navegación hacia el id nuevo. Solo se
+  // redirige a Home si el record nunca existió para este id (deep-link roto /
+  // recién borrado), no cuando ya existió y desapareció por la promoción.
+  const hadRecord = useRef(false)
+  useEffect(() => { if (record) hadRecord.current = true }, [record])
   useEffect(() => {
-    if (!record && id) navigate('/att', { replace: true })
+    if (!record && id && !hadRecord.current) navigate('/att', { replace: true })
   }, [record, id, navigate])
 
-  useEffect(() => {
-    if (!record) return
-    if (prevUpdatedAt.current === null) { prevUpdatedAt.current = record.updatedAt; return }
-    if (record.updatedAt === prevUpdatedAt.current) return
-    prevUpdatedAt.current = record.updatedAt
-    setSaveStatus('saving')
-    if (saveTimer.current) clearTimeout(saveTimer.current)
-    saveTimer.current = setTimeout(() => setSaveStatus('saved'), 800)
-  }, [record?.updatedAt])
+  // Trae la versión del servidor al abrir (deep-link / recarga); no pisa
+  // ediciones locales más nuevas (ver `mergeFromServer` en el store).
+  useEffect(() => { if (id) syncOne(id) }, [id, syncOne])
 
   if (!id || !record) return null
 
@@ -97,9 +103,17 @@ export function Editor() {
           ← Volver
         </button>
         <div className="flex-1 flex items-center justify-center">
-          {saveStatus === 'saving'
-            ? <span className="text-xs text-amber-400 animate-pulse">⏳ Guardando…</span>
-            : <span className="text-xs text-green-500">✅ Guardado</span>}
+          {saveStatus === 'saving' && <span className="text-xs text-amber-400 animate-pulse">⏳ Guardando…</span>}
+          {saveStatus === 'error' && (
+            <button type="button" onClick={retryNow}
+              className="text-xs text-red-400 hover:text-red-300 underline"
+              title={saveError ?? undefined}>
+              ⚠️ Sin guardar — reintentar
+            </button>
+          )}
+          {(saveStatus === 'saved' || saveStatus === 'idle') && (
+            <span className="text-xs text-green-500">✅ Guardado</span>
+          )}
         </div>
         <button
           type="button"

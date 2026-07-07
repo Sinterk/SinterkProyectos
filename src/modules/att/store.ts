@@ -1,10 +1,41 @@
 import { create } from 'zustand'
 import { persist } from 'zustand/middleware'
 import { nanoid } from '@/core/utils/nanoid'
+import { useAuth } from '@/lib/auth'
+import { attRepo, isUuid } from './data/attRepo'
 import type {
   AttRecord, FotoEntry,
   TramoCable, Hito, InfraItem, Infraestructura,
 } from './types'
+
+export type RemoveResult =
+  | { ok: true; mode: 'deleted' | 'closed' }
+  | { ok: false; error: string }
+
+/**
+ * Fusiona un record recién leído del servidor con lo que ya hay en cache:
+ * - si lo local es más nuevo (edición en curso aún no sincronizada), se
+ *   conserva lo local tal cual (evita pisar tipeo en curso con datos viejos).
+ * - si el servidor gana, se preservan los `previewUrl`/`blobId` locales de
+ *   las fotos que ya se habían resuelto (por storagePath), para no perder la
+ *   miniatura y forzar un refetch de la signed URL sin necesidad.
+ */
+function mergeFromServer(local: AttRecord | undefined, server: AttRecord): AttRecord {
+  if (local && local.updatedAt > server.updatedAt) return local
+
+  const localAerea = local?.fotoAerea
+  function mergeFoto(f: FotoEntry): FotoEntry {
+    const prev = local?.fotos.find((lf) => lf.storagePath && lf.storagePath === f.storagePath)
+      ?? (localAerea?.storagePath === f.storagePath ? localAerea : undefined)
+    return prev ? { ...f, previewUrl: prev.previewUrl, blobId: prev.blobId } : f
+  }
+
+  return {
+    ...server,
+    fotoAerea: server.fotoAerea ? mergeFoto(server.fotoAerea) : undefined,
+    fotos: server.fotos.map(mergeFoto),
+  }
+}
 
 function todayISO(): string {
   const d = new Date()
@@ -51,10 +82,30 @@ export function emptyAttRecord(id: string, now: number): AttRecord {
 
 interface AttState {
   records: Record<string, AttRecord>
+  /**
+   * Última marca `updatedAt` de cada record que llegó del SERVIDOR (por
+   * syncList/syncOne/rekey), no de una edición del usuario. `useAttAutosave`
+   * la usa para no confundir "el store se refrescó desde Supabase" con "el
+   * usuario tipeó algo" — si no se distinguiera, cada vez que se abre o
+   * recarga un informe se dispararía un guardado (delete+insert de
+   * tramos/fotos) sin que nadie haya editado nada.
+   */
+  syncedAt: Record<string, number>
 
   createNew: () => string
-  remove: (id: string) => void
+  /** Borra (admin) o cierra (jp/invitado) según lo que la RLS permita al rol actual. */
+  remove: (id: string) => Promise<RemoveResult>
   update: (id: string, data: Partial<AttRecord>) => void
+
+  /** Trae la lista del servidor y la fusiona en cache (Zustand = caché, Supabase = fuente). */
+  syncList: () => Promise<void>
+  /** Trae un informe puntual del servidor (deep-link / recarga en el Editor). */
+  syncOne: (id: string) => Promise<void>
+  /** Tras el primer guardado de un borrador local, reemplaza su id nanoid por el uuid del servidor. */
+  rekey: (oldId: string, saved: AttRecord) => void
+
+  setFotoAereaStoragePath: (id: string, storagePath: string) => void
+  setFotoStoragePath: (id: string, index: number, storagePath: string) => void
 
   addTramo: (id: string) => void
   removeTramo: (id: string, tramoId: string) => void
@@ -82,6 +133,7 @@ export const useAttStore = create<AttState>()(
   persist(
     (set) => ({
       records: {},
+      syncedAt: {},
 
       createNew() {
         const id = nanoid()
@@ -90,11 +142,100 @@ export const useAttStore = create<AttState>()(
         return id
       },
 
-      remove(id) {
+      async remove(id) {
+        function dropLocal() {
+          set((s) => {
+            const next = { ...s.records }
+            delete next[id]
+            return { records: next }
+          })
+        }
+
+        // Borrador local, nunca llegó al servidor: no hay nada que borrar allá.
+        if (!isUuid(id)) {
+          dropLocal()
+          return { ok: true, mode: 'deleted' }
+        }
+
+        const isAdmin = useAuth.getState().profile?.rol === 'admin'
+        try {
+          if (isAdmin) {
+            await attRepo.remove(id)
+            dropLocal()
+            return { ok: true, mode: 'deleted' }
+          } else {
+            await attRepo.close(id)
+            dropLocal() // se oculta de "activos"; sigue existiendo como cerrado en el servidor
+            return { ok: true, mode: 'closed' }
+          }
+        } catch (err) {
+          return { ok: false, error: err instanceof Error ? err.message : String(err) }
+        }
+      },
+
+      async syncList() {
+        const serverRecords = await attRepo.list()
         set((s) => {
+          const records = { ...s.records }
+          const syncedAt = { ...s.syncedAt }
+          for (const rec of serverRecords) {
+            const before = records[rec.id]
+            const merged = mergeFromServer(before, rec)
+            records[rec.id] = merged
+            if (merged.updatedAt !== before?.updatedAt) syncedAt[rec.id] = merged.updatedAt
+          }
+          return { records, syncedAt }
+        })
+      },
+
+      async syncOne(id) {
+        if (!isUuid(id)) return
+        const rec = await attRepo.load(id)
+        if (!rec) return
+        set((s) => {
+          const before = s.records[id]
+          const merged = mergeFromServer(before, rec)
+          const tookServer = merged.updatedAt !== before?.updatedAt
+          return {
+            records: { ...s.records, [rec.id]: merged },
+            syncedAt: tookServer ? { ...s.syncedAt, [rec.id]: merged.updatedAt } : s.syncedAt,
+          }
+        })
+      },
+
+      rekey(oldId, saved) {
+        set((s) => {
+          const old = s.records[oldId]
           const next = { ...s.records }
-          delete next[id]
-          return { records: next }
+          delete next[oldId]
+          // Conserva previews/blobId locales de fotos ya capturadas (mismo orden que se guardó).
+          const fotos = saved.fotos.map((f, i) => {
+            const prev = old?.fotos[i]
+            return prev ? { ...f, previewUrl: prev.previewUrl, blobId: prev.blobId } : f
+          })
+          const fotoAerea = saved.fotoAerea && old?.fotoAerea
+            ? { ...saved.fotoAerea, previewUrl: old.fotoAerea.previewUrl, blobId: old.fotoAerea.blobId }
+            : saved.fotoAerea
+          next[saved.id] = { ...saved, fotos, fotoAerea }
+          // El uuid recién asignado por el servidor no es una edición pendiente.
+          return { records: next, syncedAt: { ...s.syncedAt, [saved.id]: saved.updatedAt } }
+        })
+      },
+
+      setFotoAereaStoragePath(id, storagePath) {
+        set((s) => {
+          const rec = s.records[id]
+          if (!rec?.fotoAerea) return s
+          return { records: { ...s.records, [id]: { ...rec, fotoAerea: { ...rec.fotoAerea, storagePath } } } }
+        })
+      },
+
+      setFotoStoragePath(id, index, storagePath) {
+        set((s) => {
+          const rec = s.records[id]
+          if (!rec) return s
+          const fotos = rec.fotos.map((f, i) => i === index ? { ...f, storagePath } : f)
+          return { records: { ...s.records, [id]: { ...rec, fotos } } }
         })
       },
 
