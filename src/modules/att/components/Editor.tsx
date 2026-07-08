@@ -1,6 +1,7 @@
 import { useEffect, useRef, useState } from 'react'
 import { useNavigate, useParams } from 'react-router-dom'
 import { useAtt } from '../hooks/useAtt'
+import { isUuid } from '../data/attRepo'
 import { useRestoreAttPhotos } from '../hooks/useRestoreAttPhotos'
 import { useResolveAttPhotoUrls } from '../hooks/useResolveAttPhotoUrls'
 import { useAttAutosave } from '../hooks/useAttAutosave'
@@ -12,6 +13,7 @@ import { SeccionDatos } from './SeccionDatos'
 import { SeccionDescripcion } from './SeccionDescripcion'
 import { SeccionInfra } from './SeccionInfra'
 import { SeccionFotos } from './SeccionFotos'
+import { LogisticaTab } from '@/ui/LogisticaTab'
 
 type GenStatus = 'idle' | 'generating' | 'error'
 
@@ -29,6 +31,7 @@ export function Editor() {
   )
   const [genStatus, setGenStatus] = useState<GenStatus>('idle')
   const [pdfStatus, setPdfStatus] = useState<GenStatus>('idle')
+  const [tab, setTab] = useState<'info' | 'logistica'>('info')
 
   // El primer guardado de un borrador local "rekea" su id (nanoid → uuid del
   // servidor) en el store; ese instante deja momentáneamente sin record al id
@@ -90,11 +93,30 @@ export function Editor() {
         <span className="flex-1 text-sm font-semibold text-white truncate">{title}</span>
       </div>
 
-      <SeccionTipo recordId={id} />
-      <SeccionDatos recordId={id} />
-      <SeccionDescripcion recordId={id} processFotoAerea={processFotoAerea} />
-      <SeccionInfra recordId={id} />
-      <SeccionFotos recordId={id} processPhoto={processPhoto} />
+      <div className="flex gap-2">
+        <button type="button" onClick={() => setTab('info')}
+          className={`flex-1 text-xs font-semibold py-1.5 rounded-lg ${tab === 'info' ? 'bg-brand-600 text-white' : 'bg-slate-800 text-slate-400'}`}>
+          Info de proyecto
+        </button>
+        <button type="button" onClick={() => setTab('logistica')}
+          className={`flex-1 text-xs font-semibold py-1.5 rounded-lg ${tab === 'logistica' ? 'bg-brand-600 text-white' : 'bg-slate-800 text-slate-400'}`}>
+          Logística
+        </button>
+      </div>
+
+      {tab === 'info' ? (
+        <>
+          <SeccionTipo recordId={id} />
+          <SeccionDatos recordId={id} />
+          <SeccionDescripcion recordId={id} processFotoAerea={processFotoAerea} />
+          <SeccionInfra recordId={id} />
+          <SeccionFotos recordId={id} processPhoto={processPhoto} />
+        </>
+      ) : isUuid(id) ? (
+        <LogisticaTab projectId={id} projectOtt={record.ott || 'Sin OTT'} area="ATT" />
+      ) : (
+        <p className="text-xs text-slate-500 text-center py-8">Guarda el informe primero para gestionar logística.</p>
+      )}
 
       {/* Barra inferior fija */}
       <div className="fixed bottom-0 left-0 right-0 bg-slate-900/95 backdrop-blur border-t border-slate-700 px-4 py-3 flex items-center gap-3 z-40">

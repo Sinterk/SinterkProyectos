@@ -9,6 +9,7 @@ import { useAuth } from '@/lib/auth'
 
 import '@/modules/preventivos'
 import '@/modules/att'
+import '@/modules/inventario'
 
 export function App() {
   const modules = registry.getAll()

@@ -24,8 +24,12 @@ export interface MemberProfile {
 
 interface MemberRow {
   user_id: string
-  // El cliente sin tipos generados infiere el embed como array aunque la FK sea 1:1.
-  profiles: { id: string; nombre: string | null; email: string | null }[]
+  // Embed vía FK hacia adelante (project_members.user_id -> profiles.id):
+  // PostgREST lo devuelve como objeto simple, no array — a diferencia de un
+  // embed "hacia atrás" (ej. projects.informes(...), donde la tabla hija
+  // referencia a la consultada). Confirmado empíricamente contra la BD real;
+  // el tipo generado por el cliente sin esquema no es de fiar para esto.
+  profiles: { id: string; nombre: string | null; email: string | null } | null
 }
 
 export const adminRepo = {
@@ -70,8 +74,8 @@ export const adminRepo = {
       .eq('project_id', projectId)
     if (error) throw new Error(`project_members.list: ${error.message}`)
     return (data as unknown as MemberRow[] ?? [])
-      .map((row) => row.profiles[0])
-      .filter((p): p is MemberProfile => p !== undefined)
+      .map((row) => row.profiles)
+      .filter((p): p is MemberProfile => p !== null)
   },
 
   async addMember(projectId: string, userId: string): Promise<void> {

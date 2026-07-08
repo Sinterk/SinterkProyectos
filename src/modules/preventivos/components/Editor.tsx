@@ -7,6 +7,8 @@ import {
 import { SortableContext, verticalListSortingStrategy, arrayMove } from '@dnd-kit/sortable'
 import { usePreventivoStore } from '../store'
 import { usePreventivo } from '../hooks/usePreventivo'
+import { isUuid } from '../data/preventivoRepo'
+import { LogisticaTab } from '@/ui/LogisticaTab'
 import { useRestorePhotoPreviews } from '../hooks/useRestorePhotoPreviews'
 import { useResolvePhotoUrls } from '../hooks/useResolvePhotoUrls'
 import { usePreventivoAutosave } from '../hooks/usePreventivoAutosave'
@@ -29,6 +31,8 @@ export function Editor() {
     id ?? '',
     (newId) => navigate(`/preventivos/${newId}`, { replace: true }),
   )
+
+  const [tab, setTab] = useState<'info' | 'logistica'>('info')
 
   const sensors = useSensors(
     useSensor(PointerSensor, { activationConstraint: { distance: 8 } }),
@@ -81,50 +85,72 @@ export function Editor() {
         </button>
       </div>
 
-      {total > 0 && (
-        <div className="bg-slate-800 rounded-xl px-4 py-3 border border-slate-700">
-          <div className="flex items-center justify-between mb-1.5">
-            <span className="text-xs text-slate-400">Progreso del levantamiento</span>
-            <span className={`text-xs font-semibold ${conFoto === total ? 'text-green-400' : 'text-brand-400'}`}>
-              {conFoto}/{total} puntos con foto
-            </span>
-          </div>
-          <div className="h-2 bg-slate-700 rounded-full overflow-hidden">
-            <div className="h-full bg-brand-500 rounded-full transition-all duration-300"
-              style={{ width: `${(conFoto / total) * 100}%` }} />
-          </div>
-        </div>
-      )}
-
-      <CuadranteSection preventivoId={record.id} cuadrante={record.cuadrante} />
-
-      <div className="space-y-3">
-        <div className="flex items-center justify-between">
-          <h2 className="text-sm font-semibold text-brand-400 uppercase tracking-wide">🔧 Puntos</h2>
-          <span className="text-xs text-slate-500">{total} punto(s)</span>
-        </div>
-
-        {puntos.length === 0 && (
-          <div className="text-center py-8 text-slate-500 text-sm">Agrega puntos con el botón de abajo.</div>
-        )}
-
-        <DndContext sensors={sensors} collisionDetection={closestCenter} onDragEnd={handleDragEnd}>
-          <SortableContext items={puntos.map((p) => p.id)} strategy={verticalListSortingStrategy}>
-            {puntos.map((punto, i) => (
-              <PuntoCard key={punto.id} preventivoId={record.id} punto={punto} index={i} total={puntos.length}
-                editable={true}
-                onSave={async () => {}}
-                onMove={(from, to) => movePunto(record.id, from, to)}
-                onPhotoCapture={(file: File, key: FotoKey) => processPhoto(file, punto.id, key)} />
-            ))}
-          </SortableContext>
-        </DndContext>
-
-        <button type="button" onClick={() => addPunto(record.id)}
-          className="w-full py-3 rounded-2xl border-2 border-dashed border-slate-600 text-slate-400 text-sm hover:border-brand-500 hover:text-brand-400 transition-colors flex items-center justify-center gap-2">
-          ➕ Agregar punto
+      <div className="flex gap-2">
+        <button type="button" onClick={() => setTab('info')}
+          className={`flex-1 text-xs font-semibold py-1.5 rounded-lg ${tab === 'info' ? 'bg-brand-600 text-white' : 'bg-slate-800 text-slate-400'}`}>
+          Info de proyecto
+        </button>
+        <button type="button" onClick={() => setTab('logistica')}
+          className={`flex-1 text-xs font-semibold py-1.5 rounded-lg ${tab === 'logistica' ? 'bg-brand-600 text-white' : 'bg-slate-800 text-slate-400'}`}>
+          Logística
         </button>
       </div>
+
+      {tab === 'logistica' ? (
+        isUuid(record.id) ? (
+          <LogisticaTab projectId={record.id} projectOtt={record.cuadrante.cuadrante || 'Sin cuadrante'} area="OyM"
+            puntos={puntos.filter((p) => isUuid(p.id)).map((p) => ({ id: p.id, nombre: p.nombre || 'Punto sin nombre' }))} />
+        ) : (
+          <p className="text-xs text-slate-500 text-center py-8">Guarda el levantamiento primero para gestionar logística.</p>
+        )
+      ) : (
+        <>
+          {total > 0 && (
+            <div className="bg-slate-800 rounded-xl px-4 py-3 border border-slate-700">
+              <div className="flex items-center justify-between mb-1.5">
+                <span className="text-xs text-slate-400">Progreso del levantamiento</span>
+                <span className={`text-xs font-semibold ${conFoto === total ? 'text-green-400' : 'text-brand-400'}`}>
+                  {conFoto}/{total} puntos con foto
+                </span>
+              </div>
+              <div className="h-2 bg-slate-700 rounded-full overflow-hidden">
+                <div className="h-full bg-brand-500 rounded-full transition-all duration-300"
+                  style={{ width: `${(conFoto / total) * 100}%` }} />
+              </div>
+            </div>
+          )}
+
+          <CuadranteSection preventivoId={record.id} cuadrante={record.cuadrante} />
+
+          <div className="space-y-3">
+            <div className="flex items-center justify-between">
+              <h2 className="text-sm font-semibold text-brand-400 uppercase tracking-wide">🔧 Puntos</h2>
+              <span className="text-xs text-slate-500">{total} punto(s)</span>
+            </div>
+
+            {puntos.length === 0 && (
+              <div className="text-center py-8 text-slate-500 text-sm">Agrega puntos con el botón de abajo.</div>
+            )}
+
+            <DndContext sensors={sensors} collisionDetection={closestCenter} onDragEnd={handleDragEnd}>
+              <SortableContext items={puntos.map((p) => p.id)} strategy={verticalListSortingStrategy}>
+                {puntos.map((punto, i) => (
+                  <PuntoCard key={punto.id} preventivoId={record.id} punto={punto} index={i} total={puntos.length}
+                    editable={true}
+                    onSave={async () => {}}
+                    onMove={(from, to) => movePunto(record.id, from, to)}
+                    onPhotoCapture={(file: File, key: FotoKey) => processPhoto(file, punto.id, key)} />
+                ))}
+              </SortableContext>
+            </DndContext>
+
+            <button type="button" onClick={() => addPunto(record.id)}
+              className="w-full py-3 rounded-2xl border-2 border-dashed border-slate-600 text-slate-400 text-sm hover:border-brand-500 hover:text-brand-400 transition-colors flex items-center justify-center gap-2">
+              ➕ Agregar punto
+            </button>
+          </div>
+        </>
+      )}
 
       {/* Barra inferior fija */}
       <div className="fixed bottom-0 left-0 right-0 bg-slate-900/95 backdrop-blur border-t border-slate-700 px-4 py-3 flex items-center gap-3">

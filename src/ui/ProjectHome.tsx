@@ -3,12 +3,6 @@ import { registry } from '@/core/registry/projectRegistry'
 
 const COMING_SOON = [
   {
-    id: 'inventario',
-    name: 'Gestión de inventario',
-    icon: '📦',
-    description: 'Control de stock, SAP, lotes y cantidades en tránsito',
-  },
-  {
     id: 'incidencias',
     name: 'Incidencias',
     icon: '🚨',
