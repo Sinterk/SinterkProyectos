@@ -171,13 +171,16 @@ function TeamsSection() {
       {!projects ? (
         <p className="text-xs text-slate-500">Cargando…</p>
       ) : projects.length === 0 ? (
-        <p className="text-xs text-slate-500">No hay proyectos ATT activos.</p>
+        <p className="text-xs text-slate-500">No hay proyectos activos.</p>
       ) : (
         <>
           <select value={selectedId} onChange={(e) => setSelectedId(e.target.value)}
             className="w-full bg-slate-700 text-white text-sm rounded-lg px-2 py-1.5 border border-slate-600 focus:border-brand-500 focus:outline-none">
             {projects.map((p) => (
-              <option key={p.id} value={p.id}>OTT {p.ott}{p.nombreProyecto ? ` — ${p.nombreProyecto}` : ''}</option>
+              <option key={p.id} value={p.id}>
+                [{p.area === 'ATT' ? 'ATT' : 'Preventivo'}] {p.ott || 'Sin código'}
+                {p.nombreProyecto ? ` — ${p.nombreProyecto}` : p.comuna ? ` — ${p.comuna}` : ''}
+              </option>
             ))}
           </select>
 

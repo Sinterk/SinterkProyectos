@@ -8,6 +8,8 @@ import { SortableContext, verticalListSortingStrategy, arrayMove } from '@dnd-ki
 import { usePreventivoStore } from '../store'
 import { usePreventivo } from '../hooks/usePreventivo'
 import { useRestorePhotoPreviews } from '../hooks/useRestorePhotoPreviews'
+import { useResolvePhotoUrls } from '../hooks/useResolvePhotoUrls'
+import { usePreventivoAutosave } from '../hooks/usePreventivoAutosave'
 import { CuadranteSection } from './CuadranteSection'
 import { PuntoCard } from './PuntoCard'
 import { ExportZipButton } from './ExportZipButton'
@@ -15,14 +17,18 @@ import { ExportLevButton } from './ExportLevButton'
 import { ExportInformeButton } from './ExportInformeButton'
 import type { FotoKey } from '../types'
 
-type SaveStatus = 'saved' | 'saving'
-
 export function Editor() {
   const { id } = useParams<{ id: string }>()
   const navigate = useNavigate()
   const { record, processPhoto } = usePreventivo(id ?? '')
-  const { addPunto, movePunto } = usePreventivoStore()
+  const { addPunto, movePunto, syncOne } = usePreventivoStore()
   useRestorePhotoPreviews()
+  useResolvePhotoUrls()
+
+  const { status: saveStatus, errorMessage: saveError, retryNow } = usePreventivoAutosave(
+    id ?? '',
+    (newId) => navigate(`/preventivos/${newId}`, { replace: true }),
+  )
 
   const sensors = useSensors(
     useSensor(PointerSensor, { activationConstraint: { distance: 8 } }),
@@ -37,24 +43,20 @@ export function Editor() {
     if (from !== -1 && to !== -1) movePunto(record.id, from, to)
   }
 
-  const [saveStatus, setSaveStatus] = useState<SaveStatus>('saved')
-  const prevUpdatedAt = useRef<number | null>(null)
-  const saveTimer = useRef<ReturnType<typeof setTimeout> | null>(null)
-
-  // Detecta cada cambio en updatedAt y muestra "Guardando…" → "✅ Guardado"
+  // El primer guardado de un borrador local "rekea" su id (nanoid → uuid del
+  // servidor); ese instante deja momentáneamente sin record al id viejo de la
+  // URL, en carrera con la navegación al id nuevo. Solo se redirige si el
+  // record NUNCA existió para este id, no cuando ya existió y se promovió
+  // (ver el mismo fix en modules/att/components/Editor.tsx).
+  const hadRecord = useRef(false)
+  useEffect(() => { if (record) hadRecord.current = true }, [record])
   useEffect(() => {
-    if (!record) return
-    if (prevUpdatedAt.current === null) {
-      prevUpdatedAt.current = record.updatedAt
-      return
-    }
-    if (record.updatedAt === prevUpdatedAt.current) return
-    prevUpdatedAt.current = record.updatedAt
+    if (!record && id && !hadRecord.current) navigate('/preventivos', { replace: true })
+  }, [record, id, navigate])
 
-    setSaveStatus('saving')
-    if (saveTimer.current) clearTimeout(saveTimer.current)
-    saveTimer.current = setTimeout(() => setSaveStatus('saved'), 800)
-  }, [record?.updatedAt])
+  // Trae la versión del servidor al abrir (deep-link / recarga); no pisa
+  // ediciones locales más nuevas (ver `mergeFromServer` en el store).
+  useEffect(() => { if (id) syncOne(id) }, [id, syncOne])
 
   if (!record) {
     return <div className="text-slate-400 text-center py-16">Levantamiento no encontrado.</div>
@@ -133,10 +135,17 @@ export function Editor() {
 
         {/* Indicador de guardado automático */}
         <div className="flex-1 flex items-center justify-center">
-          {saveStatus === 'saving'
-            ? <span className="text-xs text-amber-400 animate-pulse">⏳ Guardando…</span>
-            : <span className="text-xs text-green-500">✅ Guardado</span>
-          }
+          {saveStatus === 'saving' && <span className="text-xs text-amber-400 animate-pulse">⏳ Guardando…</span>}
+          {saveStatus === 'error' && (
+            <button type="button" onClick={retryNow}
+              className="text-xs text-red-400 hover:text-red-300 underline"
+              title={saveError ?? undefined}>
+              ⚠️ Sin guardar — reintentar
+            </button>
+          )}
+          {(saveStatus === 'saved' || saveStatus === 'idle') && (
+            <span className="text-xs text-green-500">✅ Guardado</span>
+          )}
         </div>
 
         <ExportLevButton preventivo={record} />

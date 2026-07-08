@@ -7,6 +7,8 @@ export interface FotoEntry {
   fileName: string
   /** Clave en IndexedDB para persistir el blob entre sesiones */
   blobId?: string
+  /** Ruta en el bucket `fotos` de Supabase (se llena al subir) */
+  storagePath?: string
   capturedAt: string
   annotated: boolean
 }
@@ -47,4 +49,8 @@ export interface Preventivo {
   puntos: Punto[]
   createdAt: number
   updatedAt: number
+  /** Ciclo de vida en el servidor. Solo lectura desde el Editor: se cambia
+   *  vía preventivoRepo.close()/remove(), nunca por un save() normal. */
+  estado: 'activo' | 'cerrado'
+  fechaCierre?: string
 }

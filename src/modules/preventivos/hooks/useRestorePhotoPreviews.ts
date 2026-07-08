@@ -10,7 +10,7 @@ const FOTO_KEYS: FotoKey[] = ['fotoLevantamiento', 'fotoAntes', 'fotoDespues']
  * Los blob URLs expiran al cerrar la pestaña; los blobs en IDB persisten.
  */
 export function useRestorePhotoPreviews() {
-  const { records, setFoto, updateCuadrante } = usePreventivoStore()
+  const { records, setFotoPlanoPreview, setPuntoFotoPreview } = usePreventivoStore()
 
   useEffect(() => {
     let cancelled = false
@@ -22,9 +22,7 @@ export function useRestorePhotoPreviews() {
         if (plano && !plano.previewUrl && plano.blobId) {
           const entry = await getPhotoBlob(plano.blobId)
           if (!cancelled && entry) {
-            updateCuadrante(preventivo.id, {
-              fotoPlano: { ...plano, previewUrl: URL.createObjectURL(entry.blob) },
-            })
+            setFotoPlanoPreview(preventivo.id, URL.createObjectURL(entry.blob))
           }
         }
         // Restaurar fotos de puntos
@@ -34,10 +32,7 @@ export function useRestorePhotoPreviews() {
             if (!foto || foto.previewUrl || !foto.blobId) continue
             const entry = await getPhotoBlob(foto.blobId)
             if (!cancelled && entry) {
-              setFoto(preventivo.id, punto.id, key, {
-                ...foto,
-                previewUrl: URL.createObjectURL(entry.blob),
-              })
+              setPuntoFotoPreview(preventivo.id, punto.id, key, URL.createObjectURL(entry.blob))
             }
           }
         }

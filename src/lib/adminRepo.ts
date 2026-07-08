@@ -12,6 +12,8 @@ export interface ProjectSummary {
   id: string
   ott: string
   nombreProyecto: string | null
+  area: 'ATT' | 'OyM'
+  comuna: string | null
 }
 
 export interface MemberProfile {
@@ -46,16 +48,18 @@ export const adminRepo = {
     if (error) throw new Error(`profiles.update: ${error.message}`)
   },
 
-  /** Proyectos ATT activos, para el selector de "equipo por proyecto". */
+  /** Proyectos activos (ATT y OyM), para el selector de "equipo por proyecto". */
   async listActiveProjects(): Promise<ProjectSummary[]> {
     const { data, error } = await supabase
       .from('projects')
-      .select('id, ott, nombre_proyecto')
-      .eq('area', 'ATT')
+      .select('id, ott, nombre_proyecto, area, comuna')
       .eq('estado', 'activo')
+      .order('area', { ascending: true })
       .order('ott', { ascending: true })
     if (error) throw new Error(`projects.listActive: ${error.message}`)
-    return (data ?? []).map((p) => ({ id: p.id, ott: p.ott, nombreProyecto: p.nombre_proyecto }))
+    return (data ?? []).map((p) => ({
+      id: p.id, ott: p.ott, nombreProyecto: p.nombre_proyecto, area: p.area, comuna: p.comuna,
+    }))
   },
 
   /** Miembros (técnicos asignados) de un proyecto. */

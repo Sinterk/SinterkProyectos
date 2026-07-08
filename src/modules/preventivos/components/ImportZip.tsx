@@ -31,7 +31,7 @@ export function ImportZip({ onImported }: Props) {
       }
       const now = Date.now()
       const p: Preventivo = {
-        id: lev.id||nanoid(), createdAt:lev.createdAt||now, updatedAt:now,
+        id: lev.id||nanoid(), createdAt:lev.createdAt||now, updatedAt:now, estado: 'activo',
         cuadrante: { cuadrante:lev.cuadrante.cuadrante||'', comuna:lev.cuadrante.comuna||'', grupo:lev.cuadrante.grupo||'', fecha:lev.cuadrante.fecha||'', semana:lev.cuadrante.semana||'', semestre:lev.cuadrante.semestre||'', nombreCuadrante:lev.cuadrante.nombreCuadrante||'', direccion:lev.cuadrante.direccion||'', zona:lev.cuadrante.zona||'', responsable:lev.cuadrante.responsable||'', fotoPlano:await loadFoto(lev.cuadrante.fotoPlano) },
         puntos: await Promise.all((lev.puntos||[]).map(async (pt: any) => ({ id:pt.id||nanoid(), nombre:pt.nombre||'', descripcion:pt.descripcion||'', direccion:pt.direccion||'', correccion:pt.correccion||'', hallazgo:pt.hallazgo||'', resuelto:!!pt.resuelto, fotoLevantamiento:await loadFoto(pt.fotos?.levantamiento), fotoAntes:await loadFoto(pt.fotos?.antes), fotoDespues:await loadFoto(pt.fotos?.despues) })))
       }
