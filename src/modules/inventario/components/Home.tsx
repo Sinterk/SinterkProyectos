@@ -741,7 +741,7 @@ function ImportarSapSection({ conteoId, onImported, onImportingChange }: {
     <div {...dropProps}
       className={`bg-slate-800/60 rounded-xl border border-dashed p-3 space-y-2 transition-colors ${isDragging ? 'border-brand-500 bg-brand-500/10' : 'border-slate-600'}`}>
       <p className="text-[11px] text-slate-500">
-        Cargar conteo desde Excel SAP — columnas SAP/Material/Lote/Stock; el resto se ignora. Arrastra el .xlsx aquí o:
+        Cargar conteo desde Excel SAP — columnas Material/Texto breve de material/Lote/Libre utilización; el resto se ignora. Arrastra el .xlsx aquí o:
       </p>
 
       {!filas && (

@@ -1,8 +1,10 @@
-// Parseo de reportes de stock exportados desde SAP (formato confirmado con
-// un archivo real: columnas SAP/MATERIAL/CENTRO/ALM/PEP/LOTE/STOCK/Fisico).
-// Solo SAP (código), MATERIAL (descripción), LOTE y STOCK son relevantes acá
-// — CENTRO/ALM/PEP son metadatos internos de SAP sin equivalente en nuestro
-// esquema, y "Fisico" viene vacía (para llenar a mano en el propio Excel).
+// Parseo de reportes de stock exportados desde SAP. Encabezados estándar de
+// SAP MM: "Material" (código/SKU), "Texto breve de material" (descripción),
+// "Lote", "Libre utilización" (cantidad disponible) — más los alias de un
+// export previo (columnas SAP/MATERIAL/CENTRO/ALM/PEP/LOTE/STOCK/Fisico, ahí
+// "MATERIAL" traía la descripción, no el código, por eso "material" a secas
+// solo cuenta como alias de sku y no de descripción, para no ser ambiguo).
+// CENTRO/ALM/PEP y cualquier otra columna sin alias reconocido se ignoran.
 // Acepta tanto un archivo .xlsx como texto pegado (tab-separado, como al
 // copiar celdas directamente desde Excel) — ambos terminan en la misma
 // matriz de filas crudas antes de normalizar.
@@ -15,15 +17,15 @@ export interface FilaImportSap {
 }
 
 const ALIASES: Record<keyof FilaImportSap, string[]> = {
-  sku: ['sap', 'sku', 'codigo', 'código', 'codigo material', 'código material'],
-  descripcion: ['material', 'descripcion', 'descripción', 'descripcion material', 'descripción material'],
+  sku: ['material', 'sap', 'sku', 'codigo', 'código', 'codigo material', 'código material'],
+  descripcion: ['texto breve de material', 'descripcion', 'descripción', 'descripcion material', 'descripción material'],
   lote: ['lote', 'lote sap'],
-  cantidad: ['stock', 'cantidad', 'cant', 'cant.'],
+  cantidad: ['libre utilización', 'libre utilizacion', 'stock', 'cantidad', 'cant', 'cant.'],
 }
 
 /** Nombre legible por campo, para el mensaje de error cuando falta alguno. */
 const NOMBRE_CAMPO: Record<keyof FilaImportSap, string> = {
-  sku: 'código (SAP)', descripcion: 'material', lote: 'lote', cantidad: 'stock/cantidad',
+  sku: 'material (código/SKU)', descripcion: 'texto breve de material (descripción)', lote: 'lote', cantidad: 'libre utilización (stock/cantidad)',
 }
 
 function normalizarEncabezado(v: unknown): string {
