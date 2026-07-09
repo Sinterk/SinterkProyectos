@@ -11,8 +11,9 @@ import { nanoid } from '@/core/utils/nanoid'
 import { adminRepo } from '@/lib/adminRepo'
 import type { ProjectSummary } from '@/lib/adminRepo'
 import type { Profile } from '@/lib/auth'
-import { listMateriales, listUbicaciones, registrarMovimiento } from '@/lib/inventario/inventarioRepo'
-import type { Material, MovimientoTipoUI, Ubicacion } from '@/lib/inventario/types'
+import { listMateriales, registrarMovimiento } from '@/lib/inventario/inventarioRepo'
+import type { Material, MovimientoTipoUI } from '@/lib/inventario/types'
+import { UbicacionSelect } from './UbicacionSelect'
 
 const PREVENTIVA = '__preventiva__'
 const NINGUN_PUNTO = ''
@@ -59,7 +60,6 @@ export function RegistrarMovimientoForm({ fixedProject, puntos, lockTipoUI, onRe
   const [tipoUI, setTipoUI] = useState<MovimientoTipoUI>(lockTipoUI ?? 'entrega')
 
   const [materiales, setMateriales] = useState<Material[]>([])
-  const [bodegas, setBodegas] = useState<Ubicacion[]>([])
   const [proyectos, setProyectos] = useState<ProjectSummary[]>([])
   const [tecnicos, setTecnicos] = useState<Profile[]>([])
   const [loadError, setLoadError] = useState<string | null>(null)
@@ -83,7 +83,6 @@ export function RegistrarMovimientoForm({ fixedProject, puntos, lockTipoUI, onRe
 
   useEffect(() => {
     listMateriales().then(setMateriales).catch((err) => setLoadError(err instanceof Error ? err.message : String(err)))
-    listUbicaciones({ tipo: 'bodega' }).then(setBodegas).catch(() => {})
     adminRepo.listProfiles()
       .then((all) => setTecnicos(all.filter((p) => p.activo && (p.rol === 'tecnico' || p.rol === 'log'))))
       .catch(() => {})
@@ -192,10 +191,8 @@ export function RegistrarMovimientoForm({ fixedProject, puntos, lockTipoUI, onRe
           <>
             <label className="space-y-1 col-span-2">
               <span className={labelCls}>Bodega destino</span>
-              <select value={ubicacionEntradaId} onChange={(e) => setUbicacionEntradaId(e.target.value)} className={`${inputCls} w-full`}>
-                <option value="">Elegir bodega…</option>
-                {bodegas.map((b) => <option key={b.id} value={b.id}>{b.nombre}</option>)}
-              </select>
+              <UbicacionSelect value={ubicacionEntradaId} onChange={setUbicacionEntradaId} tipo="bodega"
+                placeholder="Elegir bodega…" className={`${inputCls} w-full`} />
             </label>
             <label className="space-y-1">
               <span className={labelCls}>Proveedor</span>
@@ -278,11 +275,9 @@ export function RegistrarMovimientoForm({ fixedProject, puntos, lockTipoUI, onRe
                   className="col-span-1 text-xs text-red-400 disabled:opacity-30">Quitar</button>
               </div>
               {necesitaBodegaPorLinea && (
-                <select value={l.ubicacionBodegaId} onChange={(e) => updateLinea(l.localId, { ubicacionBodegaId: e.target.value })}
-                  className={`${inputCls} w-full`}>
-                  <option value="">Bodega de {tipoUI === 'devuelto' ? 'destino' : 'origen'}…</option>
-                  {bodegas.map((b) => <option key={b.id} value={b.id}>{b.nombre}</option>)}
-                </select>
+                <UbicacionSelect value={l.ubicacionBodegaId} onChange={(id) => updateLinea(l.localId, { ubicacionBodegaId: id })}
+                  tipo="bodega" placeholder={`Bodega de ${tipoUI === 'devuelto' ? 'destino' : 'origen'}…`}
+                  className={`${inputCls} w-full`} />
               )}
               {r && <p className={`text-xs ${r.ok ? 'text-green-400' : 'text-red-400'}`}>{r.texto}</p>}
             </div>

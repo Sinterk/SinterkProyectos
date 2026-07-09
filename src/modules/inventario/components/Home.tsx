@@ -4,16 +4,19 @@ import type { ProjectSummary } from '@/lib/adminRepo'
 import type { Profile } from '@/lib/auth'
 import { RegistrarMovimientoForm } from '@/ui/RegistrarMovimientoForm'
 import { ResumenProyectoTable, Stat } from '@/ui/ResumenProyectoTable'
+import { UbicacionSelect } from '@/ui/UbicacionSelect'
 import {
   getStock, getTecnicoLedger, listMovimientos, listMateriales, listUbicaciones, updateMaterialStockMinimo,
   listConteos, getConteoLineas, abrirConteo, agregarLineaConteo, actualizarLineaConteo, cerrarConteo,
-  listEventosInventario, resolverEventoInventario,
+  listEventosInventario, resolverEventoInventario, importarFilasSapAConteo,
 } from '@/lib/inventario/inventarioRepo'
-import type { ListMovimientosFilters } from '@/lib/inventario/inventarioRepo'
+import type { ListMovimientosFilters, ImportarSapResultado } from '@/lib/inventario/inventarioRepo'
 import type {
   Movimiento, StockRow, TecnicoLedgerRow, Ubicacion, Material,
   Conteo, ConteoLinea, EventoInventario, ResolucionEvento,
 } from '@/lib/inventario/types'
+import { parseArchivoXlsx, parseTextoPegado } from '@/lib/inventario/importarSap'
+import type { FilaImportSap } from '@/lib/inventario/importarSap'
 
 type MainTab = 'movimientos' | 'bodega' | 'proyecto' | 'tecnico' | 'conteo'
 
@@ -417,14 +420,11 @@ function ConteoLista({ onSelect, refreshKey }: { onSelect: (id: string) => void;
 }
 
 function NuevoConteoForm({ onCreated }: { onCreated: (id: string) => void }) {
-  const [ubicaciones, setUbicaciones] = useState<Ubicacion[]>([])
   const [ubicacionId, setUbicacionId] = useState('')
   const [naturaleza, setNaturaleza] = useState<'fisico' | 'digital'>('fisico')
   const [nota, setNota] = useState('')
   const [busy, setBusy] = useState(false)
   const [error, setError] = useState<string | null>(null)
-
-  useEffect(() => { listUbicaciones().then(setUbicaciones).catch(() => {}) }, [])
 
   async function submit() {
     if (!ubicacionId) { setError('Elige una ubicación'); return }
@@ -442,10 +442,7 @@ function NuevoConteoForm({ onCreated }: { onCreated: (id: string) => void }) {
 
   return (
     <div className="bg-slate-800 rounded-2xl border border-slate-700 p-4 space-y-3">
-      <select value={ubicacionId} onChange={(e) => setUbicacionId(e.target.value)} className={`${inputCls} w-full`}>
-        <option value="">Elegir ubicación…</option>
-        {ubicaciones.map((u) => <option key={u.id} value={u.id}>{u.nombre}{u.tipo === 'tecnico' ? ' (técnico)' : ''}</option>)}
-      </select>
+      <UbicacionSelect value={ubicacionId} onChange={setUbicacionId} className={`${inputCls} w-full`} />
       <div className="flex gap-2">
         <button type="button" onClick={() => setNaturaleza('fisico')}
           className={`flex-1 text-xs font-semibold py-1.5 rounded-lg ${naturaleza === 'fisico' ? 'bg-brand-600 text-white' : 'bg-slate-700 text-slate-300'}`}>
@@ -550,11 +547,12 @@ function ConteoDetail({ conteoId, onBack }: { conteoId: string; onBack: () => vo
   }
   useEffect(() => { reload() /* eslint-disable-next-line react-hooks/exhaustive-deps */ }, [conteoId])
 
-  // Ediciones aún no persistidas (por línea): el cierre queda bloqueado
-  // mientras haya alguna, para que un "Cerrar conteo" inmediatamente después
-  // de tipear no le gane la carrera al guardado async de la línea.
+  // Ediciones aún no persistidas (por línea) o una importación en curso: el
+  // cierre queda bloqueado mientras haya alguna, para que un "Cerrar conteo"
+  // inmediato no le gane la carrera al guardado async.
   const [lineasPendientes, setLineasPendientes] = useState<Record<string, boolean>>({})
-  const hayPendientes = Object.values(lineasPendientes).some(Boolean)
+  const [importando, setImportando] = useState(false)
+  const hayPendientes = importando || Object.values(lineasPendientes).some(Boolean)
   function marcarPendiente(lineaId: string, pendiente: boolean) {
     setLineasPendientes((prev) => (prev[lineaId] === pendiente ? prev : { ...prev, [lineaId]: pendiente }))
   }
@@ -597,6 +595,10 @@ function ConteoDetail({ conteoId, onBack }: { conteoId: string; onBack: () => vo
                 onPendienteChange={(pendiente) => marcarPendiente(l.id, pendiente)} />
             ))}
           </div>
+
+          {abierto && conteo.naturaleza === 'digital' && (
+            <ImportarSapSection conteoId={conteoId} onImported={reload} onImportingChange={setImportando} />
+          )}
 
           {abierto && <AgregarLineaForm conteoId={conteoId} onAdded={reload} />}
 
@@ -665,6 +667,132 @@ function ConteoLineaRow({ linea, editable, onSaved, onPendienteChange }: {
           </span>
         )}
       </div>
+    </div>
+  )
+}
+
+function ImportarSapSection({ conteoId, onImported, onImportingChange }: {
+  conteoId: string; onImported: () => void; onImportingChange: (importando: boolean) => void
+}) {
+  const [modoPegar, setModoPegar] = useState(false)
+  const [pegado, setPegado] = useState('')
+  const [filas, setFilas] = useState<FilaImportSap[] | null>(null)
+  const [parseError, setParseError] = useState<string | null>(null)
+  const [progreso, setProgreso] = useState<{ hecho: number; total: number } | null>(null)
+  const [resultado, setResultado] = useState<ImportarSapResultado | null>(null)
+
+  function limpiarPreview() {
+    setFilas(null)
+    setModoPegar(false)
+    setPegado('')
+    setParseError(null)
+  }
+
+  async function onFile(e: React.ChangeEvent<HTMLInputElement>) {
+    const file = e.target.files?.[0]
+    e.target.value = ''
+    if (!file) return
+    setResultado(null)
+    setParseError(null)
+    try {
+      setFilas(await parseArchivoXlsx(file))
+    } catch (err) {
+      setFilas(null)
+      setParseError(err instanceof Error ? err.message : String(err))
+    }
+  }
+
+  function leerPegado() {
+    setResultado(null)
+    setParseError(null)
+    try {
+      setFilas(parseTextoPegado(pegado))
+    } catch (err) {
+      setFilas(null)
+      setParseError(err instanceof Error ? err.message : String(err))
+    }
+  }
+
+  async function confirmar() {
+    if (!filas) return
+    onImportingChange(true)
+    setProgreso({ hecho: 0, total: filas.length })
+    setParseError(null)
+    try {
+      const res = await importarFilasSapAConteo(conteoId, filas, (hecho, total) => setProgreso({ hecho, total }))
+      setResultado(res)
+      limpiarPreview()
+      onImported()
+    } catch (err) {
+      setParseError(err instanceof Error ? err.message : String(err))
+    } finally {
+      setProgreso(null)
+      onImportingChange(false)
+    }
+  }
+
+  return (
+    <div className="bg-slate-800/60 rounded-xl border border-dashed border-slate-600 p-3 space-y-2">
+      <p className="text-[11px] text-slate-500">
+        Cargar conteo desde Excel SAP — columnas SAP/Material/Lote/Stock; el resto se ignora.
+      </p>
+
+      {!filas && (
+        <div className="flex flex-wrap gap-2">
+          <label className="text-xs font-semibold px-3 py-1.5 rounded-lg bg-slate-700 hover:bg-slate-600 text-white cursor-pointer">
+            📎 Subir .xlsx
+            <input type="file" accept=".xlsx" className="hidden" onChange={onFile} />
+          </label>
+          <button type="button" onClick={() => setModoPegar((v) => !v)}
+            className="text-xs font-semibold px-3 py-1.5 rounded-lg bg-slate-700 hover:bg-slate-600 text-white">
+            📋 Pegar desde Excel
+          </button>
+        </div>
+      )}
+
+      {modoPegar && !filas && (
+        <div className="space-y-1.5">
+          <textarea value={pegado} onChange={(e) => setPegado(e.target.value)} rows={4}
+            placeholder="Copia las celdas en Excel (incluida la fila de encabezados) y pégalas aquí…"
+            className="w-full bg-slate-700 text-white text-xs rounded-lg px-2 py-1.5 border border-slate-600 focus:border-brand-500 focus:outline-none" />
+          <button type="button" onClick={leerPegado} disabled={!pegado.trim()}
+            className="text-xs font-semibold px-3 py-1.5 rounded-lg bg-brand-600 hover:bg-brand-700 text-white disabled:opacity-40">
+            Leer
+          </button>
+        </div>
+      )}
+
+      {parseError && <p className="text-xs text-red-400">{parseError}</p>}
+
+      {filas && (
+        <div className="space-y-2">
+          <p className="text-xs text-slate-300">
+            {filas.length} línea(s) reconocida(s). Se crearán los materiales que falten y "contada" quedará en el valor de Stock.
+          </p>
+          <div className="max-h-32 overflow-y-auto space-y-0.5 text-[11px] text-slate-400">
+            {filas.slice(0, 8).map((f, i) => <p key={i}>{f.sku} — {f.descripcion} · lote {f.lote} · {f.cantidad}</p>)}
+            {filas.length > 8 && <p className="text-slate-500">… y {filas.length - 8} más</p>}
+          </div>
+          {progreso && <p className="text-xs text-amber-400">Importando {progreso.hecho}/{progreso.total}…</p>}
+          <div className="flex gap-2">
+            <button type="button" onClick={confirmar} disabled={!!progreso}
+              className="text-xs font-semibold px-3 py-1.5 rounded-lg bg-brand-600 hover:bg-brand-700 text-white disabled:opacity-40">
+              {progreso ? 'Importando…' : `Confirmar importación (${filas.length})`}
+            </button>
+            <button type="button" onClick={limpiarPreview} disabled={!!progreso} className="text-xs text-slate-400">
+              Cancelar
+            </button>
+          </div>
+        </div>
+      )}
+
+      {resultado && (
+        <p className="text-xs text-green-400">
+          Importado: {resultado.lineasCreadas} línea(s) nueva(s), {resultado.lineasActualizadas} actualizada(s)
+          {resultado.materialesCreados > 0 ? `, ${resultado.materialesCreados} material(es) nuevo(s)` : ''}.
+          {resultado.errores.length > 0 && <span className="text-red-400"> {resultado.errores.length} con error.</span>}
+        </p>
+      )}
     </div>
   )
 }

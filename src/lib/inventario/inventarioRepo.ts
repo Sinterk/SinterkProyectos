@@ -12,6 +12,7 @@ import type {
   ResumenMaterialProyecto, TecnicoLedgerRow,
   Conteo, ConteoLinea, EventoInventario, ResolucionEvento,
 } from './types'
+import type { FilaImportSap } from './importarSap'
 
 // Nota sobre embeds de PostgREST: `stock`/`movimientos`/`proyecto_materiales`
 // referencian a `materiales`/`ubicaciones`/`profiles`/`projects` con una FK
@@ -58,6 +59,17 @@ export async function updateMaterialStockMinimo(materialId: string, stockMinimo:
   if (error) throw new Error(`materiales.updateStockMinimo: ${error.message}`)
 }
 
+/** Busca un material por sku; si no existe, lo crea con esa descripción (import de Excel SAP). */
+export async function ensureMaterialBySku(sku: string, descripcion: string): Promise<Material> {
+  const { data: existing, error: findErr } = await supabase.from('materiales').select('*').eq('sku', sku).maybeSingle()
+  if (findErr) throw new Error(`materiales.ensureBySku: ${findErr.message}`)
+  if (existing) return materialFromRow(existing as MaterialRow)
+  const { data, error } = await supabase.from('materiales')
+    .insert({ sku, descripcion: descripcion || sku, activo: true }).select('*').single()
+  if (error) throw new Error(`materiales.ensureBySku insert: ${error.message}`)
+  return materialFromRow(data as MaterialRow)
+}
+
 // ---------------------------------------------------------------------------
 // Ubicaciones
 // ---------------------------------------------------------------------------
@@ -80,6 +92,13 @@ export async function listUbicaciones(opts?: { tipo?: UbicacionTipo }): Promise<
   const { data, error } = await query
   if (error) throw new Error(`ubicaciones.list: ${error.message}`)
   return (data as UbicacionRow[]).map(ubicacionFromRow)
+}
+
+export async function crearUbicacion(nombre: string): Promise<Ubicacion> {
+  const { data, error } = await supabase
+    .from('ubicaciones').insert({ nombre, tipo: 'bodega' }).select('*').single()
+  if (error) throw new Error(`ubicaciones.crear: ${error.message}`)
+  return ubicacionFromRow(data as UbicacionRow)
 }
 
 // ---------------------------------------------------------------------------
@@ -547,4 +566,61 @@ export async function resolverEventoInventario(eventoId: string, resolucion: Res
     p_evento_id: eventoId, p_resolucion: resolucion, p_nota: nota ?? null,
   })
   if (error) throw new Error(`resolver_evento_inventario: ${error.message}`)
+}
+
+export interface ImportarSapResultado {
+  total: number
+  materialesCreados: number
+  lineasCreadas: number
+  lineasActualizadas: number
+  errores: { fila: FilaImportSap; mensaje: string }[]
+}
+
+/**
+ * Vuelca filas ya parseadas de un Excel SAP (ver ../inventario/importarSap.ts)
+ * dentro de un conteo abierto: crea los materiales que falten (por sku) y
+ * llena cantidad_contada de cada línea (agregándola si no estaba en la foto
+ * inicial del conteo). Secuencial a propósito — son llamadas RPC una por
+ * línea, igual que el envío por línea de RegistrarMovimientoForm.
+ */
+export async function importarFilasSapAConteo(
+  conteoId: string,
+  filas: FilaImportSap[],
+  onProgress?: (hecho: number, total: number) => void,
+): Promise<ImportarSapResultado> {
+  const [lineasExistentes, materialesExistentes] = await Promise.all([getConteoLineas(conteoId), listMateriales()])
+  const skusExistentes = new Set(materialesExistentes.map((m) => m.sku))
+  const lineasPorClave = new Map(lineasExistentes.map((l) => [`${l.materialId}|${l.lote}`, l]))
+
+  const resultado: ImportarSapResultado = {
+    total: filas.length,
+    materialesCreados: filas.filter((f) => !skusExistentes.has(f.sku)).length,
+    lineasCreadas: 0, lineasActualizadas: 0, errores: [],
+  }
+
+  for (let i = 0; i < filas.length; i++) {
+    const fila = filas[i]
+    try {
+      const material = await ensureMaterialBySku(fila.sku, fila.descripcion)
+      const clave = `${material.id}|${fila.lote}`
+      const existente = lineasPorClave.get(clave)
+      if (existente) {
+        await actualizarLineaConteo(existente.id, fila.cantidad)
+        resultado.lineasActualizadas++
+      } else {
+        const lineaId = await agregarLineaConteo({ conteoId, materialId: material.id, lote: fila.lote })
+        await actualizarLineaConteo(lineaId, fila.cantidad)
+        lineasPorClave.set(clave, {
+          id: lineaId, conteoId, materialId: material.id, materialSku: material.sku,
+          materialDescripcion: material.descripcion, lote: fila.lote,
+          cantidadContada: fila.cantidad, cantidadSistema: 0,
+        })
+        resultado.lineasCreadas++
+      }
+    } catch (err) {
+      resultado.errores.push({ fila, mensaje: err instanceof Error ? err.message : String(err) })
+    }
+    onProgress?.(i + 1, filas.length)
+  }
+  return resultado
 }
