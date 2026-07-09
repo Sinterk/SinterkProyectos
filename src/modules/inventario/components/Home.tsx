@@ -4,9 +4,16 @@ import type { ProjectSummary } from '@/lib/adminRepo'
 import type { Profile } from '@/lib/auth'
 import { RegistrarMovimientoForm } from '@/ui/RegistrarMovimientoForm'
 import { ResumenProyectoTable, Stat } from '@/ui/ResumenProyectoTable'
-import { getStock, getTecnicoLedger, listMovimientos, listUbicaciones } from '@/lib/inventario/inventarioRepo'
+import {
+  getStock, getTecnicoLedger, listMovimientos, listMateriales, listUbicaciones, updateMaterialStockMinimo,
+  listConteos, getConteoLineas, abrirConteo, agregarLineaConteo, actualizarLineaConteo, cerrarConteo,
+  listEventosInventario, resolverEventoInventario,
+} from '@/lib/inventario/inventarioRepo'
 import type { ListMovimientosFilters } from '@/lib/inventario/inventarioRepo'
-import type { Movimiento, StockRow, TecnicoLedgerRow, Ubicacion } from '@/lib/inventario/types'
+import type {
+  Movimiento, StockRow, TecnicoLedgerRow, Ubicacion, Material,
+  Conteo, ConteoLinea, EventoInventario, ResolucionEvento,
+} from '@/lib/inventario/types'
 
 type MainTab = 'movimientos' | 'bodega' | 'proyecto' | 'tecnico' | 'conteo'
 
@@ -181,22 +188,72 @@ function BodegaTab() {
         <p className="text-xs text-slate-500">Sin stock registrado.</p>
       ) : (
         <div className="space-y-1.5">
-          {rows.map((r) => (
-            <div key={`${r.ubicacionId}|${r.materialId}|${r.lote}`} className="bg-slate-800 rounded-xl border border-slate-700 p-3 text-xs flex items-center justify-between gap-2">
-              <div className="min-w-0">
-                <p className="text-sm text-white truncate">{r.materialSku} — {r.materialDescripcion}</p>
-                <p className="text-slate-500">{r.ubicacionNombre} · lote {r.lote}</p>
+          {rows.map((r) => {
+            const negativo = r.cantidadFisico < 0
+            const bajoUmbral = !negativo && r.stockMinimo !== null && r.cantidadFisico <= r.stockMinimo
+            return (
+              <div key={`${r.ubicacionId}|${r.materialId}|${r.lote}`}
+                className={`bg-slate-800 rounded-xl border p-3 text-xs flex items-center justify-between gap-2 ${negativo ? 'border-red-700/60' : bajoUmbral ? 'border-amber-700/60' : 'border-slate-700'}`}>
+                <div className="min-w-0">
+                  <p className="text-sm text-white truncate">{r.materialSku} — {r.materialDescripcion}</p>
+                  <p className="text-slate-500">{r.ubicacionNombre} · lote {r.lote}</p>
+                  <UmbralEditor materialId={r.materialId} value={r.stockMinimo} onSaved={reload} />
+                </div>
+                <div className="text-right shrink-0">
+                  <p className={`font-semibold ${negativo ? 'text-red-400' : bajoUmbral ? 'text-amber-400' : 'text-white'}`}>
+                    {negativo && '⚠ '}{r.cantidadFisico}
+                  </p>
+                  <p className="text-[10px] text-slate-500">físico</p>
+                  {r.cantidadDigital !== 0 && (
+                    <p className={`text-[10px] mt-0.5 ${r.cantidadDigital < 0 ? 'text-red-400' : 'text-amber-400'}`}>
+                      {r.cantidadDigital < 0 && '⚠ '}{r.cantidadDigital} digital
+                    </p>
+                  )}
+                  {negativo && <p className="text-[10px] text-red-400 mt-0.5">Descuadre — revisar</p>}
+                  {bajoUmbral && <p className="text-[10px] text-amber-400 mt-0.5">Renovar (mín. {r.stockMinimo})</p>}
+                </div>
               </div>
-              <div className="text-right shrink-0">
-                <p className="text-white font-semibold">{r.cantidadFisico}</p>
-                <p className="text-[10px] text-slate-500">físico</p>
-                {r.cantidadDigital !== 0 && <p className="text-[10px] text-amber-400 mt-0.5">{r.cantidadDigital} digital</p>}
-              </div>
-            </div>
-          ))}
+            )
+          })}
         </div>
       )}
     </div>
+  )
+}
+
+function UmbralEditor({ materialId, value, onSaved }: { materialId: string; value: number | null; onSaved: () => void }) {
+  const [editing, setEditing] = useState(false)
+  const [draft, setDraft] = useState('')
+  const [saving, setSaving] = useState(false)
+
+  async function save() {
+    setSaving(true)
+    try {
+      await updateMaterialStockMinimo(materialId, draft.trim() === '' ? null : Number(draft))
+      setEditing(false)
+      onSaved()
+    } catch (err) {
+      alert(err instanceof Error ? err.message : String(err))
+    } finally {
+      setSaving(false)
+    }
+  }
+
+  if (!editing) {
+    return (
+      <button type="button" onClick={() => { setDraft(value !== null ? String(value) : ''); setEditing(true) }}
+        className="text-[10px] text-slate-500 hover:text-brand-400 underline decoration-dotted">
+        Umbral: {value ?? 'sin definir'}
+      </button>
+    )
+  }
+  return (
+    <span className="inline-flex items-center gap-1">
+      <input type="number" min="0" step="any" value={draft} onChange={(e) => setDraft(e.target.value)} autoFocus
+        className="w-16 bg-slate-700 text-white text-[10px] rounded px-1 py-0.5 border border-slate-600 focus:border-brand-500 focus:outline-none" />
+      <button type="button" onClick={save} disabled={saving} className="text-[10px] text-brand-400 font-semibold">✓</button>
+      <button type="button" onClick={() => setEditing(false)} className="text-[10px] text-slate-500">✕</button>
+    </span>
   )
 }
 
@@ -295,10 +352,363 @@ function TecnicoTab() {
 }
 
 function ConteoTab() {
+  const [selectedId, setSelectedId] = useState<string | null>(null)
+  const [refreshKey, setRefreshKey] = useState(0)
+
+  if (selectedId) {
+    return <ConteoDetail conteoId={selectedId} onBack={() => { setSelectedId(null); setRefreshKey((k) => k + 1) }} />
+  }
+  return <ConteoLista onSelect={setSelectedId} refreshKey={refreshKey} />
+}
+
+function ConteoLista({ onSelect, refreshKey }: { onSelect: (id: string) => void; refreshKey: number }) {
+  const [conteos, setConteos] = useState<Conteo[] | null>(null)
+  const [eventos, setEventos] = useState<EventoInventario[] | null>(null)
+  const [error, setError] = useState<string | null>(null)
+  const [showNuevo, setShowNuevo] = useState(false)
+
+  async function reload() {
+    try {
+      const [cs, evs] = await Promise.all([listConteos(), listEventosInventario({ estado: 'abierto' })])
+      setConteos(cs)
+      setEventos(evs)
+    } catch (err) {
+      setError(err instanceof Error ? err.message : String(err))
+    }
+  }
+  useEffect(() => { reload() /* eslint-disable-next-line react-hooks/exhaustive-deps */ }, [refreshKey])
+
   return (
-    <div className="text-center py-16 text-slate-500 space-y-2">
-      <div className="text-4xl">📋</div>
-      <p className="text-sm">Conteo de inventario — próximamente.</p>
+    <div className="space-y-3">
+      {error && <p className="text-xs text-red-400">{error}</p>}
+
+      {eventos && eventos.length > 0 && <EventosAbiertosSection eventos={eventos} onResolved={reload} />}
+
+      <button type="button" onClick={() => setShowNuevo((v) => !v)}
+        className="w-full text-sm font-semibold py-2 rounded-xl bg-brand-600 hover:bg-brand-700 text-white">
+        {showNuevo ? 'Cancelar' : '+ Nuevo conteo'}
+      </button>
+      {showNuevo && <NuevoConteoForm onCreated={(id) => { setShowNuevo(false); onSelect(id) }} />}
+
+      {conteos === null ? (
+        <p className="text-xs text-slate-500">Cargando…</p>
+      ) : conteos.length === 0 ? (
+        <p className="text-xs text-slate-500">Sin conteos todavía.</p>
+      ) : (
+        <div className="space-y-1.5">
+          {conteos.map((c) => (
+            <button key={c.id} type="button" onClick={() => onSelect(c.id)}
+              className="w-full text-left bg-slate-800 rounded-xl border border-slate-700 hover:border-brand-500 transition-colors p-3 text-xs flex items-center justify-between gap-2">
+              <div className="min-w-0">
+                <p className="text-sm text-white truncate">{c.ubicacionNombre} · {c.naturaleza === 'fisico' ? 'Físico' : 'Digital'}</p>
+                <p className="text-slate-500">
+                  {new Date(c.fecha).toLocaleDateString('es-CL', { timeZone: 'UTC' })}{c.nota ? ` · ${c.nota}` : ''}
+                </p>
+              </div>
+              <span className={`text-[10px] font-semibold px-2 py-1 rounded-full shrink-0 ${c.estado === 'abierto' ? 'bg-amber-900/60 text-amber-300' : 'bg-slate-700 text-slate-400'}`}>
+                {c.estado === 'abierto' ? 'Abierto' : 'Cerrado'}
+              </span>
+            </button>
+          ))}
+        </div>
+      )}
+    </div>
+  )
+}
+
+function NuevoConteoForm({ onCreated }: { onCreated: (id: string) => void }) {
+  const [ubicaciones, setUbicaciones] = useState<Ubicacion[]>([])
+  const [ubicacionId, setUbicacionId] = useState('')
+  const [naturaleza, setNaturaleza] = useState<'fisico' | 'digital'>('fisico')
+  const [nota, setNota] = useState('')
+  const [busy, setBusy] = useState(false)
+  const [error, setError] = useState<string | null>(null)
+
+  useEffect(() => { listUbicaciones().then(setUbicaciones).catch(() => {}) }, [])
+
+  async function submit() {
+    if (!ubicacionId) { setError('Elige una ubicación'); return }
+    setBusy(true)
+    setError(null)
+    try {
+      const id = await abrirConteo({ ubicacionId, naturaleza, nota: nota.trim() || undefined })
+      onCreated(id)
+    } catch (err) {
+      setError(err instanceof Error ? err.message : String(err))
+    } finally {
+      setBusy(false)
+    }
+  }
+
+  return (
+    <div className="bg-slate-800 rounded-2xl border border-slate-700 p-4 space-y-3">
+      <select value={ubicacionId} onChange={(e) => setUbicacionId(e.target.value)} className={`${inputCls} w-full`}>
+        <option value="">Elegir ubicación…</option>
+        {ubicaciones.map((u) => <option key={u.id} value={u.id}>{u.nombre}{u.tipo === 'tecnico' ? ' (técnico)' : ''}</option>)}
+      </select>
+      <div className="flex gap-2">
+        <button type="button" onClick={() => setNaturaleza('fisico')}
+          className={`flex-1 text-xs font-semibold py-1.5 rounded-lg ${naturaleza === 'fisico' ? 'bg-brand-600 text-white' : 'bg-slate-700 text-slate-300'}`}>
+          Físico
+        </button>
+        <button type="button" onClick={() => setNaturaleza('digital')}
+          className={`flex-1 text-xs font-semibold py-1.5 rounded-lg ${naturaleza === 'digital' ? 'bg-brand-600 text-white' : 'bg-slate-700 text-slate-300'}`}>
+          Digital
+        </button>
+      </div>
+      <input value={nota} onChange={(e) => setNota(e.target.value)} placeholder="Nota (opcional)" className={`${inputCls} w-full`} />
+      {error && <p className="text-xs text-red-400">{error}</p>}
+      <button type="button" onClick={submit} disabled={busy}
+        className="w-full text-sm font-semibold py-2 rounded-xl bg-brand-600 hover:bg-brand-700 disabled:opacity-40 text-white">
+        {busy ? 'Abriendo…' : 'Abrir conteo'}
+      </button>
+    </div>
+  )
+}
+
+const RESOLUCION_LABELS: Record<ResolucionEvento, string> = {
+  devolucion_pendiente: 'Devolución pendiente',
+  reubicacion: 'Reubicación',
+  perdida: 'Pérdida',
+}
+
+function EventosAbiertosSection({ eventos, onResolved }: { eventos: EventoInventario[]; onResolved: () => void }) {
+  const [resolvingId, setResolvingId] = useState<string | null>(null)
+  const [resolucion, setResolucion] = useState<ResolucionEvento>('reubicacion')
+  const [nota, setNota] = useState('')
+  const [busy, setBusy] = useState(false)
+  const [error, setError] = useState<string | null>(null)
+
+  async function confirmar(eventoId: string) {
+    setBusy(true)
+    setError(null)
+    try {
+      await resolverEventoInventario(eventoId, resolucion, nota.trim() || undefined)
+      setResolvingId(null)
+      setNota('')
+      onResolved()
+    } catch (err) {
+      setError(err instanceof Error ? err.message : String(err))
+    } finally {
+      setBusy(false)
+    }
+  }
+
+  return (
+    <div className="bg-amber-950/40 border border-amber-700/50 rounded-2xl p-4 space-y-3">
+      <p className="text-sm font-semibold text-amber-300">⚠️ {eventos.length} diferencia(s) por resolver</p>
+      <div className="space-y-2">
+        {eventos.map((e) => (
+          <div key={e.id} className="bg-slate-800/60 rounded-xl p-3 text-xs space-y-2">
+            <p className="text-white">{e.materialSku} — {e.materialDescripcion}</p>
+            <p className="text-slate-400">
+              {e.ubicacionNombre} · lote {e.lote} · diferencia{' '}
+              <span className={e.diferencia < 0 ? 'text-red-400' : 'text-amber-400'}>{e.diferencia > 0 ? '+' : ''}{e.diferencia}</span>
+            </p>
+            {resolvingId === e.id ? (
+              <div className="flex flex-wrap items-center gap-2">
+                <select value={resolucion} onChange={(ev) => setResolucion(ev.target.value as ResolucionEvento)}
+                  className="bg-slate-700 text-white text-xs rounded-lg px-2 py-1 border border-slate-600 focus:border-brand-500 focus:outline-none">
+                  {(Object.keys(RESOLUCION_LABELS) as ResolucionEvento[]).map((r) => <option key={r} value={r}>{RESOLUCION_LABELS[r]}</option>)}
+                </select>
+                <input value={nota} onChange={(ev) => setNota(ev.target.value)} placeholder="Nota (opcional)"
+                  className="bg-slate-700 text-white text-xs rounded-lg px-2 py-1 border border-slate-600 focus:border-brand-500 focus:outline-none flex-1 min-w-[120px]" />
+                <button type="button" disabled={busy} onClick={() => confirmar(e.id)}
+                  className="text-xs font-semibold px-2 py-1 rounded-lg bg-brand-600 hover:bg-brand-700 text-white disabled:opacity-40">
+                  Confirmar
+                </button>
+                <button type="button" onClick={() => setResolvingId(null)} className="text-xs text-slate-400">Cancelar</button>
+              </div>
+            ) : (
+              <button type="button" onClick={() => { setResolvingId(e.id); setResolucion('reubicacion'); setNota('') }}
+                className="text-xs text-amber-400 font-semibold">
+                Resolver →
+              </button>
+            )}
+          </div>
+        ))}
+      </div>
+      {error && <p className="text-xs text-red-400">{error}</p>}
+    </div>
+  )
+}
+
+function ConteoDetail({ conteoId, onBack }: { conteoId: string; onBack: () => void }) {
+  const [conteo, setConteo] = useState<Conteo | null>(null)
+  const [lineas, setLineas] = useState<ConteoLinea[] | null>(null)
+  const [error, setError] = useState<string | null>(null)
+  const [closing, setClosing] = useState(false)
+
+  async function reload() {
+    try {
+      const [cs, ls] = await Promise.all([listConteos(), getConteoLineas(conteoId)])
+      setConteo(cs.find((c) => c.id === conteoId) ?? null)
+      setLineas(ls)
+    } catch (err) {
+      setError(err instanceof Error ? err.message : String(err))
+    }
+  }
+  useEffect(() => { reload() /* eslint-disable-next-line react-hooks/exhaustive-deps */ }, [conteoId])
+
+  // Ediciones aún no persistidas (por línea): el cierre queda bloqueado
+  // mientras haya alguna, para que un "Cerrar conteo" inmediatamente después
+  // de tipear no le gane la carrera al guardado async de la línea.
+  const [lineasPendientes, setLineasPendientes] = useState<Record<string, boolean>>({})
+  const hayPendientes = Object.values(lineasPendientes).some(Boolean)
+  function marcarPendiente(lineaId: string, pendiente: boolean) {
+    setLineasPendientes((prev) => (prev[lineaId] === pendiente ? prev : { ...prev, [lineaId]: pendiente }))
+  }
+
+  async function cerrar() {
+    if (!confirm('¿Cerrar este conteo? Se ajustará el stock según lo contado y se abrirá un evento por cada diferencia.')) return
+    setClosing(true)
+    setError(null)
+    try {
+      await cerrarConteo(conteoId)
+      await reload()
+    } catch (err) {
+      setError(err instanceof Error ? err.message : String(err))
+    } finally {
+      setClosing(false)
+    }
+  }
+
+  const abierto = conteo?.estado === 'abierto'
+
+  return (
+    <div className="space-y-3">
+      <button type="button" onClick={onBack} className="text-xs text-slate-400 hover:text-white">← Volver a conteos</button>
+      {error && <p className="text-xs text-red-400">{error}</p>}
+      {!conteo || !lineas ? (
+        <p className="text-xs text-slate-500">Cargando…</p>
+      ) : (
+        <>
+          <div className="bg-slate-800 rounded-2xl border border-slate-700 p-4">
+            <p className="text-sm font-semibold text-white">{conteo.ubicacionNombre} · {conteo.naturaleza === 'fisico' ? 'Físico' : 'Digital'}</p>
+            <p className="text-xs text-slate-500 mt-0.5">
+              {new Date(conteo.fecha).toLocaleDateString('es-CL', { timeZone: 'UTC' })}{conteo.nota ? ` · ${conteo.nota}` : ''}
+            </p>
+          </div>
+
+          <div className="space-y-1.5">
+            {lineas.length === 0 && <p className="text-xs text-slate-500">Sin líneas — el sistema no tenía stock en esta ubicación.</p>}
+            {lineas.map((l) => (
+              <ConteoLineaRow key={l.id} linea={l} editable={abierto} onSaved={reload}
+                onPendienteChange={(pendiente) => marcarPendiente(l.id, pendiente)} />
+            ))}
+          </div>
+
+          {abierto && <AgregarLineaForm conteoId={conteoId} onAdded={reload} />}
+
+          {abierto ? (
+            <>
+              {hayPendientes && (
+                <p className="text-[11px] text-amber-400 text-center">Hay cantidades sin guardar — toca fuera del campo para guardarlas.</p>
+              )}
+              <button type="button" onClick={cerrar} disabled={closing || hayPendientes}
+                className="w-full text-sm font-semibold py-2 rounded-xl bg-brand-600 hover:bg-brand-700 disabled:opacity-40 text-white">
+                {closing ? 'Cerrando…' : 'Cerrar conteo'}
+              </button>
+            </>
+          ) : (
+            <p className="text-xs text-slate-500 text-center">Conteo cerrado — el stock ya quedó ajustado.</p>
+          )}
+        </>
+      )}
+    </div>
+  )
+}
+
+function ConteoLineaRow({ linea, editable, onSaved, onPendienteChange }: {
+  linea: ConteoLinea; editable: boolean; onSaved: () => void; onPendienteChange: (pendiente: boolean) => void
+}) {
+  const [draft, setDraft] = useState(String(linea.cantidadContada))
+  const [saving, setSaving] = useState(false)
+  // Cerrado: la diferencia sale de lo persistido, no del draft local (que
+  // puede quedar obsoleto si el guardado nunca ocurrió).
+  const diferencia = (editable ? Number(draft || 0) : linea.cantidadContada) - linea.cantidadSistema
+  const dirty = editable && draft.trim() !== '' && Number(draft) !== linea.cantidadContada
+
+  useEffect(() => { onPendienteChange(dirty || saving) }, [dirty, saving, onPendienteChange])
+
+  async function save() {
+    const n = Number(draft)
+    if (draft.trim() === '' || Number.isNaN(n) || n === linea.cantidadContada) return
+    setSaving(true)
+    try {
+      await actualizarLineaConteo(linea.id, n)
+      onSaved()
+    } catch (err) {
+      alert(err instanceof Error ? err.message : String(err))
+    } finally {
+      setSaving(false)
+    }
+  }
+
+  return (
+    <div className="bg-slate-800 rounded-xl border border-slate-700 p-3 text-xs flex items-center justify-between gap-2">
+      <div className="min-w-0">
+        <p className="text-sm text-white truncate">{linea.materialSku} — {linea.materialDescripcion}</p>
+        <p className="text-slate-500">lote {linea.lote} · sistema: {linea.cantidadSistema}</p>
+      </div>
+      <div className="flex items-center gap-2 shrink-0">
+        {editable ? (
+          <input type="number" step="any" value={draft} onChange={(e) => setDraft(e.target.value)} onBlur={save}
+            onKeyDown={(e) => { if (e.key === 'Enter') (e.target as HTMLInputElement).blur() }} disabled={saving}
+            className="w-20 bg-slate-700 text-white text-sm rounded-lg px-2 py-1 border border-slate-600 focus:border-brand-500 focus:outline-none text-right" />
+        ) : (
+          <span className="text-white font-semibold">{linea.cantidadContada}</span>
+        )}
+        {diferencia !== 0 && (
+          <span className={`text-[10px] font-semibold ${diferencia < 0 ? 'text-red-400' : 'text-amber-400'}`}>
+            {diferencia > 0 ? '+' : ''}{diferencia}
+          </span>
+        )}
+      </div>
+    </div>
+  )
+}
+
+function AgregarLineaForm({ conteoId, onAdded }: { conteoId: string; onAdded: () => void }) {
+  const [materiales, setMateriales] = useState<Material[]>([])
+  const [materialId, setMaterialId] = useState('')
+  const [lote, setLote] = useState('')
+  const [busy, setBusy] = useState(false)
+  const [error, setError] = useState<string | null>(null)
+
+  useEffect(() => { listMateriales().then(setMateriales).catch(() => {}) }, [])
+
+  async function submit() {
+    if (!materialId) { setError('Elige un material'); return }
+    setBusy(true)
+    setError(null)
+    try {
+      await agregarLineaConteo({ conteoId, materialId, lote: lote.trim() || undefined })
+      setMaterialId('')
+      setLote('')
+      onAdded()
+    } catch (err) {
+      setError(err instanceof Error ? err.message : String(err))
+    } finally {
+      setBusy(false)
+    }
+  }
+
+  return (
+    <div className="bg-slate-800/60 rounded-xl border border-dashed border-slate-600 p-3 space-y-2">
+      <p className="text-[11px] text-slate-500">Material encontrado que no estaba en la lista:</p>
+      <div className="flex gap-2">
+        <select value={materialId} onChange={(e) => setMaterialId(e.target.value)} className={`${inputCls} flex-1`}>
+          <option value="">Material…</option>
+          {materiales.map((m) => <option key={m.id} value={m.id}>{m.sku} — {m.apodo || m.descripcion}</option>)}
+        </select>
+        <input value={lote} onChange={(e) => setLote(e.target.value)} placeholder="Lote" className={`${inputCls} w-24`} />
+        <button type="button" onClick={submit} disabled={busy}
+          className="text-xs font-semibold px-3 py-1.5 rounded-lg bg-brand-600 hover:bg-brand-700 text-white disabled:opacity-40 shrink-0">
+          {busy ? '…' : '+ Agregar'}
+        </button>
+      </div>
+      {error && <p className="text-xs text-red-400">{error}</p>}
     </div>
   )
 }

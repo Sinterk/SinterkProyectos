@@ -7,6 +7,8 @@ export interface Material {
   categoria: string | null
   controlaLoteFisico: boolean
   activo: boolean
+  /** Umbral de alerta ("hay que renovar"). null = sin umbral configurado. */
+  stockMinimo: number | null
 }
 
 export type UbicacionTipo = 'bodega' | 'tecnico'
@@ -29,6 +31,8 @@ export interface StockRow {
   lote: string
   cantidadFisico: number
   cantidadDigital: number
+  /** Umbral de alerta del material (null = sin umbral configurado). */
+  stockMinimo: number | null
 }
 
 /**
@@ -121,4 +125,52 @@ export interface TecnicoLedgerRow {
   cantDevuelta: number
   cantRebajada: number
   cantTransito: number
+}
+
+// ---------------------------------------------------------------------------
+// Conteo (reconciliación manual de stock)
+// ---------------------------------------------------------------------------
+
+export interface Conteo {
+  id: string
+  ubicacionId: string
+  ubicacionNombre: string
+  naturaleza: 'fisico' | 'digital'
+  fecha: string
+  usuarioId: string | null
+  usuarioNombre: string | null
+  estado: 'abierto' | 'cerrado'
+  nota: string | null
+  createdAt: string
+}
+
+export interface ConteoLinea {
+  id: string
+  conteoId: string
+  materialId: string
+  materialSku: string
+  materialDescripcion: string
+  lote: string
+  cantidadContada: number
+  cantidadSistema: number
+}
+
+export type ResolucionEvento = 'devolucion_pendiente' | 'reubicacion' | 'perdida'
+
+export interface EventoInventario {
+  id: string
+  conteoLineaId: string | null
+  materialId: string
+  materialSku: string
+  materialDescripcion: string
+  ubicacionId: string
+  ubicacionNombre: string
+  lote: string
+  diferencia: number
+  estado: 'abierto' | 'resuelto'
+  resolucion: ResolucionEvento | null
+  nota: string | null
+  resueltoPor: string | null
+  fechaResolucion: string | null
+  createdAt: string
 }

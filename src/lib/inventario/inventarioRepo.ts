@@ -10,6 +10,7 @@ import type {
   Material, Ubicacion, UbicacionTipo, StockRow, Movimiento,
   RegistrarMovimientoInput, ReasignarTransitoInput,
   ResumenMaterialProyecto, TecnicoLedgerRow,
+  Conteo, ConteoLinea, EventoInventario, ResolucionEvento,
 } from './types'
 
 // Nota sobre embeds de PostgREST: `stock`/`movimientos`/`proyecto_materiales`
@@ -32,6 +33,7 @@ interface MaterialRow {
   categoria: string | null
   controla_lote_fisico: boolean
   activo: boolean
+  stock_minimo: number | null
 }
 
 function materialFromRow(m: MaterialRow): Material {
@@ -39,6 +41,7 @@ function materialFromRow(m: MaterialRow): Material {
     id: m.id, sku: m.sku, descripcion: m.descripcion, apodo: m.apodo,
     unidad: m.unidad, categoria: m.categoria,
     controlaLoteFisico: m.controla_lote_fisico, activo: m.activo,
+    stockMinimo: m.stock_minimo === null ? null : Number(m.stock_minimo),
   }
 }
 
@@ -47,6 +50,12 @@ export async function listMateriales(): Promise<Material[]> {
   const { data, error } = await supabase.from('materiales').select('*').eq('activo', true).order('sku')
   if (error) throw new Error(`materiales.list: ${error.message}`)
   return (data as MaterialRow[]).map(materialFromRow)
+}
+
+/** Umbral de alerta ("hay que renovar") — null para quitarlo. */
+export async function updateMaterialStockMinimo(materialId: string, stockMinimo: number | null): Promise<void> {
+  const { error } = await supabase.from('materiales').update({ stock_minimo: stockMinimo }).eq('id', materialId)
+  if (error) throw new Error(`materiales.updateStockMinimo: ${error.message}`)
 }
 
 // ---------------------------------------------------------------------------
@@ -84,7 +93,7 @@ interface StockJoinRow {
   cantidad_fisico: number
   cantidad_digital: number
   ubicaciones: { nombre: string } | null
-  materiales: { sku: string; descripcion: string } | null
+  materiales: { sku: string; descripcion: string; stock_minimo: number | null } | null
 }
 
 /** Filtro por ubicación/material/lote exactos; `search` filtra en el cliente sobre nombre/sku/descripción. */
@@ -93,7 +102,7 @@ export async function getStock(opts?: {
 }): Promise<StockRow[]> {
   let query = supabase
     .from('stock')
-    .select('ubicacion_id, material_id, lote, cantidad_fisico, cantidad_digital, ubicaciones(nombre), materiales(sku, descripcion)')
+    .select('ubicacion_id, material_id, lote, cantidad_fisico, cantidad_digital, ubicaciones(nombre), materiales(sku, descripcion, stock_minimo)')
     .order('lote')
   if (opts?.ubicacionId) query = query.eq('ubicacion_id', opts.ubicacionId)
   if (opts?.materialId) query = query.eq('material_id', opts.materialId)
@@ -111,6 +120,7 @@ export async function getStock(opts?: {
     lote: r.lote,
     cantidadFisico: Number(r.cantidad_fisico),
     cantidadDigital: Number(r.cantidad_digital),
+    stockMinimo: r.materiales?.stock_minimo === null || r.materiales?.stock_minimo === undefined ? null : Number(r.materiales.stock_minimo),
   }))
 
   const q = opts?.search?.trim().toLowerCase()
@@ -407,4 +417,134 @@ export async function getTecnicoLedger(userId: string): Promise<TecnicoLedgerRow
   return [...map.values()]
     .filter((r) => r.cantEntregada !== 0 || r.cantTransito !== 0)
     .sort((a, b) => (a.projectOtt ?? '').localeCompare(b.projectOtt ?? ''))
+}
+
+// ---------------------------------------------------------------------------
+// Conteo (reconciliación manual de stock) — lógica de apertura/cierre en la
+// BD (abrir_conteo/cerrar_conteo/etc., ver supabase/migrations/0009_conteo.sql)
+// por la misma razón que registrar_movimiento: debe ser atómico.
+// ---------------------------------------------------------------------------
+
+interface ConteoJoinRow {
+  id: string
+  ubicacion_id: string
+  naturaleza: 'fisico' | 'digital'
+  fecha: string
+  usuario_id: string | null
+  estado: 'abierto' | 'cerrado'
+  nota: string | null
+  created_at: string
+  ubicaciones: { nombre: string } | null
+}
+
+function conteoFromJoinRow(r: ConteoJoinRow): Conteo {
+  return {
+    id: r.id, ubicacionId: r.ubicacion_id, ubicacionNombre: r.ubicaciones?.nombre ?? '',
+    naturaleza: r.naturaleza, fecha: r.fecha, usuarioId: r.usuario_id, usuarioNombre: null,
+    estado: r.estado, nota: r.nota, createdAt: r.created_at,
+  }
+}
+
+export async function listConteos(opts?: { estado?: 'abierto' | 'cerrado' }): Promise<Conteo[]> {
+  let query = supabase
+    .from('conteos')
+    .select('id, ubicacion_id, naturaleza, fecha, usuario_id, estado, nota, created_at, ubicaciones(nombre)')
+    .order('created_at', { ascending: false })
+  if (opts?.estado) query = query.eq('estado', opts.estado)
+  const { data, error } = await query
+  if (error) throw new Error(`conteos.list: ${error.message}`)
+  return (data as unknown as ConteoJoinRow[]).map(conteoFromJoinRow)
+}
+
+interface ConteoLineaJoinRow {
+  id: string
+  conteo_id: string
+  material_id: string
+  lote: string
+  cantidad_contada: number
+  cantidad_sistema: number
+  materiales: { sku: string; descripcion: string } | null
+}
+
+export async function getConteoLineas(conteoId: string): Promise<ConteoLinea[]> {
+  const { data, error } = await supabase
+    .from('conteo_lineas')
+    .select('id, conteo_id, material_id, lote, cantidad_contada, cantidad_sistema, materiales(sku, descripcion)')
+    .eq('conteo_id', conteoId)
+    .order('lote')
+  if (error) throw new Error(`conteo_lineas.list: ${error.message}`)
+  return (data as unknown as ConteoLineaJoinRow[]).map((r) => ({
+    id: r.id, conteoId: r.conteo_id, materialId: r.material_id,
+    materialSku: r.materiales?.sku ?? '', materialDescripcion: r.materiales?.descripcion ?? '',
+    lote: r.lote, cantidadContada: Number(r.cantidad_contada), cantidadSistema: Number(r.cantidad_sistema),
+  }))
+}
+
+export async function abrirConteo(input: { ubicacionId: string; naturaleza: 'fisico' | 'digital'; nota?: string }): Promise<string> {
+  const { data, error } = await supabase.rpc('abrir_conteo', {
+    p_ubicacion_id: input.ubicacionId, p_naturaleza: input.naturaleza, p_nota: input.nota ?? null,
+  })
+  if (error) throw new Error(`abrir_conteo: ${error.message}`)
+  return data as string
+}
+
+export async function agregarLineaConteo(input: { conteoId: string; materialId: string; lote?: string }): Promise<string> {
+  const { data, error } = await supabase.rpc('agregar_linea_conteo', {
+    p_conteo_id: input.conteoId, p_material_id: input.materialId, p_lote: input.lote ?? null,
+  })
+  if (error) throw new Error(`agregar_linea_conteo: ${error.message}`)
+  return data as string
+}
+
+export async function actualizarLineaConteo(lineaId: string, cantidadContada: number): Promise<void> {
+  const { error } = await supabase.rpc('actualizar_linea_conteo', {
+    p_linea_id: lineaId, p_cantidad_contada: cantidadContada,
+  })
+  if (error) throw new Error(`actualizar_linea_conteo: ${error.message}`)
+}
+
+export async function cerrarConteo(conteoId: string): Promise<void> {
+  const { error } = await supabase.rpc('cerrar_conteo', { p_conteo_id: conteoId })
+  if (error) throw new Error(`cerrar_conteo: ${error.message}`)
+}
+
+interface EventoJoinRow {
+  id: string
+  conteo_linea_id: string | null
+  material_id: string
+  ubicacion_id: string
+  lote: string
+  diferencia: number
+  estado: 'abierto' | 'resuelto'
+  resolucion: ResolucionEvento | null
+  nota: string | null
+  resuelto_por: string | null
+  fecha_resolucion: string | null
+  created_at: string
+  materiales: { sku: string; descripcion: string } | null
+  ubicaciones: { nombre: string } | null
+}
+
+export async function listEventosInventario(opts?: { estado?: 'abierto' | 'resuelto' }): Promise<EventoInventario[]> {
+  let query = supabase
+    .from('eventos_inventario')
+    .select('id, conteo_linea_id, material_id, ubicacion_id, lote, diferencia, estado, resolucion, nota, resuelto_por, fecha_resolucion, created_at, materiales(sku,descripcion), ubicaciones(nombre)')
+    .order('created_at', { ascending: false })
+  if (opts?.estado) query = query.eq('estado', opts.estado)
+  const { data, error } = await query
+  if (error) throw new Error(`eventos_inventario.list: ${error.message}`)
+  return (data as unknown as EventoJoinRow[]).map((r) => ({
+    id: r.id, conteoLineaId: r.conteo_linea_id, materialId: r.material_id,
+    materialSku: r.materiales?.sku ?? '', materialDescripcion: r.materiales?.descripcion ?? '',
+    ubicacionId: r.ubicacion_id, ubicacionNombre: r.ubicaciones?.nombre ?? '', lote: r.lote,
+    diferencia: Number(r.diferencia), estado: r.estado, resolucion: r.resolucion, nota: r.nota,
+    resueltoPor: r.resuelto_por, fechaResolucion: r.fecha_resolucion, createdAt: r.created_at,
+  }))
+}
+
+export async function resolverEventoInventario(eventoId: string, resolucion: ResolucionEvento, nota?: string): Promise<void> {
+  const { error } = await supabase.rpc('resolver_evento_inventario', {
+    p_evento_id: eventoId, p_resolucion: resolucion, p_nota: nota ?? null,
+  })
+  if (error) throw new Error(`resolver_evento_inventario: ${error.message}`)
 }
