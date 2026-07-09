@@ -4,6 +4,7 @@ import { usePreventivoStore } from '../store'
 import { savePhotoBlob } from '@/core/offline/photoStore'
 import { nanoid } from '@/core/utils/nanoid'
 import type { Preventivo, FotoEntry } from '../types'
+import { useFileDrop } from '@/ui/useFileDrop'
 
 interface Props { onImported: (id: string) => void }
 
@@ -70,11 +71,13 @@ export function ImportZip({ onImported }: Props) {
     fileRef.current?.click()
   }
 
+  const { isDragging, dropProps } = useFileDrop(([file]) => { if (file) processFile(file) })
+
   return (
-    <div>
+    <div {...dropProps} className={`rounded-xl p-1 -m-1 border-2 border-dashed transition-colors ${isDragging ? 'border-brand-500 bg-brand-500/10' : 'border-transparent'}`}>
       <button type="button" onClick={handleClick} disabled={state==='loading'}
         className="flex items-center gap-2 bg-blue-700 hover:bg-blue-600 disabled:opacity-60 text-white text-sm font-semibold px-4 py-2.5 rounded-xl transition-colors">
-        {state==='loading' ? '⏳ Importando…' : '📥 Importar ZIP'}
+        {state==='loading' ? '⏳ Importando…' : isDragging ? '📥 Suelta el ZIP aquí' : '📥 Importar ZIP (o arrastra el archivo)'}
       </button>
       {state==='error' && <p className="text-red-400 text-xs mt-1.5">❌ {msg}</p>}
       <input ref={fileRef} type="file" accept=".zip" className="hidden" onChange={handleFile} />

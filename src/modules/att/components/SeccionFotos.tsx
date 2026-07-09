@@ -1,6 +1,7 @@
 import { useRef, useState } from 'react'
 import { useAttStore } from '../store'
 import { FOTO_CATEGORIAS } from '../types'
+import { useFileDrop } from '@/ui/useFileDrop'
 
 interface Props {
   recordId: string
@@ -20,15 +21,22 @@ export function SeccionFotos({ recordId, processPhoto }: Props) {
 
   if (!record) return null
 
-  async function handleCapture(e: React.ChangeEvent<HTMLInputElement>) {
-    const file = e.target.files?.[0]
-    if (!file) return
+  async function processFiles(files: File[]) {
     setLoading(true)
-    try { await processPhoto(file) } finally {
+    try {
+      for (const file of files) await processPhoto(file)
+    } finally {
       setLoading(false)
       if (inputRef.current) inputRef.current.value = ''
     }
   }
+
+  async function handleCapture(e: React.ChangeEvent<HTMLInputElement>) {
+    const file = e.target.files?.[0]
+    if (file) await processFiles([file])
+  }
+
+  const { isDragging, dropProps } = useFileDrop(processFiles)
 
   function setCategoria(index: number, key: string) {
     updateFoto(recordId, index, { categoria: key, otroLabel: key === 'otro' ? '' : undefined })
@@ -39,7 +47,8 @@ export function SeccionFotos({ recordId, processPhoto }: Props) {
   }
 
   return (
-    <div className="bg-slate-800 rounded-2xl border border-slate-700 p-4 space-y-4">
+    <div {...dropProps}
+      className={`bg-slate-800 rounded-2xl border p-4 space-y-4 transition-colors ${isDragging ? 'border-brand-500 bg-brand-500/5' : 'border-slate-700'}`}>
       <div className="flex items-center justify-between">
         <h2 className="text-xs font-semibold text-brand-400 uppercase tracking-wide">5. Registro fotográfico</h2>
         <button
@@ -56,8 +65,8 @@ export function SeccionFotos({ recordId, processPhoto }: Props) {
           type="button"
           onClick={() => inputRef.current?.click()}
           disabled={loading}
-          className="w-full h-16 rounded-xl border-2 border-dashed border-slate-600 bg-slate-800/50 flex items-center justify-center hover:border-brand-500 transition-colors disabled:opacity-50">
-          <span className="text-slate-500 text-xs">Sin fotos — toca para agregar</span>
+          className={`w-full h-16 rounded-xl border-2 border-dashed flex items-center justify-center transition-colors disabled:opacity-50 ${isDragging ? 'border-brand-500' : 'border-slate-600 bg-slate-800/50 hover:border-brand-500'}`}>
+          <span className="text-slate-500 text-xs">Sin fotos — toca para agregar o arrastra imágenes aquí</span>
         </button>
       )}
 

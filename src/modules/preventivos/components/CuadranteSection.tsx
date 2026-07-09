@@ -4,6 +4,7 @@ import { compressImage } from '@/core/utils/compressImage'
 import { savePhotoBlob, deletePhotoBlob } from '@/core/offline/photoStore'
 import { nanoid } from '@/core/utils/nanoid'
 import type { CuadranteInfo } from '../types'
+import { useFileDrop } from '@/ui/useFileDrop'
 
 interface Props {
   preventivoId: string
@@ -43,9 +44,7 @@ export function CuadranteSection({ preventivoId, cuadrante, onSave }: Props) {
     onSave?.()
   }
 
-  async function handlePlanoCapture(e: React.ChangeEvent<HTMLInputElement>) {
-    const file = e.target.files?.[0]
-    if (!file) return
+  async function processPlanoFile(file: File) {
     setLoadingPlano(true)
     try {
       const compressed = await compressImage(file)
@@ -66,9 +65,16 @@ export function CuadranteSection({ preventivoId, cuadrante, onSave }: Props) {
       onSave?.()
     } finally {
       setLoadingPlano(false)
-      if (e.target) e.target.value = ''
+      if (planoInputRef.current) planoInputRef.current.value = ''
     }
   }
+
+  async function handlePlanoCapture(e: React.ChangeEvent<HTMLInputElement>) {
+    const file = e.target.files?.[0]
+    if (file) await processPlanoFile(file)
+  }
+
+  const { isDragging: isDraggingPlano, dropProps: dropPropsPlano } = useFileDrop(([file]) => { if (file) processPlanoFile(file) })
 
   async function handleRemovePlano() {
     if (cuadrante.fotoPlano?.blobId) await deletePhotoBlob(cuadrante.fotoPlano.blobId).catch(() => {})
@@ -153,11 +159,11 @@ export function CuadranteSection({ preventivoId, cuadrante, onSave }: Props) {
         ) : (
           <button type="button"
             onClick={() => planoInputRef.current?.click()}
-            disabled={loadingPlano}
-            className="w-full h-24 rounded-xl border-2 border-dashed border-slate-600 bg-slate-800/50 flex flex-col items-center justify-center gap-1 hover:border-brand-500 hover:bg-slate-700/50 transition-colors disabled:opacity-50">
+            disabled={loadingPlano} {...dropPropsPlano}
+            className={`w-full h-24 rounded-xl border-2 border-dashed flex flex-col items-center justify-center gap-1 transition-colors disabled:opacity-50 ${isDraggingPlano ? 'border-brand-500 bg-brand-500/10' : 'border-slate-600 bg-slate-800/50 hover:border-brand-500 hover:bg-slate-700/50'}`}>
             {loadingPlano
               ? <span className="animate-spin text-xl">⏳</span>
-              : <><span className="text-2xl">📐</span><span className="text-xs text-slate-400">Agregar foto del plano</span></>
+              : <><span className="text-2xl">📐</span><span className="text-xs text-slate-400">Agregar foto del plano o arrastrar aquí</span></>
             }
           </button>
         )}

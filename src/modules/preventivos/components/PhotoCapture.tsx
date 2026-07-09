@@ -1,5 +1,6 @@
 import { useRef, useState, useEffect } from 'react'
 import type { FotoEntry, FotoKey } from '../types'
+import { useFileDrop } from '@/ui/useFileDrop'
 
 interface Props {
   label: string
@@ -31,9 +32,7 @@ export function PhotoCapture({ label, fotoKey, entry, editable = true, onCapture
     return () => window.removeEventListener('keydown', onKey)
   }, [lightbox])
 
-  async function handleChange(e: React.ChangeEvent<HTMLInputElement>) {
-    const file = e.target.files?.[0]
-    if (!file) return
+  async function processFile(file: File) {
     setLoading(true)
     try {
       await onCapture(file, fotoKey)
@@ -42,6 +41,13 @@ export function PhotoCapture({ label, fotoKey, entry, editable = true, onCapture
       if (inputRef.current) inputRef.current.value = ''
     }
   }
+
+  async function handleChange(e: React.ChangeEvent<HTMLInputElement>) {
+    const file = e.target.files?.[0]
+    if (file) await processFile(file)
+  }
+
+  const { isDragging, dropProps } = useFileDrop(([file]) => { if (file) processFile(file) })
 
   if (entry?.previewUrl) {
     return (
@@ -102,14 +108,14 @@ export function PhotoCapture({ label, fotoKey, entry, editable = true, onCapture
   }
 
   return (
-    <button type="button" onClick={() => inputRef.current?.click()} disabled={loading}
-      className={`w-full h-36 rounded-xl border-2 border-dashed ${color} bg-slate-800/50 flex flex-col items-center justify-center gap-1 hover:bg-slate-700/50 transition-colors disabled:opacity-50`}>
+    <button type="button" onClick={() => inputRef.current?.click()} disabled={loading} {...dropProps}
+      className={`w-full h-36 rounded-xl border-2 border-dashed flex flex-col items-center justify-center gap-1 transition-colors disabled:opacity-50 ${isDragging ? 'border-brand-500 bg-brand-500/10' : `${color} bg-slate-800/50 hover:bg-slate-700/50`}`}>
       {loading
         ? <span className="text-2xl animate-spin">⏳</span>
         : <>
             <span className="text-3xl">{emoji}</span>
             <span className="text-xs text-slate-300">{label}</span>
-            <span className="text-[10px] text-slate-500">Toca para capturar</span>
+            <span className="text-[10px] text-slate-500">Toca para capturar o arrastra una foto</span>
           </>
       }
       <input ref={inputRef} type="file" accept="image/*"

@@ -1,6 +1,7 @@
 import { useRef, useState } from 'react'
 import { useAttStore } from '../store'
 import type { FotoEntry } from '../types'
+import { useFileDrop } from '@/ui/useFileDrop'
 
 interface Props {
   recordId: string
@@ -18,15 +19,20 @@ export function SeccionDescripcion({ recordId, processFotoAerea }: Props) {
 
   if (!record) return null
 
-  async function handleAereoCapture(e: React.ChangeEvent<HTMLInputElement>) {
-    const file = e.target.files?.[0]
-    if (!file) return
+  async function processAereoFile(file: File) {
     setLoadingAereo(true)
     try { await processFotoAerea(file) } finally {
       setLoadingAereo(false)
       if (aereoInputRef.current) aereoInputRef.current.value = ''
     }
   }
+
+  async function handleAereoCapture(e: React.ChangeEvent<HTMLInputElement>) {
+    const file = e.target.files?.[0]
+    if (file) await processAereoFile(file)
+  }
+
+  const { isDragging: isDraggingAereo, dropProps: dropPropsAereo } = useFileDrop(([file]) => { if (file) processAereoFile(file) })
 
   return (
     <div className="bg-slate-800 rounded-2xl border border-slate-700 p-4 space-y-5">
@@ -164,11 +170,11 @@ export function SeccionDescripcion({ recordId, processFotoAerea }: Props) {
         ) : (
           <button type="button"
             onClick={() => aereoInputRef.current?.click()}
-            disabled={loadingAereo}
-            className="w-full h-24 rounded-xl border-2 border-dashed border-slate-600 bg-slate-800/50 flex flex-col items-center justify-center gap-1 hover:border-brand-500 hover:bg-slate-700/50 transition-colors disabled:opacity-50">
+            disabled={loadingAereo} {...dropPropsAereo}
+            className={`w-full h-24 rounded-xl border-2 border-dashed flex flex-col items-center justify-center gap-1 transition-colors disabled:opacity-50 ${isDraggingAereo ? 'border-brand-500 bg-brand-500/10' : 'border-slate-600 bg-slate-800/50 hover:border-brand-500 hover:bg-slate-700/50'}`}>
             {loadingAereo
               ? <span className="animate-spin text-xl">⏳</span>
-              : <><span className="text-2xl">📷</span><span className="text-xs text-slate-400">Agregar foto general</span></>}
+              : <><span className="text-2xl">📷</span><span className="text-xs text-slate-400">Agregar foto general o arrastrar aquí</span></>}
           </button>
         )}
         <input ref={aereoInputRef} type="file" accept="image/*" className="hidden" onChange={handleAereoCapture} />

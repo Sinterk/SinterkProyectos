@@ -5,6 +5,7 @@ import type { Profile } from '@/lib/auth'
 import { RegistrarMovimientoForm } from '@/ui/RegistrarMovimientoForm'
 import { ResumenProyectoTable, Stat } from '@/ui/ResumenProyectoTable'
 import { UbicacionSelect } from '@/ui/UbicacionSelect'
+import { useFileDrop } from '@/ui/useFileDrop'
 import {
   getStock, getTecnicoLedger, listMovimientos, listMateriales, listUbicaciones, updateMaterialStockMinimo,
   listConteos, getConteoLineas, abrirConteo, agregarLineaConteo, actualizarLineaConteo, cerrarConteo,
@@ -688,10 +689,7 @@ function ImportarSapSection({ conteoId, onImported, onImportingChange }: {
     setParseError(null)
   }
 
-  async function onFile(e: React.ChangeEvent<HTMLInputElement>) {
-    const file = e.target.files?.[0]
-    e.target.value = ''
-    if (!file) return
+  async function processXlsxFile(file: File) {
     setResultado(null)
     setParseError(null)
     try {
@@ -701,6 +699,14 @@ function ImportarSapSection({ conteoId, onImported, onImportingChange }: {
       setParseError(err instanceof Error ? err.message : String(err))
     }
   }
+
+  async function onFile(e: React.ChangeEvent<HTMLInputElement>) {
+    const file = e.target.files?.[0]
+    e.target.value = ''
+    if (file) await processXlsxFile(file)
+  }
+
+  const { isDragging, dropProps } = useFileDrop(([file]) => { if (file) processXlsxFile(file) })
 
   function leerPegado() {
     setResultado(null)
@@ -732,9 +738,10 @@ function ImportarSapSection({ conteoId, onImported, onImportingChange }: {
   }
 
   return (
-    <div className="bg-slate-800/60 rounded-xl border border-dashed border-slate-600 p-3 space-y-2">
+    <div {...dropProps}
+      className={`bg-slate-800/60 rounded-xl border border-dashed p-3 space-y-2 transition-colors ${isDragging ? 'border-brand-500 bg-brand-500/10' : 'border-slate-600'}`}>
       <p className="text-[11px] text-slate-500">
-        Cargar conteo desde Excel SAP — columnas SAP/Material/Lote/Stock; el resto se ignora.
+        Cargar conteo desde Excel SAP — columnas SAP/Material/Lote/Stock; el resto se ignora. Arrastra el .xlsx aquí o:
       </p>
 
       {!filas && (
