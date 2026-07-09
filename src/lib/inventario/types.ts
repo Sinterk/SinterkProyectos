@@ -153,6 +153,8 @@ export interface ConteoLinea {
   lote: string
   cantidadContada: number
   cantidadSistema: number
+  /** True si la línea se agregó manualmente o por import (nunca antes con stock aquí): al cerrar no genera evento de diferencia. */
+  primeraVez: boolean
 }
 
 export type ResolucionEvento = 'devolucion_pendiente' | 'reubicacion' | 'perdida'

@@ -651,7 +651,7 @@ function ConteoLineaRow({ linea, editable, onSaved, onPendienteChange }: {
     <div className="bg-slate-800 rounded-xl border border-slate-700 p-3 text-xs flex items-center justify-between gap-2">
       <div className="min-w-0">
         <p className="text-sm text-white truncate">{linea.materialSku} — {linea.materialDescripcion}</p>
-        <p className="text-slate-500">lote {linea.lote} · sistema: {linea.cantidadSistema}</p>
+        <p className="text-slate-500">lote {linea.lote} · {linea.primeraVez ? 'primer conteo aquí' : `sistema: ${linea.cantidadSistema}`}</p>
       </div>
       <div className="flex items-center gap-2 shrink-0">
         {editable ? (
@@ -661,7 +661,7 @@ function ConteoLineaRow({ linea, editable, onSaved, onPendienteChange }: {
         ) : (
           <span className="text-white font-semibold">{linea.cantidadContada}</span>
         )}
-        {diferencia !== 0 && (
+        {!linea.primeraVez && diferencia !== 0 && (
           <span className={`text-[10px] font-semibold ${diferencia < 0 ? 'text-red-400' : 'text-amber-400'}`}>
             {diferencia > 0 ? '+' : ''}{diferencia}
           </span>

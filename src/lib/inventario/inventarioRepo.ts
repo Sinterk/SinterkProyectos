@@ -482,13 +482,14 @@ interface ConteoLineaJoinRow {
   lote: string
   cantidad_contada: number
   cantidad_sistema: number
+  primera_vez: boolean
   materiales: { sku: string; descripcion: string } | null
 }
 
 export async function getConteoLineas(conteoId: string): Promise<ConteoLinea[]> {
   const { data, error } = await supabase
     .from('conteo_lineas')
-    .select('id, conteo_id, material_id, lote, cantidad_contada, cantidad_sistema, materiales(sku, descripcion)')
+    .select('id, conteo_id, material_id, lote, cantidad_contada, cantidad_sistema, primera_vez, materiales(sku, descripcion)')
     .eq('conteo_id', conteoId)
     .order('lote')
   if (error) throw new Error(`conteo_lineas.list: ${error.message}`)
@@ -496,6 +497,7 @@ export async function getConteoLineas(conteoId: string): Promise<ConteoLinea[]> 
     id: r.id, conteoId: r.conteo_id, materialId: r.material_id,
     materialSku: r.materiales?.sku ?? '', materialDescripcion: r.materiales?.descripcion ?? '',
     lote: r.lote, cantidadContada: Number(r.cantidad_contada), cantidadSistema: Number(r.cantidad_sistema),
+    primeraVez: r.primera_vez,
   }))
 }
 
@@ -613,7 +615,7 @@ export async function importarFilasSapAConteo(
         lineasPorClave.set(clave, {
           id: lineaId, conteoId, materialId: material.id, materialSku: material.sku,
           materialDescripcion: material.descripcion, lote: fila.lote,
-          cantidadContada: fila.cantidad, cantidadSistema: 0,
+          cantidadContada: fila.cantidad, cantidadSistema: 0, primeraVez: true,
         })
         resultado.lineasCreadas++
       }
