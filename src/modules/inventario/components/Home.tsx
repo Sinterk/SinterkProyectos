@@ -191,34 +191,46 @@ function BodegaTab() {
       ) : rows.length === 0 ? (
         <p className="text-xs text-slate-500">Sin stock registrado.</p>
       ) : (
-        <div className="space-y-1.5">
-          {rows.map((r) => {
-            const negativo = r.cantidadFisico < 0
-            const bajoUmbral = !negativo && r.stockMinimo !== null && r.cantidadFisico <= r.stockMinimo
-            return (
-              <div key={`${r.ubicacionId}|${r.materialId}|${r.lote}`}
-                className={`bg-slate-800 rounded-xl border p-3 text-xs flex items-center justify-between gap-2 ${negativo ? 'border-red-700/60' : bajoUmbral ? 'border-amber-700/60' : 'border-slate-700'}`}>
-                <div className="min-w-0">
-                  <p className="text-sm text-white truncate">{r.materialSku} — {r.materialDescripcion}</p>
-                  <p className="text-slate-500">{r.ubicacionNombre} · lote {r.lote}</p>
-                  <UmbralEditor materialId={r.materialId} value={r.stockMinimo} onSaved={reload} />
-                </div>
-                <div className="text-right shrink-0">
-                  <p className={`font-semibold ${negativo ? 'text-red-400' : bajoUmbral ? 'text-amber-400' : 'text-white'}`}>
-                    {negativo && '⚠ '}{r.cantidadFisico}
-                  </p>
-                  <p className="text-[10px] text-slate-500">físico</p>
-                  {r.cantidadDigital !== 0 && (
-                    <p className={`text-[10px] mt-0.5 ${r.cantidadDigital < 0 ? 'text-red-400' : 'text-amber-400'}`}>
-                      {r.cantidadDigital < 0 && '⚠ '}{r.cantidadDigital} digital
-                    </p>
-                  )}
-                  {negativo && <p className="text-[10px] text-red-400 mt-0.5">Descuadre — revisar</p>}
-                  {bajoUmbral && <p className="text-[10px] text-amber-400 mt-0.5">Renovar (mín. {r.stockMinimo})</p>}
-                </div>
-              </div>
-            )
-          })}
+        <div className="overflow-x-auto rounded-xl border border-slate-700">
+          <table className="w-full text-xs border-collapse">
+            <thead>
+              <tr className="bg-slate-800 text-slate-400 text-left">
+                <th className="px-2 py-2 font-medium whitespace-nowrap">Material</th>
+                <th className="px-2 py-2 font-medium whitespace-nowrap">Bodega</th>
+                <th className="px-2 py-2 font-medium whitespace-nowrap">Lote</th>
+                <th className="px-2 py-2 font-medium text-right whitespace-nowrap">Físico</th>
+                <th className="px-2 py-2 font-medium text-right whitespace-nowrap">Digital</th>
+                <th className="px-2 py-2 font-medium whitespace-nowrap">Umbral</th>
+              </tr>
+            </thead>
+            <tbody>
+              {rows.map((r) => {
+                const negativo = r.cantidadFisico < 0
+                const bajoUmbral = !negativo && r.stockMinimo !== null && r.cantidadFisico <= r.stockMinimo
+                return (
+                  <tr key={`${r.ubicacionId}|${r.materialId}|${r.lote}`}
+                    className={`border-t border-slate-700 ${negativo ? 'bg-red-950/30' : bajoUmbral ? 'bg-amber-950/20' : 'bg-slate-800/60'}`}>
+                    <td className="px-2 py-2 max-w-[220px]">
+                      <p className="text-white truncate">{r.materialSku} — {r.materialDescripcion}</p>
+                      {negativo && <p className="text-[10px] text-red-400">⚠ Descuadre — revisar</p>}
+                      {bajoUmbral && <p className="text-[10px] text-amber-400">Renovar</p>}
+                    </td>
+                    <td className="px-2 py-2 text-slate-300 whitespace-nowrap">{r.ubicacionNombre}</td>
+                    <td className="px-2 py-2 text-slate-300 whitespace-nowrap">{r.lote}</td>
+                    <td className={`px-2 py-2 text-right font-semibold whitespace-nowrap ${negativo ? 'text-red-400' : bajoUmbral ? 'text-amber-400' : 'text-white'}`}>
+                      {negativo && '⚠ '}{r.cantidadFisico}
+                    </td>
+                    <td className={`px-2 py-2 text-right whitespace-nowrap ${r.cantidadDigital < 0 ? 'text-red-400' : r.cantidadDigital !== 0 ? 'text-amber-400' : 'text-slate-500'}`}>
+                      {r.cantidadDigital < 0 && '⚠ '}{r.cantidadDigital}
+                    </td>
+                    <td className="px-2 py-2 whitespace-nowrap">
+                      <UmbralEditor materialId={r.materialId} value={r.stockMinimo} onSaved={reload} />
+                    </td>
+                  </tr>
+                )
+              })}
+            </tbody>
+          </table>
         </div>
       )}
     </div>

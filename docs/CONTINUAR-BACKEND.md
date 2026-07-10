@@ -24,7 +24,7 @@ Tres metas: (1) data online (técnicos suben directo), (2) usuarios con roles, (
 - Inventario: `ubicaciones` (bodega/camioneta), `materiales` (SKU único, apodo, controla_lote_fisico), `stock` (dual: cantidad_fisico + cantidad_digital, por ubicacion+material+lote), `movimientos` (naturaleza fisico/digital), `conteos`+`conteo_lineas`, `eventos_inventario`, `proyecto_materiales` (entregado/instalado/devuelto/rezagado/rebajado; tránsito calculado).
 
 ## Estado actual (rama `backend-supabase`, NO en producción)
-Rama en **v0.66**. **No se hizo push a `main`** para no publicar el gate de login sin datos conectados ni usuarios (producción sigue en v0.52, sin login). Nota de versiones: `backend-supabase` (v0.66) va **por delante** de `main` (v0.52, los dos fixes de fotos de preventivos ya vivos); se reconcilia en el cutover.
+Rama en **v0.67**. **No se hizo push a `main`** para no publicar el gate de login sin datos conectados ni usuarios (producción sigue en v0.52, sin login). Nota de versiones: `backend-supabase` (v0.67) va **por delante** de `main` (v0.52, los dos fixes de fotos de preventivos ya vivos); se reconcilia en el cutover.
 
 Ya hecho:
 - `src/lib/supabaseClient.ts` — cliente supabase-js leyendo `VITE_SUPABASE_*`.
@@ -133,7 +133,8 @@ npm run dev   # sin certs mkcert corre en http://localhost:5173
 10. ~~**Primer conteo de un material no genera diferencia**~~ ✅ **HECHO**. Ver detalle abajo.
 11. ~~**Drag-and-drop en toda subida de archivos**~~ ✅ **HECHO**. Ver detalle abajo.
 12. ~~**Alias de columnas SAP estándar (Material/Texto breve de material/Lote/Libre utilización)**~~ ✅ **HECHO**. Ver detalle abajo.
-13. **← SIGUIENTE** — pendientes: sub-opción Consumibles y tabla de proveedores (pospuestos, alcance sin definir); vista "Material asignado" para el rol técnico en su propia Home (ver nota del paso 5); probar el flujo completo de Logística/Conteo con un usuario técnico/log real (hoy no existe ninguno en el proyecto Supabase compartido); crear cuentas de técnicos de cara al cutover a `main`. El catálogo de materiales real ya se está cargando (probado con `Sinterk.xlsx` vía el import SAP).
+13. ~~**Tabla en pestaña Bodega**~~ ✅ **HECHO**: la lista de tarjetas se cambió por una tabla (Material/Bodega/Lote/Físico/Digital/Umbral), con fila resaltada en rojo/ámbar para descuadre/renovar (mismo criterio que antes, ahora como color de fila en vez de borde de tarjeta) y el editor de umbral inline funcionando igual dentro de la celda. Verificado en el navegador contra datos reales (bodega C132).
+14. **← SIGUIENTE** — pendientes: sub-opción Consumibles y tabla de proveedores (pospuestos, alcance sin definir); vista "Material asignado" para el rol técnico en su propia Home (ver nota del paso 5); probar el flujo completo de Logística/Conteo con un usuario técnico/log real (hoy no existe ninguno en el proyecto Supabase compartido); crear cuentas de técnicos de cara al cutover a `main`. El catálogo de materiales real ya se está cargando (probado con `Sinterk.xlsx` vía el import SAP).
 
 ## Verificar conexión (PowerShell)
 ```powershell
