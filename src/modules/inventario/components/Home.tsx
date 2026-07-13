@@ -205,6 +205,10 @@ function BodegaTab() {
   // reemplaza esto por un orden simple (una sola columna), como en Excel.
   const [sort, setSort] = useState<{ key: StockColKey; dir: 'asc' | 'desc' } | null>(null)
   const [colFilters, setColFilters] = useState<Partial<Record<StockColKey, string>>>({})
+  // Filtro tipo Google Sheets (lista de valores con checkbox) — por ahora solo Bodega,
+  // que tiene un set chico de valores; el resto sigue con filtro de texto libre.
+  // undefined = sin filtro (todo seleccionado); un Set vacío = nada seleccionado.
+  const [bodegaSelected, setBodegaSelected] = useState<Set<string> | undefined>(undefined)
   const [openMenu, setOpenMenu] = useState<StockColKey | null>(null)
 
   useEffect(() => { listUbicaciones({ tipo: 'bodega' }).then(setBodegas).catch(() => {}) }, [])
@@ -215,6 +219,11 @@ function BodegaTab() {
   }
   useEffect(() => { reload() /* eslint-disable-next-line react-hooks/exhaustive-deps */ }, [ubicacionId, search])
 
+  const bodegaValues = useMemo(
+    () => [...new Set((rows ?? []).map((r) => r.ubicacionNombre))].sort((a, b) => a.localeCompare(b)),
+    [rows],
+  )
+
   const displayRows = useMemo(() => {
     if (!rows) return null
     let out = rows
@@ -223,6 +232,7 @@ function BodegaTab() {
       if (!q) continue
       out = out.filter((r) => String(stockColValue(r, key)).toLowerCase().includes(q))
     }
+    if (bodegaSelected) out = out.filter((r) => bodegaSelected.has(r.ubicacionNombre))
     const sorted = [...out]
     if (sort) {
       sorted.sort((a, b) => {
@@ -239,7 +249,7 @@ function BodegaTab() {
         || a.lote.localeCompare(b.lote))
     }
     return sorted
-  }, [rows, colFilters, sort])
+  }, [rows, colFilters, bodegaSelected, sort])
 
   return (
     <div className="space-y-3">
@@ -269,6 +279,17 @@ function BodegaTab() {
                     sort={sort} onSort={(dir) => { setSort(dir ? { key: col.key, dir } : null); setOpenMenu(null) }}
                     filterValue={colFilters[col.key] ?? ''}
                     onFilterChange={(v) => setColFilters((prev) => ({ ...prev, [col.key]: v }))}
+                    checklist={col.key === 'bodega' ? {
+                      values: bodegaValues,
+                      selected: bodegaSelected ?? null,
+                      onToggleValue: (v) => setBodegaSelected((prev) => {
+                        const current = new Set(prev ?? bodegaValues)
+                        if (current.has(v)) current.delete(v); else current.add(v)
+                        return current.size === bodegaValues.length ? undefined : current
+                      }),
+                      onSelectAll: () => setBodegaSelected(undefined),
+                      onSelectNone: () => setBodegaSelected(new Set()),
+                    } : undefined}
                     open={openMenu === col.key} onToggle={() => setOpenMenu((k) => (k === col.key ? null : col.key))} />
                 ))}
               </tr>
@@ -308,17 +329,26 @@ function BodegaTab() {
   )
 }
 
-function StockColumnHeader({ col, sort, onSort, filterValue, onFilterChange, open, onToggle }: {
+interface StockChecklistFilter {
+  values: string[]
+  selected: Set<string> | null // null = todo seleccionado (sin filtro)
+  onToggleValue: (v: string) => void
+  onSelectAll: () => void
+  onSelectNone: () => void
+}
+
+function StockColumnHeader({ col, sort, onSort, filterValue, onFilterChange, checklist, open, onToggle }: {
   col: { key: StockColKey; label: string; numeric?: boolean; align?: 'right' }
   sort: { key: StockColKey; dir: 'asc' | 'desc' } | null
   onSort: (dir: 'asc' | 'desc' | null) => void
   filterValue: string
   onFilterChange: (v: string) => void
+  checklist?: StockChecklistFilter
   open: boolean
   onToggle: () => void
 }) {
   const active = sort?.key === col.key
-  const hasFilter = filterValue.trim() !== ''
+  const hasFilter = checklist ? checklist.selected !== null : filterValue.trim() !== ''
 
   return (
     <th className={`px-2 py-2 font-medium whitespace-nowrap relative ${col.align === 'right' ? 'text-right' : 'text-left'}`}>
@@ -332,7 +362,7 @@ function StockColumnHeader({ col, sort, onSort, filterValue, onFilterChange, ope
       {open && (
         <>
           <div className="fixed inset-0 z-10" onClick={onToggle} />
-          <div className="absolute z-20 top-full mt-1 left-0 w-44 bg-slate-800 border border-slate-600 rounded-lg shadow-lg p-2 space-y-1.5 text-left normal-case font-normal">
+          <div className="absolute z-20 top-full mt-1 left-0 w-48 bg-slate-800 border border-slate-600 rounded-lg shadow-lg p-2 space-y-1.5 text-left normal-case font-normal">
             <button type="button" onClick={() => onSort('asc')}
               className="w-full text-left text-[11px] px-2 py-1 rounded hover:bg-slate-700 text-slate-200">
               {col.numeric ? '↑ Menor a mayor' : '↑ A → Z'}
@@ -347,11 +377,32 @@ function StockColumnHeader({ col, sort, onSort, filterValue, onFilterChange, ope
                 ✕ Quitar orden
               </button>
             )}
-            <div className="border-t border-slate-700 pt-1.5">
-              <input value={filterValue} onChange={(e) => onFilterChange(e.target.value)} placeholder="Filtrar…" autoFocus
-                onClick={(e) => e.stopPropagation()}
-                className="w-full bg-slate-700 text-white text-[11px] rounded px-2 py-1 border border-slate-600 focus:border-brand-500 focus:outline-none" />
-            </div>
+            {checklist ? (
+              <div className="border-t border-slate-700 pt-1.5 space-y-1">
+                <div className="flex justify-between px-0.5">
+                  <button type="button" onClick={checklist.onSelectAll}
+                    className="text-[10px] text-brand-400 hover:text-brand-300 font-semibold">Todo</button>
+                  <button type="button" onClick={checklist.onSelectNone}
+                    className="text-[10px] text-brand-400 hover:text-brand-300 font-semibold">Ninguno</button>
+                </div>
+                <div className="max-h-40 overflow-y-auto space-y-0.5">
+                  {checklist.values.map((v) => (
+                    <label key={v}
+                      className="flex items-center gap-1.5 text-[11px] text-slate-200 px-1 py-0.5 rounded hover:bg-slate-700 cursor-pointer">
+                      <input type="checkbox" checked={checklist.selected === null || checklist.selected.has(v)}
+                        onChange={() => checklist.onToggleValue(v)} className="accent-brand-600" />
+                      <span className="truncate">{v}</span>
+                    </label>
+                  ))}
+                </div>
+              </div>
+            ) : (
+              <div className="border-t border-slate-700 pt-1.5">
+                <input value={filterValue} onChange={(e) => onFilterChange(e.target.value)} placeholder="Filtrar…" autoFocus
+                  onClick={(e) => e.stopPropagation()}
+                  className="w-full bg-slate-700 text-white text-[11px] rounded px-2 py-1 border border-slate-600 focus:border-brand-500 focus:outline-none" />
+              </div>
+            )}
           </div>
         </>
       )}
