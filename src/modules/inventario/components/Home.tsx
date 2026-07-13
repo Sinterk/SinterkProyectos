@@ -162,7 +162,7 @@ function MovimientosTab({ refreshKey }: { refreshKey: number }) {
 type StockColKey = 'sku' | 'material' | 'bodega' | 'lote' | 'fisico' | 'digital' | 'umbral'
 
 const STOCK_COLUMNS: { key: StockColKey; label: string; numeric?: boolean; align?: 'right' }[] = [
-  { key: 'sku', label: 'SKU' },
+  { key: 'sku', label: 'SKU', numeric: true },
   { key: 'material', label: 'Material' },
   { key: 'bodega', label: 'Bodega' },
   { key: 'lote', label: 'Lote' },
@@ -170,6 +170,17 @@ const STOCK_COLUMNS: { key: StockColKey; label: string; numeric?: boolean; align
   { key: 'digital', label: 'Digital', numeric: true, align: 'right' },
   { key: 'umbral', label: 'Umbral', numeric: true },
 ]
+
+/** SKU es texto en la BD pero se ve/ordena como número — un SKU con letras (no puramente numérico) siempre va al final, sin importar la dirección. */
+function compareSku(a: string, b: string, dir: 'asc' | 'desc'): number {
+  const na = /^\d+$/.test(a.trim()) ? Number(a) : null
+  const nb = /^\d+$/.test(b.trim()) ? Number(b) : null
+  if (na !== null && nb !== null) return dir === 'asc' ? na - nb : nb - na
+  if (na !== null) return -1
+  if (nb !== null) return 1
+  const cmp = a.localeCompare(b)
+  return dir === 'asc' ? cmp : -cmp
+}
 
 function stockColValue(r: StockRow, key: StockColKey): string | number {
   switch (key) {
@@ -215,6 +226,7 @@ function BodegaTab() {
     const sorted = [...out]
     if (sort) {
       sorted.sort((a, b) => {
+        if (sort.key === 'sku') return compareSku(a.materialSku, b.materialSku, sort.dir)
         const va = stockColValue(a, sort.key)
         const vb = stockColValue(b, sort.key)
         const cmp = typeof va === 'number' && typeof vb === 'number' ? va - vb : String(va).localeCompare(String(vb))
@@ -223,7 +235,7 @@ function BodegaTab() {
     } else {
       sorted.sort((a, b) =>
         a.ubicacionNombre.localeCompare(b.ubicacionNombre)
-        || a.materialSku.localeCompare(b.materialSku)
+        || compareSku(a.materialSku, b.materialSku, 'asc')
         || a.lote.localeCompare(b.lote))
     }
     return sorted
@@ -820,7 +832,7 @@ function ImportarSapSection({ conteoId, onImported, onImportingChange }: {
   const [pegado, setPegado] = useState('')
   const [filas, setFilas] = useState<FilaImportSap[] | null>(null)
   const [parseError, setParseError] = useState<string | null>(null)
-  const [progreso, setProgreso] = useState<{ hecho: number; total: number } | null>(null)
+  const [fase, setFase] = useState<'materiales' | 'lineas' | null>(null)
   const [resultado, setResultado] = useState<ImportarSapResultado | null>(null)
 
   function limpiarPreview() {
@@ -863,17 +875,17 @@ function ImportarSapSection({ conteoId, onImported, onImportingChange }: {
   async function confirmar() {
     if (!filas) return
     onImportingChange(true)
-    setProgreso({ hecho: 0, total: filas.length })
+    setFase('materiales')
     setParseError(null)
     try {
-      const res = await importarFilasSapAConteo(conteoId, filas, (hecho, total) => setProgreso({ hecho, total }))
+      const res = await importarFilasSapAConteo(conteoId, filas, setFase)
       setResultado(res)
       limpiarPreview()
       onImported()
     } catch (err) {
       setParseError(err instanceof Error ? err.message : String(err))
     } finally {
-      setProgreso(null)
+      setFase(null)
       onImportingChange(false)
     }
   }
@@ -921,13 +933,17 @@ function ImportarSapSection({ conteoId, onImported, onImportingChange }: {
             {filas.slice(0, 8).map((f, i) => <p key={i}>{f.sku} — {f.descripcion} · lote {f.lote} · {f.cantidad}</p>)}
             {filas.length > 8 && <p className="text-slate-500">… y {filas.length - 8} más</p>}
           </div>
-          {progreso && <p className="text-xs text-amber-400">Importando {progreso.hecho}/{progreso.total}…</p>}
+          {fase && (
+            <p className="text-xs text-amber-400">
+              {fase === 'materiales' ? 'Preparando materiales…' : 'Importando líneas…'}
+            </p>
+          )}
           <div className="flex gap-2">
-            <button type="button" onClick={confirmar} disabled={!!progreso}
+            <button type="button" onClick={confirmar} disabled={!!fase}
               className="text-xs font-semibold px-3 py-1.5 rounded-lg bg-brand-600 hover:bg-brand-700 text-white disabled:opacity-40">
-              {progreso ? 'Importando…' : `Confirmar importación (${filas.length})`}
+              {fase ? 'Importando…' : `Confirmar importación (${filas.length})`}
             </button>
-            <button type="button" onClick={limpiarPreview} disabled={!!progreso} className="text-xs text-slate-400">
+            <button type="button" onClick={limpiarPreview} disabled={!!fase} className="text-xs text-slate-400">
               Cancelar
             </button>
           </div>

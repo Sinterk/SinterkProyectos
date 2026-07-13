@@ -59,17 +59,6 @@ export async function updateMaterialStockMinimo(materialId: string, stockMinimo:
   if (error) throw new Error(`materiales.updateStockMinimo: ${error.message}`)
 }
 
-/** Busca un material por sku; si no existe, lo crea con esa descripción (import de Excel SAP). */
-export async function ensureMaterialBySku(sku: string, descripcion: string): Promise<Material> {
-  const { data: existing, error: findErr } = await supabase.from('materiales').select('*').eq('sku', sku).maybeSingle()
-  if (findErr) throw new Error(`materiales.ensureBySku: ${findErr.message}`)
-  if (existing) return materialFromRow(existing as MaterialRow)
-  const { data, error } = await supabase.from('materiales')
-    .insert({ sku, descripcion: descripcion || sku, activo: true }).select('*').single()
-  if (error) throw new Error(`materiales.ensureBySku insert: ${error.message}`)
-  return materialFromRow(data as MaterialRow)
-}
-
 // ---------------------------------------------------------------------------
 // Ubicaciones
 // ---------------------------------------------------------------------------
@@ -586,49 +575,55 @@ export interface ImportarSapResultado {
 
 /**
  * Vuelca filas ya parseadas de un Excel SAP (ver ../inventario/importarSap.ts)
- * dentro de un conteo abierto: crea los materiales que falten (por sku) y
- * llena cantidad_contada de cada línea (agregándola si no estaba en la foto
- * inicial del conteo). Secuencial a propósito — son llamadas RPC una por
- * línea, igual que el envío por línea de RegistrarMovimientoForm.
+ * dentro de un conteo abierto: crea los materiales que falten (por sku, en
+ * un solo insert) y llena cantidad_contada de cada línea (agregándola si no
+ * estaba en la foto inicial del conteo) con una única llamada RPC
+ * (importar_lineas_conteo) que hace el loop fila-por-fila en la BD, no por
+ * la red. Antes eran 2-4 viajes de red POR FILA (buscar/crear material +
+ * agregar/actualizar línea, todo secuencial) — con un Excel de unos cientos
+ * de filas eso eran cientos de round-trips uno detrás de otro. Ahora son 3
+ * llamadas en total sin importar el tamaño del archivo.
  */
 export async function importarFilasSapAConteo(
   conteoId: string,
   filas: FilaImportSap[],
-  onProgress?: (hecho: number, total: number) => void,
+  onPhase?: (phase: 'materiales' | 'lineas') => void,
 ): Promise<ImportarSapResultado> {
-  const [lineasExistentes, materialesExistentes] = await Promise.all([getConteoLineas(conteoId), listMateriales()])
-  const skusExistentes = new Set(materialesExistentes.map((m) => m.sku))
-  const lineasPorClave = new Map(lineasExistentes.map((l) => [`${l.materialId}|${l.lote}`, l]))
+  onPhase?.('materiales')
+  const skusUnicos = [...new Set(filas.map((f) => f.sku))]
+  const { data: existentes, error: findErr } = await supabase.from('materiales').select('id, sku').in('sku', skusUnicos)
+  if (findErr) throw new Error(`materiales.bulkFind: ${findErr.message}`)
+  const materialIdBySku = new Map((existentes as { id: string; sku: string }[]).map((m) => [m.sku, m.id]))
 
-  const resultado: ImportarSapResultado = {
-    total: filas.length,
-    materialesCreados: filas.filter((f) => !skusExistentes.has(f.sku)).length,
-    lineasCreadas: 0, lineasActualizadas: 0, errores: [],
+  const faltantes = skusUnicos.filter((sku) => !materialIdBySku.has(sku))
+  if (faltantes.length > 0) {
+    const rows = faltantes.map((sku) => ({
+      sku, descripcion: filas.find((f) => f.sku === sku)?.descripcion || sku, activo: true,
+    }))
+    const { data: creados, error: insErr } = await supabase.from('materiales').insert(rows).select('id, sku')
+    if (insErr) throw new Error(`materiales.bulkInsert: ${insErr.message}`)
+    for (const m of creados as { id: string; sku: string }[]) materialIdBySku.set(m.sku, m.id)
   }
 
-  for (let i = 0; i < filas.length; i++) {
-    const fila = filas[i]
-    try {
-      const material = await ensureMaterialBySku(fila.sku, fila.descripcion)
-      const clave = `${material.id}|${fila.lote}`
-      const existente = lineasPorClave.get(clave)
-      if (existente) {
-        await actualizarLineaConteo(existente.id, fila.cantidad)
-        resultado.lineasActualizadas++
-      } else {
-        const lineaId = await agregarLineaConteo({ conteoId, materialId: material.id, lote: fila.lote })
-        await actualizarLineaConteo(lineaId, fila.cantidad)
-        lineasPorClave.set(clave, {
-          id: lineaId, conteoId, materialId: material.id, materialSku: material.sku,
-          materialDescripcion: material.descripcion, lote: fila.lote,
-          cantidadContada: fila.cantidad, cantidadSistema: 0, primeraVez: true,
-        })
-        resultado.lineasCreadas++
-      }
-    } catch (err) {
-      resultado.errores.push({ fila, mensaje: err instanceof Error ? err.message : String(err) })
+  onPhase?.('lineas')
+  const payload = filas
+    .filter((f) => materialIdBySku.has(f.sku))
+    .map((f) => ({ material_id: materialIdBySku.get(f.sku), lote: f.lote, cantidad: f.cantidad }))
+
+  const { data, error } = await supabase.rpc('importar_lineas_conteo', { p_conteo_id: conteoId, p_filas: payload })
+  if (error) throw new Error(`importar_lineas_conteo: ${error.message}`)
+
+  const filaPorClave = new Map(filas.map((f) => [`${materialIdBySku.get(f.sku)}|${f.lote}`, f]))
+  const resultado: ImportarSapResultado = {
+    total: filas.length, materialesCreados: faltantes.length, lineasCreadas: 0, lineasActualizadas: 0, errores: [],
+  }
+  for (const r of data as { material_id: string; lote: string; accion: string; mensaje: string | null }[]) {
+    if (r.accion === 'creada') resultado.lineasCreadas++
+    else if (r.accion === 'actualizada') resultado.lineasActualizadas++
+    else {
+      const fila = filaPorClave.get(`${r.material_id}|${r.lote}`)
+      resultado.errores.push({ fila: fila ?? { sku: '', descripcion: '', lote: r.lote, cantidad: 0 }, mensaje: r.mensaje ?? 'Error desconocido' })
     }
-    onProgress?.(i + 1, filas.length)
   }
   return resultado
 }
