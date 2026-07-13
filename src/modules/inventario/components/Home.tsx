@@ -1,4 +1,4 @@
-import { useEffect, useState, type ReactNode } from 'react'
+import { useEffect, useMemo, useState, type ReactNode } from 'react'
 import { adminRepo } from '@/lib/adminRepo'
 import type { ProjectSummary } from '@/lib/adminRepo'
 import type { Profile } from '@/lib/auth'
@@ -159,12 +159,42 @@ function MovimientosTab({ refreshKey }: { refreshKey: number }) {
   )
 }
 
+type StockColKey = 'sku' | 'material' | 'bodega' | 'lote' | 'fisico' | 'digital' | 'umbral'
+
+const STOCK_COLUMNS: { key: StockColKey; label: string; numeric?: boolean; align?: 'right' }[] = [
+  { key: 'sku', label: 'SKU' },
+  { key: 'material', label: 'Material' },
+  { key: 'bodega', label: 'Bodega' },
+  { key: 'lote', label: 'Lote' },
+  { key: 'fisico', label: 'Físico', numeric: true, align: 'right' },
+  { key: 'digital', label: 'Digital', numeric: true, align: 'right' },
+  { key: 'umbral', label: 'Umbral', numeric: true },
+]
+
+function stockColValue(r: StockRow, key: StockColKey): string | number {
+  switch (key) {
+    case 'sku': return r.materialSku
+    case 'material': return r.materialDescripcion
+    case 'bodega': return r.ubicacionNombre
+    case 'lote': return r.lote
+    case 'fisico': return r.cantidadFisico
+    case 'digital': return r.cantidadDigital
+    case 'umbral': return r.stockMinimo ?? Number.NEGATIVE_INFINITY
+  }
+}
+
 function BodegaTab() {
   const [bodegas, setBodegas] = useState<Ubicacion[]>([])
   const [ubicacionId, setUbicacionId] = useState('')
   const [search, setSearch] = useState('')
   const [rows, setRows] = useState<StockRow[] | null>(null)
   const [error, setError] = useState<string | null>(null)
+
+  // Orden por defecto: Bodega, luego SKU, luego Lote. Un clic en una columna
+  // reemplaza esto por un orden simple (una sola columna), como en Excel.
+  const [sort, setSort] = useState<{ key: StockColKey; dir: 'asc' | 'desc' } | null>(null)
+  const [colFilters, setColFilters] = useState<Partial<Record<StockColKey, string>>>({})
+  const [openMenu, setOpenMenu] = useState<StockColKey | null>(null)
 
   useEffect(() => { listUbicaciones({ tipo: 'bodega' }).then(setBodegas).catch(() => {}) }, [])
 
@@ -173,6 +203,31 @@ function BodegaTab() {
     catch (err) { setError(err instanceof Error ? err.message : String(err)) }
   }
   useEffect(() => { reload() /* eslint-disable-next-line react-hooks/exhaustive-deps */ }, [ubicacionId, search])
+
+  const displayRows = useMemo(() => {
+    if (!rows) return null
+    let out = rows
+    for (const key of Object.keys(colFilters) as StockColKey[]) {
+      const q = colFilters[key]?.trim().toLowerCase()
+      if (!q) continue
+      out = out.filter((r) => String(stockColValue(r, key)).toLowerCase().includes(q))
+    }
+    const sorted = [...out]
+    if (sort) {
+      sorted.sort((a, b) => {
+        const va = stockColValue(a, sort.key)
+        const vb = stockColValue(b, sort.key)
+        const cmp = typeof va === 'number' && typeof vb === 'number' ? va - vb : String(va).localeCompare(String(vb))
+        return sort.dir === 'asc' ? cmp : -cmp
+      })
+    } else {
+      sorted.sort((a, b) =>
+        a.ubicacionNombre.localeCompare(b.ubicacionNombre)
+        || a.materialSku.localeCompare(b.materialSku)
+        || a.lote.localeCompare(b.lote))
+    }
+    return sorted
+  }, [rows, colFilters, sort])
 
   return (
     <div className="space-y-3">
@@ -186,26 +241,28 @@ function BodegaTab() {
       </div>
 
       {error && <p className="text-xs text-red-400">{error}</p>}
-      {rows === null ? (
+      {displayRows === null ? (
         <p className="text-xs text-slate-500">Cargando…</p>
-      ) : rows.length === 0 ? (
+      ) : rows && rows.length === 0 ? (
         <p className="text-xs text-slate-500">Sin stock registrado.</p>
+      ) : displayRows.length === 0 ? (
+        <p className="text-xs text-slate-500">Ningún resultado con los filtros de columna actuales.</p>
       ) : (
         <div className="overflow-x-auto rounded-xl border border-slate-700">
           <table className="w-full text-xs border-collapse">
             <thead>
               <tr className="bg-slate-800 text-slate-400 text-left divide-x divide-slate-700">
-                <th className="px-2 py-2 font-medium whitespace-nowrap">SKU</th>
-                <th className="px-2 py-2 font-medium whitespace-nowrap">Material</th>
-                <th className="px-2 py-2 font-medium whitespace-nowrap">Bodega</th>
-                <th className="px-2 py-2 font-medium whitespace-nowrap">Lote</th>
-                <th className="px-2 py-2 font-medium text-right whitespace-nowrap">Físico</th>
-                <th className="px-2 py-2 font-medium text-right whitespace-nowrap">Digital</th>
-                <th className="px-2 py-2 font-medium whitespace-nowrap">Umbral</th>
+                {STOCK_COLUMNS.map((col) => (
+                  <StockColumnHeader key={col.key} col={col}
+                    sort={sort} onSort={(dir) => { setSort(dir ? { key: col.key, dir } : null); setOpenMenu(null) }}
+                    filterValue={colFilters[col.key] ?? ''}
+                    onFilterChange={(v) => setColFilters((prev) => ({ ...prev, [col.key]: v }))}
+                    open={openMenu === col.key} onToggle={() => setOpenMenu((k) => (k === col.key ? null : col.key))} />
+                ))}
               </tr>
             </thead>
             <tbody>
-              {rows.map((r) => {
+              {displayRows.map((r) => {
                 const negativo = r.cantidadFisico < 0
                 const bajoUmbral = !negativo && r.stockMinimo !== null && r.cantidadFisico <= r.stockMinimo
                 return (
@@ -236,6 +293,57 @@ function BodegaTab() {
         </div>
       )}
     </div>
+  )
+}
+
+function StockColumnHeader({ col, sort, onSort, filterValue, onFilterChange, open, onToggle }: {
+  col: { key: StockColKey; label: string; numeric?: boolean; align?: 'right' }
+  sort: { key: StockColKey; dir: 'asc' | 'desc' } | null
+  onSort: (dir: 'asc' | 'desc' | null) => void
+  filterValue: string
+  onFilterChange: (v: string) => void
+  open: boolean
+  onToggle: () => void
+}) {
+  const active = sort?.key === col.key
+  const hasFilter = filterValue.trim() !== ''
+
+  return (
+    <th className={`px-2 py-2 font-medium whitespace-nowrap relative ${col.align === 'right' ? 'text-right' : 'text-left'}`}>
+      <div className={`flex items-center gap-1 ${col.align === 'right' ? 'justify-end' : ''}`}>
+        <span>{col.label}</span>
+        <button type="button" onClick={onToggle}
+          className={`text-[10px] leading-none rounded px-1 py-0.5 ${active || hasFilter ? 'text-brand-400' : 'text-slate-500 hover:text-slate-300'}`}>
+          {active ? (sort!.dir === 'asc' ? '▲' : '▼') : '▾'}
+        </button>
+      </div>
+      {open && (
+        <>
+          <div className="fixed inset-0 z-10" onClick={onToggle} />
+          <div className="absolute z-20 top-full mt-1 left-0 w-44 bg-slate-800 border border-slate-600 rounded-lg shadow-lg p-2 space-y-1.5 text-left normal-case font-normal">
+            <button type="button" onClick={() => onSort('asc')}
+              className="w-full text-left text-[11px] px-2 py-1 rounded hover:bg-slate-700 text-slate-200">
+              {col.numeric ? '↑ Menor a mayor' : '↑ A → Z'}
+            </button>
+            <button type="button" onClick={() => onSort('desc')}
+              className="w-full text-left text-[11px] px-2 py-1 rounded hover:bg-slate-700 text-slate-200">
+              {col.numeric ? '↓ Mayor a menor' : '↓ Z → A'}
+            </button>
+            {active && (
+              <button type="button" onClick={() => onSort(null)}
+                className="w-full text-left text-[11px] px-2 py-1 rounded hover:bg-slate-700 text-slate-400">
+                ✕ Quitar orden
+              </button>
+            )}
+            <div className="border-t border-slate-700 pt-1.5">
+              <input value={filterValue} onChange={(e) => onFilterChange(e.target.value)} placeholder="Filtrar…" autoFocus
+                onClick={(e) => e.stopPropagation()}
+                className="w-full bg-slate-700 text-white text-[11px] rounded px-2 py-1 border border-slate-600 focus:border-brand-500 focus:outline-none" />
+            </div>
+          </div>
+        </>
+      )}
+    </th>
   )
 }
 
