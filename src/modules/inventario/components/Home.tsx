@@ -1,4 +1,5 @@
-import { useEffect, useMemo, useState, type ReactNode } from 'react'
+import { useEffect, useMemo, useRef, useState, type ReactNode } from 'react'
+import { createPortal } from 'react-dom'
 import { adminRepo } from '@/lib/adminRepo'
 import type { ProjectSummary } from '@/lib/adminRepo'
 import type { Profile } from '@/lib/auth'
@@ -372,6 +373,24 @@ function StockColumnHeader({ col, sort, onSort, checklist, open, onToggle }: {
   const active = sort?.key === col.key
   const hasFilter = checklist.selected !== null
   const [search, setSearch] = useState('')
+  const [pos, setPos] = useState<{ top: number; left: number } | null>(null)
+  const btnRef = useRef<HTMLButtonElement>(null)
+
+  // El popover se porta al <body> con position:fixed en vez de vivir dentro
+  // del <th> (position:absolute): el contenedor de la tabla tiene
+  // overflow-x-auto, y por una regla de CSS eso fuerza overflow-y a "auto"
+  // también (no puede quedar "visible" en un solo eje) — con pocas filas
+  // (ej. filtrando con "Ninguno") el contenedor queda bajo y recorta
+  // cualquier hijo absoluto que se salga por abajo, dejando el menú
+  // "escondido" a medias.
+  function handleToggle() {
+    if (!open && btnRef.current) {
+      const r = btnRef.current.getBoundingClientRect()
+      setPos({ top: r.bottom + 4, left: Math.min(r.left, window.innerWidth - 200) })
+    }
+    setSearch('')
+    onToggle()
+  }
 
   // El buscador solo tiene sentido si hay bastantes valores para hacer scroll (SKU/Material/Lote).
   const q = search.trim().toLowerCase()
@@ -381,15 +400,16 @@ function StockColumnHeader({ col, sort, onSort, checklist, open, onToggle }: {
     <th className={`px-2 py-2 font-medium whitespace-nowrap relative ${col.align === 'right' ? 'text-right' : 'text-left'}`}>
       <div className={`flex items-center gap-1 ${col.align === 'right' ? 'justify-end' : ''}`}>
         <span>{col.label}</span>
-        <button type="button" onClick={() => { setSearch(''); onToggle() }}
+        <button ref={btnRef} type="button" onClick={handleToggle}
           className={`text-[10px] leading-none rounded px-1 py-0.5 ${active || hasFilter ? 'text-brand-400' : 'text-slate-500 hover:text-slate-300'}`}>
           {active ? (sort!.dir === 'asc' ? '▲' : '▼') : '▾'}
         </button>
       </div>
-      {open && (
+      {open && pos && createPortal(
         <>
-          <div className="fixed inset-0 z-10" onClick={onToggle} />
-          <div className="absolute z-20 top-full mt-1 left-0 w-48 bg-slate-800 border border-slate-600 rounded-lg shadow-lg p-2 space-y-1.5 text-left normal-case font-normal">
+          <div className="fixed inset-0 z-40" onClick={onToggle} />
+          <div style={{ top: pos.top, left: pos.left }}
+            className="fixed z-50 w-48 bg-slate-800 border border-slate-600 rounded-lg shadow-lg p-2 space-y-1.5 text-left normal-case font-normal">
             <button type="button" onClick={() => onSort('asc')}
               className="w-full text-left text-[11px] px-2 py-1 rounded hover:bg-slate-700 text-slate-200">
               {col.numeric ? '↑ Menor a mayor' : '↑ A → Z'}
@@ -429,7 +449,8 @@ function StockColumnHeader({ col, sort, onSort, checklist, open, onToggle }: {
               </div>
             </div>
           </div>
-        </>
+        </>,
+        document.body,
       )}
     </th>
   )
