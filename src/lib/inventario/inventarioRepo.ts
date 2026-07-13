@@ -270,6 +270,25 @@ export async function registrarMovimiento(input: RegistrarMovimientoInput): Prom
   }
 }
 
+export type CampoCorregible = 'cant_entregada' | 'cant_instalada' | 'cant_devuelta' | 'cant_rebajada'
+
+/**
+ * Corrección directa de un error de tipeo (Entregado/Instalado/Devuelto/
+ * Rebajado): sobreescribe el número sin generar movimiento ni tocar stock
+ * — ver supabase/migrations/0014_corregir_proyecto_material.sql. No usar
+ * para registrar algo que de verdad pasó (para eso está registrarMovimiento).
+ */
+export async function corregirProyectoMaterial(input: {
+  projectId: string; materialId: string; lote: string; puntoId: string | null
+  campo: CampoCorregible; valor: number
+}): Promise<void> {
+  const { error } = await supabase.rpc('corregir_proyecto_material', {
+    p_project_id: input.projectId, p_material_id: input.materialId, p_lote: input.lote,
+    p_punto_id: input.puntoId, p_campo: input.campo, p_valor: input.valor,
+  })
+  if (error) throw new Error(`corregir_proyecto_material: ${error.message}`)
+}
+
 /** Cierra el "tránsito" de un proyecto pasando esa cantidad al técnico como preventivo (no toca stock, ver migración 0006). */
 export async function reasignarTransitoAPreventivo(input: ReasignarTransitoInput): Promise<void> {
   const { error } = await supabase.rpc('reasignar_transito_a_preventivo', {

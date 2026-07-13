@@ -12,8 +12,12 @@
 import { useEffect, useState } from 'react'
 import { adminRepo } from '@/lib/adminRepo'
 import type { MemberProfile } from '@/lib/adminRepo'
+import { useAuth } from '@/lib/auth'
 import { BODEGA_DEFECTO_POR_AREA } from '@/lib/inventario/defaults'
-import { getResumenProyecto, listUbicaciones, reasignarTransitoAPreventivo, registrarMovimiento } from '@/lib/inventario/inventarioRepo'
+import {
+  corregirProyectoMaterial, getResumenProyecto, listUbicaciones, reasignarTransitoAPreventivo, registrarMovimiento,
+} from '@/lib/inventario/inventarioRepo'
+import type { CampoCorregible } from '@/lib/inventario/inventarioRepo'
 import type { MovimientoTipoUI, ResumenMaterialProyecto, Ubicacion } from '@/lib/inventario/types'
 
 interface Punto { id: string; nombre: string }
@@ -43,8 +47,17 @@ const CAMPO_TIPO: Record<Campo, MovimientoTipoUI> = {
 }
 /** Campos cuyo movimiento requiere elegir bodega (origen para Entrega/Rebajado, destino para Devuelto). */
 const CAMPO_NECESITA_BODEGA: Campo[] = ['cantEntregada', 'cantDevuelta', 'cantRebajada']
+/** Campos corregibles directo (viven como columna propia en proyecto_materiales). Solicitado queda afuera: es un cálculo (suma de movimientos tipo='solicitud'), no una columna. */
+const CAMPO_DB: Partial<Record<Campo, CampoCorregible>> = {
+  cantEntregada: 'cant_entregada', cantInstalada: 'cant_instalada',
+  cantDevuelta: 'cant_devuelta', cantRebajada: 'cant_rebajada',
+}
 
 export function ResumenProyectoTable({ projectId, area, puntos, refreshKey = 0 }: Props) {
+  const puedeCorregir = useAuth((s) => {
+    const rol = s.profile?.rol
+    return rol === 'admin' || rol === 'jp' || rol === 'log'
+  })
   const [rows, setRows] = useState<ResumenMaterialProyecto[] | null>(null)
   const [members, setMembers] = useState<MemberProfile[]>([])
   const [bodegas, setBodegas] = useState<Ubicacion[]>([])
@@ -62,6 +75,15 @@ export function ResumenProyectoTable({ projectId, area, puntos, refreshKey = 0 }
   const [tecnicoEdicion, setTecnicoEdicion] = useState('')
   const [bodegaEdicion, setBodegaEdicion] = useState('')
   const [saving, setSaving] = useState(false)
+
+  // Modo corrección: sobreescribe el valor absoluto sin generar movimiento
+  // ni tocar stock — solo para arreglar un error de tipeo. `corrections`
+  // guarda el valor tecleado (no el delta); se compara contra el valor
+  // actual de la fila al guardar para saltar las celdas sin cambios.
+  const [modoCorreccion, setModoCorreccion] = useState(false)
+  const [corrections, setCorrections] = useState<Record<string, Partial<Record<Campo, string>>>>({})
+  const [correctionErrors, setCorrectionErrors] = useState<Record<string, string>>({})
+  const [correcting, setCorrecting] = useState(false)
 
   async function reload() {
     try { setRows(await getResumenProyecto(projectId)) } catch (err) { setError(err instanceof Error ? err.message : String(err)) }
@@ -128,6 +150,63 @@ export function ResumenProyectoTable({ projectId, area, puntos, refreshKey = 0 }
     setCellErrors({})
   }
 
+  function setCorrection(key: string, campo: Campo, v: string) {
+    setCorrections((prev) => ({ ...prev, [key]: { ...prev[key], [campo]: v } }))
+  }
+
+  const correccionesPendientes = rows
+    ? rows.flatMap((row) => {
+        const key = rowKey(row)
+        const byCampo = corrections[key]
+        if (!byCampo) return []
+        return (Object.keys(byCampo) as Campo[])
+          .filter((campo) => byCampo[campo] !== undefined && byCampo[campo] !== '' && Number(byCampo[campo]) !== row[campo])
+      })
+    : []
+  const hayCorreccionesPendientes = correccionesPendientes.length > 0
+
+  async function guardarCorrecciones() {
+    if (!rows) return
+    setCorrecting(true)
+    setError(null)
+    const nextCorrections: typeof corrections = {}
+    const nextErrors: Record<string, string> = {}
+    for (const row of rows) {
+      const key = rowKey(row)
+      const byCampo = corrections[key]
+      if (!byCampo) continue
+      for (const campo of Object.keys(byCampo) as Campo[]) {
+        const raw = byCampo[campo]
+        const dbCampo = CAMPO_DB[campo]
+        if (raw === undefined || raw === '' || !dbCampo) continue
+        const n = Number(raw)
+        if (n === row[campo]) continue // sin cambio real, no molestar con una llamada de más
+        if (!(n >= 0)) {
+          nextErrors[`${key}|${campo}`] = 'Cantidad inválida'
+          nextCorrections[key] = { ...nextCorrections[key], [campo]: raw }
+          continue
+        }
+        try {
+          await corregirProyectoMaterial({
+            projectId, materialId: row.materialId, lote: row.lote, puntoId: row.puntoId, campo: dbCampo, valor: n,
+          })
+        } catch (err) {
+          nextErrors[`${key}|${campo}`] = err instanceof Error ? err.message : String(err)
+          nextCorrections[key] = { ...nextCorrections[key], [campo]: raw }
+        }
+      }
+    }
+    setCorrections(nextCorrections)
+    setCorrectionErrors(nextErrors)
+    setCorrecting(false)
+    await reload()
+  }
+
+  function descartarCorrecciones() {
+    setCorrections({})
+    setCorrectionErrors({})
+  }
+
   function startReassign(row: ResumenMaterialProyecto) {
     setReassignKey(rowKey(row))
     setReassignCantidad(String(row.cantTransito))
@@ -159,7 +238,25 @@ export function ResumenProyectoTable({ projectId, area, puntos, refreshKey = 0 }
 
   return (
     <div className="bg-slate-800 rounded-2xl border border-slate-700 p-4 space-y-3">
-      <h2 className="text-xs font-semibold text-brand-400 uppercase tracking-wide">Material</h2>
+      <div className="flex items-center justify-between gap-2">
+        <h2 className="text-xs font-semibold text-brand-400 uppercase tracking-wide">Material</h2>
+        {puedeCorregir && rows && rows.length > 0 && (
+          <button type="button"
+            onClick={() => { setModoCorreccion((v) => !v); descartarCorrecciones() }}
+            className={`text-[10px] font-semibold px-2 py-1 rounded-lg ${modoCorreccion ? 'bg-amber-600 text-white' : 'text-amber-400 hover:bg-slate-700'}`}>
+            🔧 {modoCorreccion ? 'Salir de corrección' : 'Corregir errores de tipeo'}
+          </button>
+        )}
+      </div>
+      {modoCorreccion && (
+        <p className="text-[11px] text-amber-300 bg-amber-950/40 border border-amber-800/50 rounded-lg p-2">
+          Esto sobreescribe el número directo, sin registrar un movimiento ni tocar el stock físico/digital de la
+          bodega. Úsalo solo para arreglar un error de tipeo (ej. escribiste 15 en vez de 5) — si el número está mal
+          porque realmente se entregó/instaló/devolvió/rebajó una cantidad distinta, no lo corrijas acá: usa el "+"
+          normal o el formulario de abajo, así queda el movimiento real registrado. <strong>Solicitado</strong> no
+          se puede corregir así, porque no es un valor propio — se calcula sumando los movimientos de Solicitud.
+        </p>
+      )}
       {error && <p className="text-xs text-red-400">{error}</p>}
       {rows === null ? (
         <p className="text-xs text-slate-500">Cargando…</p>
@@ -185,6 +282,7 @@ export function ResumenProyectoTable({ projectId, area, puntos, refreshKey = 0 }
                 {rows.map((row) => {
                   const key = rowKey(row)
                   const draft = edits[key] ?? {}
+                  const correctionDraft = corrections[key] ?? {}
                   return (
                     <tr key={key} className="border-t border-slate-700 divide-x divide-slate-700 bg-slate-800/60">
                       <td className="px-2 py-2 text-slate-300 whitespace-nowrap">{row.materialSku}</td>
@@ -194,6 +292,21 @@ export function ResumenProyectoTable({ projectId, area, puntos, refreshKey = 0 }
                       </td>
                       {CAMPOS.map((campo) => {
                         const valor = row[campo]
+                        const esCorregible = modoCorreccion && CAMPO_DB[campo] !== undefined
+                        if (esCorregible) {
+                          const err = correctionErrors[`${key}|${campo}`]
+                          return (
+                            <td key={campo} className="px-2 py-2 text-center whitespace-nowrap align-top">
+                              <div className="flex items-center justify-center gap-1">
+                                <span className="text-slate-500 text-[10px]">=</span>
+                                <input type="number" min="0" step="any" value={correctionDraft[campo] ?? String(valor)}
+                                  onChange={(e) => setCorrection(key, campo, e.target.value)}
+                                  className="w-12 bg-amber-950/30 text-amber-200 text-xs rounded px-1 py-0.5 border border-amber-700/60 focus:border-amber-500 focus:outline-none text-center" />
+                              </div>
+                              {err && <p className="text-[9px] text-red-400 mt-0.5">{err}</p>}
+                            </td>
+                          )
+                        }
                         const err = cellErrors[`${key}|${campo}`]
                         return (
                           <td key={campo} className="px-2 py-2 text-center whitespace-nowrap align-top">
@@ -263,6 +376,20 @@ export function ResumenProyectoTable({ projectId, area, puntos, refreshKey = 0 }
                   {saving ? 'Guardando…' : `Guardar cambios (${pendientes.length})`}
                 </button>
                 <button type="button" disabled={saving} onClick={descartarCambios} className="text-xs text-slate-400">
+                  Descartar
+                </button>
+              </div>
+            </div>
+          )}
+
+          {hayCorreccionesPendientes && (
+            <div className="bg-amber-950/30 rounded-xl border border-dashed border-amber-800/60 p-3 space-y-2">
+              <div className="flex flex-wrap items-center gap-2">
+                <button type="button" disabled={correcting} onClick={guardarCorrecciones}
+                  className="text-xs font-semibold px-3 py-1.5 rounded-lg bg-amber-600 hover:bg-amber-700 text-white disabled:opacity-40">
+                  {correcting ? 'Guardando…' : `Guardar corrección (${correccionesPendientes.length})`}
+                </button>
+                <button type="button" disabled={correcting} onClick={descartarCorrecciones} className="text-xs text-slate-400">
                   Descartar
                 </button>
               </div>
