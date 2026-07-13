@@ -18,6 +18,7 @@ import type {
 } from '@/lib/inventario/types'
 import { parseArchivoXlsx, parseTextoPegado } from '@/lib/inventario/importarSap'
 import type { FilaImportSap } from '@/lib/inventario/importarSap'
+import { compareSku } from '@/lib/inventario/sku'
 
 type MainTab = 'movimientos' | 'bodega' | 'proyecto' | 'tecnico' | 'conteo'
 
@@ -171,17 +172,6 @@ const STOCK_COLUMNS: { key: StockColKey; label: string; numeric?: boolean; align
   { key: 'umbral', label: 'Umbral', numeric: true },
 ]
 
-/** SKU es texto en la BD pero se ve/ordena como número — un SKU con letras (no puramente numérico) siempre va al final, sin importar la dirección. */
-function compareSku(a: string, b: string, dir: 'asc' | 'desc'): number {
-  const na = /^\d+$/.test(a.trim()) ? Number(a) : null
-  const nb = /^\d+$/.test(b.trim()) ? Number(b) : null
-  if (na !== null && nb !== null) return dir === 'asc' ? na - nb : nb - na
-  if (na !== null) return -1
-  if (nb !== null) return 1
-  const cmp = a.localeCompare(b)
-  return dir === 'asc' ? cmp : -cmp
-}
-
 function stockColValue(r: StockRow, key: StockColKey): string | number {
   switch (key) {
     case 'sku': return r.materialSku
@@ -289,8 +279,6 @@ function BodegaTab() {
         <p className="text-xs text-slate-500">Cargando…</p>
       ) : rows && rows.length === 0 ? (
         <p className="text-xs text-slate-500">Sin stock registrado.</p>
-      ) : displayRows.length === 0 ? (
-        <p className="text-xs text-slate-500">Ningún resultado con los filtros de columna actuales.</p>
       ) : (
         <div className="overflow-x-auto rounded-xl border border-slate-700">
           <table className="w-full text-xs border-collapse">
@@ -326,6 +314,11 @@ function BodegaTab() {
               </tr>
             </thead>
             <tbody>
+              {displayRows.length === 0 && (
+                <tr><td colSpan={STOCK_COLUMNS.length} className="px-2 py-3 text-center text-slate-500">
+                  Ningún resultado con los filtros de columna actuales.
+                </td></tr>
+              )}
               {displayRows.map((r) => {
                 const negativo = r.cantidadFisico < 0
                 const bajoUmbral = !negativo && r.stockMinimo !== null && r.cantidadFisico <= r.stockMinimo
@@ -501,7 +494,7 @@ function ProyectoTab() {
               </option>
             ))}
           </select>
-          {projectId && <ResumenProyectoTable projectId={projectId} />}
+          {projectId && <ResumenProyectoTable projectId={projectId} area={proyectos.find((p) => p.id === projectId)?.area ?? 'ATT'} />}
         </>
       )}
     </div>

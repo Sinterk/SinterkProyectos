@@ -25,7 +25,7 @@ export function LogisticaTab({ projectId, projectOtt, area, puntos }: Props) {
   return (
     <div className="space-y-4">
       <EquipoSection projectId={projectId} />
-      <ResumenProyectoTable projectId={projectId} puntos={puntos} refreshKey={refreshKey} />
+      <ResumenProyectoTable projectId={projectId} area={area} puntos={puntos} refreshKey={refreshKey} />
       <RegistrarMovimientoForm
         fixedProject={{ id: projectId, ott: projectOtt, area }}
         puntos={puntos}

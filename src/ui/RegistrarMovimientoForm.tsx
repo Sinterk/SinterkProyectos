@@ -6,13 +6,16 @@
 // "Salida preventiva" sin proyecto); este componente solo arma el input y
 // muestra resultado por línea.
 
-import { useEffect, useState } from 'react'
+import { useEffect, useRef, useState } from 'react'
 import { nanoid } from '@/core/utils/nanoid'
 import { adminRepo } from '@/lib/adminRepo'
-import type { ProjectSummary } from '@/lib/adminRepo'
+import type { MemberProfile, ProjectSummary } from '@/lib/adminRepo'
 import type { Profile } from '@/lib/auth'
-import { listMateriales, registrarMovimiento } from '@/lib/inventario/inventarioRepo'
-import type { Material, MovimientoTipoUI } from '@/lib/inventario/types'
+import { BODEGA_DEFECTO_POR_AREA } from '@/lib/inventario/defaults'
+import { listMateriales, listUbicaciones, registrarMovimiento } from '@/lib/inventario/inventarioRepo'
+import type { Material, MovimientoTipoUI, Ubicacion } from '@/lib/inventario/types'
+import { LoteSelect } from './LoteSelect'
+import { MaterialSelect } from './MaterialSelect'
 import { UbicacionSelect } from './UbicacionSelect'
 
 const PREVENTIVA = '__preventiva__'
@@ -36,8 +39,8 @@ interface MaterialLinea {
   ubicacionBodegaId: string
 }
 
-function emptyLinea(): MaterialLinea {
-  return { localId: nanoid(8), materialId: '', cantidad: '', lote: '', ubicacionBodegaId: '' }
+function emptyLinea(ubicacionBodegaId = ''): MaterialLinea {
+  return { localId: nanoid(8), materialId: '', cantidad: '', lote: '', ubicacionBodegaId }
 }
 
 function todayISODate(): string {
@@ -62,6 +65,9 @@ export function RegistrarMovimientoForm({ fixedProject, puntos, lockTipoUI, onRe
   const [materiales, setMateriales] = useState<Material[]>([])
   const [proyectos, setProyectos] = useState<ProjectSummary[]>([])
   const [tecnicos, setTecnicos] = useState<Profile[]>([])
+  const [members, setMembers] = useState<MemberProfile[]>([])
+  const [bodegas, setBodegas] = useState<Ubicacion[]>([])
+  const [ubicacionesTecnico, setUbicacionesTecnico] = useState<Ubicacion[]>([])
   const [loadError, setLoadError] = useState<string | null>(null)
 
   // Datos — Entrada
@@ -83,24 +89,61 @@ export function RegistrarMovimientoForm({ fixedProject, puntos, lockTipoUI, onRe
 
   useEffect(() => {
     listMateriales().then(setMateriales).catch((err) => setLoadError(err instanceof Error ? err.message : String(err)))
-    adminRepo.listProfiles()
-      .then((all) => setTecnicos(all.filter((p) => p.activo && (p.rol === 'tecnico' || p.rol === 'log'))))
-      .catch(() => {})
-    if (!fixedProject) {
+    listUbicaciones({ tipo: 'bodega' }).then(setBodegas).catch(() => {})
+    listUbicaciones({ tipo: 'tecnico' }).then(setUbicacionesTecnico).catch(() => {})
+    if (fixedProject) {
+      adminRepo.listMembers(fixedProject.id)
+        .then((ms) => { setMembers(ms); setTecnicoUserId((prev) => prev || ms[0]?.id || '') })
+        .catch(() => {})
+    } else {
+      adminRepo.listProfiles()
+        .then((all) => setTecnicos(all.filter((p) => p.activo && (p.rol === 'tecnico' || p.rol === 'log'))))
+        .catch(() => {})
       adminRepo.listActiveProjects().then(setProyectos).catch(() => {})
     }
   }, [fixedProject])
+
+  // Bodega de origen/destino por defecto según el área del proyecto — se
+  // aplica una sola vez, apenas se resuelve el id real de la bodega, y solo
+  // a líneas que el usuario no haya tocado todavía.
+  const defaultBodegaNombre = fixedProject ? BODEGA_DEFECTO_POR_AREA[fixedProject.area] : null
+  const defaultBodegaId = defaultBodegaNombre ? bodegas.find((b) => b.nombre === defaultBodegaNombre)?.id ?? '' : ''
+  const appliedDefaultBodega = useRef(false)
+  useEffect(() => {
+    if (!appliedDefaultBodega.current && defaultBodegaId) {
+      appliedDefaultBodega.current = true
+      setLineas((prev) => prev.map((l) => (l.ubicacionBodegaId ? l : { ...l, ubicacionBodegaId: defaultBodegaId })))
+    }
+  }, [defaultBodegaId])
 
   const esEntrada = !lockTipoUI && !fixedProject && datosTipo === 'entrada'
   const requiereProyecto = !PROYECTO_OPCIONAL.includes(tipoUI)
   const proyectoIdEfectivo = fixedProject ? fixedProject.id : (projectSel === PREVENTIVA ? null : projectSel || null)
   const necesitaBodegaPorLinea = !esEntrada && NECESITA_BODEGA_POR_LINEA.includes(tipoUI)
+  const tecnicoOptions = fixedProject
+    ? members.map((m) => ({ id: m.id, label: m.nombre?.trim() || m.email || '' }))
+    : tecnicos.map((t) => ({ id: t.id, label: t.nombre?.trim() || t.email }))
+  const tecnicoUbicacionId = tecnicoUserId
+    ? ubicacionesTecnico.find((u) => u.ownerUserId === tecnicoUserId)?.id ?? null
+    : null
+
+  /** A qué ubicación mirar para "cantidad disponible" del selector de lote, según el tipo de movimiento. */
+  function loteContexto(l: MaterialLinea): { ubicacionId: string | null; naturaleza: 'fisico' | 'digital'; checkAvailability: boolean } {
+    if (esEntrada) return { ubicacionId: ubicacionEntradaId || null, naturaleza: 'fisico', checkAvailability: false }
+    switch (tipoUI) {
+      case 'entrega': return { ubicacionId: l.ubicacionBodegaId || null, naturaleza: 'fisico', checkAvailability: true }
+      case 'rebajado': return { ubicacionId: l.ubicacionBodegaId || null, naturaleza: 'digital', checkAvailability: true }
+      case 'devuelto': return { ubicacionId: tecnicoUbicacionId, naturaleza: 'fisico', checkAvailability: true }
+      case 'instalado': return { ubicacionId: tecnicoUbicacionId, naturaleza: 'fisico', checkAvailability: true }
+      default: return { ubicacionId: null, naturaleza: 'fisico', checkAvailability: false }
+    }
+  }
 
   function updateLinea(localId: string, patch: Partial<MaterialLinea>) {
     setLineas((prev) => prev.map((l) => (l.localId === localId ? { ...l, ...patch } : l)))
   }
   function addLinea() {
-    setLineas((prev) => [...prev, emptyLinea()])
+    setLineas((prev) => [...prev, emptyLinea(defaultBodegaId)])
   }
   function removeLinea(localId: string) {
     setLineas((prev) => (prev.length > 1 ? prev.filter((l) => l.localId !== localId) : prev))
@@ -159,7 +202,7 @@ export function RegistrarMovimientoForm({ fixedProject, puntos, lockTipoUI, onRe
     setResultados(nuevos)
     setSubmitting(false)
     if (restantes.length === 0) {
-      setLineas([emptyLinea()])
+      setLineas([emptyLinea(defaultBodegaId)])
       onRegistered?.()
     } else {
       setLineas(restantes)
@@ -231,7 +274,7 @@ export function RegistrarMovimientoForm({ fixedProject, puntos, lockTipoUI, onRe
               <span className={labelCls}>Técnico</span>
               <select value={tecnicoUserId} onChange={(e) => setTecnicoUserId(e.target.value)} className={`${inputCls} w-full`}>
                 <option value="">Elegir técnico…</option>
-                {tecnicos.map((t) => <option key={t.id} value={t.id}>{t.nombre?.trim() || t.email}</option>)}
+                {tecnicoOptions.map((t) => <option key={t.id} value={t.id}>{t.label}</option>)}
               </select>
             </label>
             {puntos && puntos.length > 0 && (
@@ -259,23 +302,23 @@ export function RegistrarMovimientoForm({ fixedProject, puntos, lockTipoUI, onRe
         <span className={labelCls}>Material</span>
         {lineas.map((l) => {
           const r = resultados[l.localId]
+          const ctx = loteContexto(l)
           return (
             <div key={l.localId} className="bg-slate-700/50 rounded-xl p-2 space-y-2">
               <div className="grid grid-cols-6 gap-1.5">
-                <select value={l.materialId} onChange={(e) => updateLinea(l.localId, { materialId: e.target.value })}
-                  className={`${inputCls} col-span-3`}>
-                  <option value="">Material…</option>
-                  {materiales.map((m) => <option key={m.id} value={m.id}>{m.sku} — {m.apodo || m.descripcion}</option>)}
-                </select>
+                <MaterialSelect materiales={materiales} value={l.materialId}
+                  onChange={(id) => updateLinea(l.localId, { materialId: id, lote: '' })}
+                  className="col-span-3" />
                 <input type="number" min="0" step="any" placeholder="Cant." value={l.cantidad}
                   onChange={(e) => updateLinea(l.localId, { cantidad: e.target.value })} className={`${inputCls} col-span-1`} />
-                <input placeholder="Lote" value={l.lote}
-                  onChange={(e) => updateLinea(l.localId, { lote: e.target.value })} className={`${inputCls} col-span-1`} />
+                <LoteSelect materialId={l.materialId} ubicacionId={ctx.ubicacionId} naturaleza={ctx.naturaleza}
+                  checkAvailability={ctx.checkAvailability} value={l.lote}
+                  onChange={(lote) => updateLinea(l.localId, { lote })} className={`${inputCls} col-span-1`} />
                 <button type="button" onClick={() => removeLinea(l.localId)} disabled={lineas.length === 1}
                   className="col-span-1 text-xs text-red-400 disabled:opacity-30">Quitar</button>
               </div>
               {necesitaBodegaPorLinea && (
-                <UbicacionSelect value={l.ubicacionBodegaId} onChange={(id) => updateLinea(l.localId, { ubicacionBodegaId: id })}
+                <UbicacionSelect value={l.ubicacionBodegaId} onChange={(id) => updateLinea(l.localId, { ubicacionBodegaId: id, lote: '' })}
                   tipo="bodega" placeholder={`Bodega de ${tipoUI === 'devuelto' ? 'destino' : 'origen'}…`}
                   className={`${inputCls} w-full`} />
               )}
