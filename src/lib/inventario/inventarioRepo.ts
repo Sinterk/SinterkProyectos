@@ -529,6 +529,12 @@ export async function cerrarConteo(conteoId: string): Promise<void> {
   if (error) throw new Error(`cerrar_conteo: ${error.message}`)
 }
 
+/** Solo válido para un conteo abierto — uno cerrado ya ajustó stock. */
+export async function descartarConteo(conteoId: string): Promise<void> {
+  const { error } = await supabase.rpc('descartar_conteo', { p_conteo_id: conteoId })
+  if (error) throw new Error(`descartar_conteo: ${error.message}`)
+}
+
 interface EventoJoinRow {
   id: string
   conteo_linea_id: string | null

@@ -8,7 +8,7 @@ import { UbicacionSelect } from '@/ui/UbicacionSelect'
 import { useFileDrop } from '@/ui/useFileDrop'
 import {
   getStock, getTecnicoLedger, listMovimientos, listMateriales, listUbicaciones, updateMaterialStockMinimo,
-  listConteos, getConteoLineas, abrirConteo, agregarLineaConteo, actualizarLineaConteo, cerrarConteo,
+  listConteos, getConteoLineas, abrirConteo, agregarLineaConteo, actualizarLineaConteo, cerrarConteo, descartarConteo,
   listEventosInventario, resolverEventoInventario, importarFilasSapAConteo,
 } from '@/lib/inventario/inventarioRepo'
 import type { ListMovimientosFilters, ImportarSapResultado } from '@/lib/inventario/inventarioRepo'
@@ -194,7 +194,8 @@ function BodegaTab() {
         <div className="overflow-x-auto rounded-xl border border-slate-700">
           <table className="w-full text-xs border-collapse">
             <thead>
-              <tr className="bg-slate-800 text-slate-400 text-left">
+              <tr className="bg-slate-800 text-slate-400 text-left divide-x divide-slate-700">
+                <th className="px-2 py-2 font-medium whitespace-nowrap">SKU</th>
                 <th className="px-2 py-2 font-medium whitespace-nowrap">Material</th>
                 <th className="px-2 py-2 font-medium whitespace-nowrap">Bodega</th>
                 <th className="px-2 py-2 font-medium whitespace-nowrap">Lote</th>
@@ -209,9 +210,10 @@ function BodegaTab() {
                 const bajoUmbral = !negativo && r.stockMinimo !== null && r.cantidadFisico <= r.stockMinimo
                 return (
                   <tr key={`${r.ubicacionId}|${r.materialId}|${r.lote}`}
-                    className={`border-t border-slate-700 ${negativo ? 'bg-red-950/30' : bajoUmbral ? 'bg-amber-950/20' : 'bg-slate-800/60'}`}>
+                    className={`border-t border-slate-700 divide-x divide-slate-700 ${negativo ? 'bg-red-950/30' : bajoUmbral ? 'bg-amber-950/20' : 'bg-slate-800/60'}`}>
+                    <td className="px-2 py-2 text-slate-300 whitespace-nowrap">{r.materialSku}</td>
                     <td className="px-2 py-2 max-w-[220px]">
-                      <p className="text-white truncate">{r.materialSku} — {r.materialDescripcion}</p>
+                      <p className="text-white truncate">{r.materialDescripcion}</p>
                       {negativo && <p className="text-[10px] text-red-400">⚠ Descuadre — revisar</p>}
                       {bajoUmbral && <p className="text-[10px] text-amber-400">Renovar</p>}
                     </td>
@@ -548,6 +550,7 @@ function ConteoDetail({ conteoId, onBack }: { conteoId: string; onBack: () => vo
   const [lineas, setLineas] = useState<ConteoLinea[] | null>(null)
   const [error, setError] = useState<string | null>(null)
   const [closing, setClosing] = useState(false)
+  const [discarding, setDiscarding] = useState(false)
 
   async function reload() {
     try {
@@ -584,6 +587,20 @@ function ConteoDetail({ conteoId, onBack }: { conteoId: string; onBack: () => vo
     }
   }
 
+  async function descartar() {
+    if (!confirm('¿Descartar este conteo? No se aplicará ningún ajuste de stock y no se puede deshacer.')) return
+    setDiscarding(true)
+    setError(null)
+    try {
+      await descartarConteo(conteoId)
+      onBack()
+    } catch (err) {
+      setError(err instanceof Error ? err.message : String(err))
+    } finally {
+      setDiscarding(false)
+    }
+  }
+
   const abierto = conteo?.estado === 'abierto'
 
   return (
@@ -609,7 +626,7 @@ function ConteoDetail({ conteoId, onBack }: { conteoId: string; onBack: () => vo
             ))}
           </div>
 
-          {abierto && conteo.naturaleza === 'digital' && (
+          {abierto && (
             <ImportarSapSection conteoId={conteoId} onImported={reload} onImportingChange={setImportando} />
           )}
 
@@ -620,9 +637,13 @@ function ConteoDetail({ conteoId, onBack }: { conteoId: string; onBack: () => vo
               {hayPendientes && (
                 <p className="text-[11px] text-amber-400 text-center">Hay cantidades sin guardar — toca fuera del campo para guardarlas.</p>
               )}
-              <button type="button" onClick={cerrar} disabled={closing || hayPendientes}
+              <button type="button" onClick={cerrar} disabled={closing || discarding || hayPendientes}
                 className="w-full text-sm font-semibold py-2 rounded-xl bg-brand-600 hover:bg-brand-700 disabled:opacity-40 text-white">
                 {closing ? 'Cerrando…' : 'Cerrar conteo'}
+              </button>
+              <button type="button" onClick={descartar} disabled={closing || discarding}
+                className="w-full text-xs font-semibold py-1.5 rounded-xl border border-red-800 text-red-400 hover:bg-red-950/40 disabled:opacity-40">
+                {discarding ? 'Descartando…' : 'Descartar conteo'}
               </button>
             </>
           ) : (
