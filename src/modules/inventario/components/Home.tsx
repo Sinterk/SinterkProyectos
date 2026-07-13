@@ -194,6 +194,28 @@ function stockColValue(r: StockRow, key: StockColKey): string | number {
   }
 }
 
+const SIN_UMBRAL = 'Sin definir'
+
+/** Representación en texto de la celda, para el checklist de filtro (por eso umbral null se ve como "Sin definir", no como -Infinity). */
+function stockColDisplayValue(r: StockRow, key: StockColKey): string {
+  if (key === 'umbral') return r.stockMinimo === null ? SIN_UMBRAL : String(r.stockMinimo)
+  const v = stockColValue(r, key)
+  return String(v)
+}
+
+function sortColumnValues(key: StockColKey, values: string[]): string[] {
+  if (key === 'sku') return [...values].sort((a, b) => compareSku(a, b, 'asc'))
+  if (key === 'fisico' || key === 'digital') return [...values].sort((a, b) => Number(a) - Number(b))
+  if (key === 'umbral') {
+    return [...values].sort((a, b) => {
+      if (a === SIN_UMBRAL) return 1
+      if (b === SIN_UMBRAL) return -1
+      return Number(a) - Number(b)
+    })
+  }
+  return [...values].sort((a, b) => a.localeCompare(b))
+}
+
 function BodegaTab() {
   const [bodegas, setBodegas] = useState<Ubicacion[]>([])
   const [ubicacionId, setUbicacionId] = useState('')
@@ -204,11 +226,9 @@ function BodegaTab() {
   // Orden por defecto: Bodega, luego SKU, luego Lote. Un clic en una columna
   // reemplaza esto por un orden simple (una sola columna), como en Excel.
   const [sort, setSort] = useState<{ key: StockColKey; dir: 'asc' | 'desc' } | null>(null)
-  const [colFilters, setColFilters] = useState<Partial<Record<StockColKey, string>>>({})
-  // Filtro tipo Google Sheets (lista de valores con checkbox) — por ahora solo Bodega,
-  // que tiene un set chico de valores; el resto sigue con filtro de texto libre.
-  // undefined = sin filtro (todo seleccionado); un Set vacío = nada seleccionado.
-  const [bodegaSelected, setBodegaSelected] = useState<Set<string> | undefined>(undefined)
+  // Filtro tipo Google Sheets (lista de valores con checkbox) en cada columna.
+  // Sin entrada para una columna = sin filtro (todo seleccionado); un Set vacío = nada seleccionado.
+  const [colSelected, setColSelected] = useState<Partial<Record<StockColKey, Set<string>>>>({})
   const [openMenu, setOpenMenu] = useState<StockColKey | null>(null)
 
   useEffect(() => { listUbicaciones({ tipo: 'bodega' }).then(setBodegas).catch(() => {}) }, [])
@@ -219,20 +239,22 @@ function BodegaTab() {
   }
   useEffect(() => { reload() /* eslint-disable-next-line react-hooks/exhaustive-deps */ }, [ubicacionId, search])
 
-  const bodegaValues = useMemo(
-    () => [...new Set((rows ?? []).map((r) => r.ubicacionNombre))].sort((a, b) => a.localeCompare(b)),
-    [rows],
-  )
+  const valuesByColumn = useMemo(() => {
+    const result = {} as Record<StockColKey, string[]>
+    for (const col of STOCK_COLUMNS) {
+      result[col.key] = sortColumnValues(col.key, [...new Set((rows ?? []).map((r) => stockColDisplayValue(r, col.key)))])
+    }
+    return result
+  }, [rows])
 
   const displayRows = useMemo(() => {
     if (!rows) return null
     let out = rows
-    for (const key of Object.keys(colFilters) as StockColKey[]) {
-      const q = colFilters[key]?.trim().toLowerCase()
-      if (!q) continue
-      out = out.filter((r) => String(stockColValue(r, key)).toLowerCase().includes(q))
+    for (const key of Object.keys(colSelected) as StockColKey[]) {
+      const set = colSelected[key]
+      if (!set) continue
+      out = out.filter((r) => set.has(stockColDisplayValue(r, key)))
     }
-    if (bodegaSelected) out = out.filter((r) => bodegaSelected.has(r.ubicacionNombre))
     const sorted = [...out]
     if (sort) {
       sorted.sort((a, b) => {
@@ -249,7 +271,7 @@ function BodegaTab() {
         || a.lote.localeCompare(b.lote))
     }
     return sorted
-  }, [rows, colFilters, bodegaSelected, sort])
+  }, [rows, colSelected, sort])
 
   return (
     <div className="space-y-3">
@@ -274,24 +296,33 @@ function BodegaTab() {
           <table className="w-full text-xs border-collapse">
             <thead>
               <tr className="bg-slate-800 text-slate-400 text-left divide-x divide-slate-700">
-                {STOCK_COLUMNS.map((col) => (
-                  <StockColumnHeader key={col.key} col={col}
-                    sort={sort} onSort={(dir) => { setSort(dir ? { key: col.key, dir } : null); setOpenMenu(null) }}
-                    filterValue={colFilters[col.key] ?? ''}
-                    onFilterChange={(v) => setColFilters((prev) => ({ ...prev, [col.key]: v }))}
-                    checklist={col.key === 'bodega' ? {
-                      values: bodegaValues,
-                      selected: bodegaSelected ?? null,
-                      onToggleValue: (v) => setBodegaSelected((prev) => {
-                        const current = new Set(prev ?? bodegaValues)
-                        if (current.has(v)) current.delete(v); else current.add(v)
-                        return current.size === bodegaValues.length ? undefined : current
-                      }),
-                      onSelectAll: () => setBodegaSelected(undefined),
-                      onSelectNone: () => setBodegaSelected(new Set()),
-                    } : undefined}
-                    open={openMenu === col.key} onToggle={() => setOpenMenu((k) => (k === col.key ? null : col.key))} />
-                ))}
+                {STOCK_COLUMNS.map((col) => {
+                  const colValues = valuesByColumn[col.key]
+                  const colSelectedSet = colSelected[col.key]
+                  return (
+                    <StockColumnHeader key={col.key} col={col}
+                      sort={sort} onSort={(dir) => { setSort(dir ? { key: col.key, dir } : null); setOpenMenu(null) }}
+                      checklist={{
+                        values: colValues,
+                        selected: colSelectedSet ?? null,
+                        onToggleValue: (v) => setColSelected((prev) => {
+                          const current = new Set(prev[col.key] ?? colValues)
+                          if (current.has(v)) current.delete(v); else current.add(v)
+                          const next = { ...prev }
+                          if (current.size === colValues.length) delete next[col.key]
+                          else next[col.key] = current
+                          return next
+                        }),
+                        onSelectAll: () => setColSelected((prev) => {
+                          const next = { ...prev }
+                          delete next[col.key]
+                          return next
+                        }),
+                        onSelectNone: () => setColSelected((prev) => ({ ...prev, [col.key]: new Set() })),
+                      }}
+                      open={openMenu === col.key} onToggle={() => setOpenMenu((k) => (k === col.key ? null : col.key))} />
+                  )
+                })}
               </tr>
             </thead>
             <tbody>
@@ -337,24 +368,27 @@ interface StockChecklistFilter {
   onSelectNone: () => void
 }
 
-function StockColumnHeader({ col, sort, onSort, filterValue, onFilterChange, checklist, open, onToggle }: {
+function StockColumnHeader({ col, sort, onSort, checklist, open, onToggle }: {
   col: { key: StockColKey; label: string; numeric?: boolean; align?: 'right' }
   sort: { key: StockColKey; dir: 'asc' | 'desc' } | null
   onSort: (dir: 'asc' | 'desc' | null) => void
-  filterValue: string
-  onFilterChange: (v: string) => void
-  checklist?: StockChecklistFilter
+  checklist: StockChecklistFilter
   open: boolean
   onToggle: () => void
 }) {
   const active = sort?.key === col.key
-  const hasFilter = checklist ? checklist.selected !== null : filterValue.trim() !== ''
+  const hasFilter = checklist.selected !== null
+  const [search, setSearch] = useState('')
+
+  // El buscador solo tiene sentido si hay bastantes valores para hacer scroll (SKU/Material/Lote).
+  const q = search.trim().toLowerCase()
+  const visibleValues = q ? checklist.values.filter((v) => v.toLowerCase().includes(q)) : checklist.values
 
   return (
     <th className={`px-2 py-2 font-medium whitespace-nowrap relative ${col.align === 'right' ? 'text-right' : 'text-left'}`}>
       <div className={`flex items-center gap-1 ${col.align === 'right' ? 'justify-end' : ''}`}>
         <span>{col.label}</span>
-        <button type="button" onClick={onToggle}
+        <button type="button" onClick={() => { setSearch(''); onToggle() }}
           className={`text-[10px] leading-none rounded px-1 py-0.5 ${active || hasFilter ? 'text-brand-400' : 'text-slate-500 hover:text-slate-300'}`}>
           {active ? (sort!.dir === 'asc' ? '▲' : '▼') : '▾'}
         </button>
@@ -377,32 +411,30 @@ function StockColumnHeader({ col, sort, onSort, filterValue, onFilterChange, che
                 ✕ Quitar orden
               </button>
             )}
-            {checklist ? (
-              <div className="border-t border-slate-700 pt-1.5 space-y-1">
-                <div className="flex justify-between px-0.5">
-                  <button type="button" onClick={checklist.onSelectAll}
-                    className="text-[10px] text-brand-400 hover:text-brand-300 font-semibold">Todo</button>
-                  <button type="button" onClick={checklist.onSelectNone}
-                    className="text-[10px] text-brand-400 hover:text-brand-300 font-semibold">Ninguno</button>
-                </div>
-                <div className="max-h-40 overflow-y-auto space-y-0.5">
-                  {checklist.values.map((v) => (
-                    <label key={v}
-                      className="flex items-center gap-1.5 text-[11px] text-slate-200 px-1 py-0.5 rounded hover:bg-slate-700 cursor-pointer">
-                      <input type="checkbox" checked={checklist.selected === null || checklist.selected.has(v)}
-                        onChange={() => checklist.onToggleValue(v)} className="accent-brand-600" />
-                      <span className="truncate">{v}</span>
-                    </label>
-                  ))}
-                </div>
-              </div>
-            ) : (
-              <div className="border-t border-slate-700 pt-1.5">
-                <input value={filterValue} onChange={(e) => onFilterChange(e.target.value)} placeholder="Filtrar…" autoFocus
+            <div className="border-t border-slate-700 pt-1.5 space-y-1">
+              {checklist.values.length > 8 && (
+                <input value={search} onChange={(e) => setSearch(e.target.value)} placeholder="Buscar…" autoFocus
                   onClick={(e) => e.stopPropagation()}
                   className="w-full bg-slate-700 text-white text-[11px] rounded px-2 py-1 border border-slate-600 focus:border-brand-500 focus:outline-none" />
+              )}
+              <div className="flex justify-between px-0.5">
+                <button type="button" onClick={checklist.onSelectAll}
+                  className="text-[10px] text-brand-400 hover:text-brand-300 font-semibold">Todo</button>
+                <button type="button" onClick={checklist.onSelectNone}
+                  className="text-[10px] text-brand-400 hover:text-brand-300 font-semibold">Ninguno</button>
               </div>
-            )}
+              <div className="max-h-40 overflow-y-auto space-y-0.5">
+                {visibleValues.length === 0 && <p className="text-[11px] text-slate-500 px-1 py-0.5">Sin coincidencias.</p>}
+                {visibleValues.map((v) => (
+                  <label key={v}
+                    className="flex items-center gap-1.5 text-[11px] text-slate-200 px-1 py-0.5 rounded hover:bg-slate-700 cursor-pointer">
+                    <input type="checkbox" checked={checklist.selected === null || checklist.selected.has(v)}
+                      onChange={() => checklist.onToggleValue(v)} className="accent-brand-600" />
+                    <span className="truncate">{v}</span>
+                  </label>
+                ))}
+              </div>
+            </div>
           </div>
         </>
       )}
