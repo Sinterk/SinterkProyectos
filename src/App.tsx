@@ -3,6 +3,8 @@ import { Routes, Route } from 'react-router-dom'
 import { registry } from '@/core/registry/projectRegistry'
 import { Layout } from '@/ui/Layout'
 import { ProjectHome } from '@/ui/ProjectHome'
+import { AsignacionesScreen } from '@/ui/AsignacionesScreen'
+import { InventarioTecnicoScreen } from '@/ui/InventarioTecnicoScreen'
 import { LoginScreen } from '@/ui/LoginScreen'
 import { AdminScreen } from '@/ui/AdminScreen'
 import { useAuth } from '@/lib/auth'
@@ -14,6 +16,13 @@ import '@/modules/inventario'
 export function App() {
   const modules = registry.getAll()
   const { session, profile, loading, init, signOut } = useAuth()
+  const isTecnico = profile?.rol === 'tecnico'
+  // Rol técnico: menú simplificado (Asignaciones/Inventario propio) — se ocultan
+  // las pantallas "Inicio" de los módulos (crear/listar todo, ver stock global);
+  // los editores (:id) siguen registrados, se llega a ellos desde Asignaciones.
+  const moduleRoutes = isTecnico
+    ? modules.flatMap((mod) => mod.routes.filter((r) => r.label !== 'Inicio'))
+    : modules.flatMap((mod) => mod.routes)
 
   useEffect(() => { init() }, [init])
 
@@ -43,18 +52,19 @@ export function App() {
     )
   }
 
+  const Home = isTecnico ? AsignacionesScreen : ProjectHome
+
   return (
     <Layout>
       <Routes>
-        <Route path="/" element={<ProjectHome />} />
+        <Route path="/" element={<Home />} />
         <Route path="/admin" element={<AdminScreen />} />
-        {modules.flatMap((mod) =>
-          mod.routes.map((route) => {
-            const Component = route.component
-            return <Route key={route.path} path={route.path} element={<Component />} />
-          }),
-        )}
-        <Route path="*" element={<ProjectHome />} />
+        {isTecnico && <Route path="/mi-inventario" element={<InventarioTecnicoScreen />} />}
+        {moduleRoutes.map((route) => {
+          const Component = route.component
+          return <Route key={route.path} path={route.path} element={<Component />} />
+        })}
+        <Route path="*" element={<Home />} />
       </Routes>
     </Layout>
   )

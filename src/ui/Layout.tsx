@@ -1,5 +1,6 @@
 import { NavLink, useLocation } from 'react-router-dom'
 import { registry } from '@/core/registry/projectRegistry'
+import { useAuth } from '@/lib/auth'
 import { UserMenu } from './UserMenu'
 import { OfflineBanner } from './OfflineBanner'
 
@@ -15,9 +16,12 @@ const buildStamp = (() => {
 export function Layout({ children }: Props) {
   const modules = registry.getAll()
   const { pathname } = useLocation()
+  const isTecnico = useAuth((s) => s.profile?.rol === 'tecnico')
 
   // Nav solo visible en pantallas de inicio, no en editores (/preventivos/:id, /att/:id, etc.)
-  const homeScreens = ['/', '/admin', ...modules.map((m) => m.indexPath)]
+  const homeScreens = isTecnico
+    ? ['/', '/admin', '/mi-inventario']
+    : ['/', '/admin', ...modules.map((m) => m.indexPath)]
   const showNav = homeScreens.includes(pathname)
 
   return (
@@ -36,18 +40,35 @@ export function Layout({ children }: Props) {
       <main className="flex-1 overflow-y-auto px-4 py-4">{children}</main>
       {showNav && (
         <nav className="bg-slate-900 border-t border-slate-800 flex sticky bottom-0 z-30">
-          <NavLink to="/" end
-            className={({ isActive }) => `flex-1 flex flex-col items-center py-2 text-[11px] font-medium transition-colors ${isActive ? 'text-brand-400' : 'text-slate-500 hover:text-slate-300'}`}>
-            <span className="text-xl mb-0.5">🏠</span>
-            Inicio
-          </NavLink>
-          {modules.map((mod) => (
-            <NavLink key={mod.id} to={mod.indexPath}
-              className={({ isActive }) => `flex-1 flex flex-col items-center py-2 text-[11px] font-medium transition-colors ${isActive ? 'text-brand-400' : 'text-slate-500 hover:text-slate-300'}`}>
-              <span className="text-xl mb-0.5">{mod.icon}</span>
-              {mod.name}
-            </NavLink>
-          ))}
+          {isTecnico ? (
+            <>
+              <NavLink to="/" end
+                className={({ isActive }) => `flex-1 flex flex-col items-center py-2 text-[11px] font-medium transition-colors ${isActive ? 'text-brand-400' : 'text-slate-500 hover:text-slate-300'}`}>
+                <span className="text-xl mb-0.5">📋</span>
+                Asignaciones
+              </NavLink>
+              <NavLink to="/mi-inventario"
+                className={({ isActive }) => `flex-1 flex flex-col items-center py-2 text-[11px] font-medium transition-colors ${isActive ? 'text-brand-400' : 'text-slate-500 hover:text-slate-300'}`}>
+                <span className="text-xl mb-0.5">📦</span>
+                Inventario
+              </NavLink>
+            </>
+          ) : (
+            <>
+              <NavLink to="/" end
+                className={({ isActive }) => `flex-1 flex flex-col items-center py-2 text-[11px] font-medium transition-colors ${isActive ? 'text-brand-400' : 'text-slate-500 hover:text-slate-300'}`}>
+                <span className="text-xl mb-0.5">🏠</span>
+                Inicio
+              </NavLink>
+              {modules.map((mod) => (
+                <NavLink key={mod.id} to={mod.indexPath}
+                  className={({ isActive }) => `flex-1 flex flex-col items-center py-2 text-[11px] font-medium transition-colors ${isActive ? 'text-brand-400' : 'text-slate-500 hover:text-slate-300'}`}>
+                  <span className="text-xl mb-0.5">{mod.icon}</span>
+                  {mod.name}
+                </NavLink>
+              ))}
+            </>
+          )}
         </nav>
       )}
     </div>
