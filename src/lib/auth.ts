@@ -37,19 +37,35 @@ export const guestEnabled = !!GUEST_EMAIL && !!GUEST_PASSWORD
  */
 export const guestPassword = GUEST_PASSWORD
 
-function computeIsGuest(session: Session | null): boolean {
-  if (!session || !GUEST_EMAIL) return false
-  return session.user.email?.toLowerCase() === GUEST_EMAIL.toLowerCase()
+// Segunda cuenta compartida, rol técnico — SOLO para probar el flujo con ese rol
+// mientras no existen técnicos reales. TEMPORAL: eliminar (código + credenciales
+// + cuenta en Supabase) junto con el resto de datos de prueba antes del cutover.
+const GUEST_TECNICO_EMAIL = (import.meta.env.VITE_GUEST_TECNICO_EMAIL ?? '').trim()
+const GUEST_TECNICO_PASSWORD = import.meta.env.VITE_GUEST_TECNICO_PASSWORD ?? ''
+
+export const guestTecnicoEnabled = !!GUEST_TECNICO_EMAIL && !!GUEST_TECNICO_PASSWORD
+export const guestTecnicoPassword = GUEST_TECNICO_PASSWORD
+
+export type GuestKind = 'jp' | 'tecnico' | null
+
+function computeGuestKind(session: Session | null): GuestKind {
+  const email = session?.user.email?.toLowerCase()
+  if (!email) return null
+  if (GUEST_EMAIL && email === GUEST_EMAIL.toLowerCase()) return 'jp'
+  if (GUEST_TECNICO_EMAIL && email === GUEST_TECNICO_EMAIL.toLowerCase()) return 'tecnico'
+  return null
 }
 
 interface AuthState {
   session: Session | null
   profile: Profile | null
-  isGuest: boolean          // sesión abierta con la cuenta compartida de invitado
+  isGuest: boolean          // sesión abierta con alguna cuenta compartida de invitado (jp o técnico)
+  guestKind: GuestKind      // cuál de las dos cuentas de invitado, si aplica
   loading: boolean          // true mientras se resuelve la sesión inicial
   init: () => void
   signIn: (email: string, password: string) => Promise<{ error?: string }>
   signInAsGuest: () => Promise<{ error?: string }>
+  signInAsGuestTecnico: () => Promise<{ error?: string }>
   changePassword: (current: string, next: string) => Promise<{ error?: string }>
   signOut: () => Promise<void>
 }
@@ -73,6 +89,7 @@ export const useAuth = create<AuthState>((set, get) => ({
   session: null,
   profile: null,
   isGuest: false,
+  guestKind: null,
   loading: true,
 
   init: () => {
@@ -82,12 +99,14 @@ export const useAuth = create<AuthState>((set, get) => ({
     supabase.auth.getSession().then(async ({ data }) => {
       const session = data.session
       const profile = session ? await fetchProfile(session.user.id) : null
-      set({ session, profile, isGuest: computeIsGuest(session), loading: false })
+      const guestKind = computeGuestKind(session)
+      set({ session, profile, isGuest: guestKind !== null, guestKind, loading: false })
     })
 
     supabase.auth.onAuthStateChange(async (_event, session) => {
       const profile = session ? await fetchProfile(session.user.id) : null
-      set({ session, profile, isGuest: computeIsGuest(session), loading: false })
+      const guestKind = computeGuestKind(session)
+      set({ session, profile, isGuest: guestKind !== null, guestKind, loading: false })
     })
   },
 
@@ -108,6 +127,15 @@ export const useAuth = create<AuthState>((set, get) => ({
     return { error: error?.message }
   },
 
+  signInAsGuestTecnico: async () => {
+    if (!guestTecnicoEnabled) return { error: 'El modo invitado técnico no está configurado.' }
+    const { error } = await supabase.auth.signInWithPassword({
+      email: GUEST_TECNICO_EMAIL,
+      password: GUEST_TECNICO_PASSWORD,
+    })
+    return { error: error?.message }
+  },
+
   changePassword: async (current, next) => {
     if (get().isGuest) {
       return { error: 'La contraseña del invitado se gestiona en el .env, no aquí.' }
@@ -124,6 +152,6 @@ export const useAuth = create<AuthState>((set, get) => ({
 
   signOut: async () => {
     await supabase.auth.signOut()
-    set({ session: null, profile: null, isGuest: false })
+    set({ session: null, profile: null, isGuest: false, guestKind: null })
   },
 }))

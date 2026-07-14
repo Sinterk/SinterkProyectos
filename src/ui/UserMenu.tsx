@@ -1,9 +1,9 @@
 import { useEffect, useRef, useState } from 'react'
 import { Link } from 'react-router-dom'
-import { useAuth, guestPassword, ROL_LABELS } from '@/lib/auth'
+import { useAuth, guestPassword, guestTecnicoPassword, ROL_LABELS } from '@/lib/auth'
 
 export function UserMenu() {
-  const { session, profile, isGuest, changePassword, signOut } = useAuth()
+  const { session, profile, isGuest, guestKind, changePassword, signOut } = useAuth()
   const [open, setOpen] = useState(false)
   const ref = useRef<HTMLDivElement>(null)
 
@@ -21,7 +21,8 @@ export function UserMenu() {
 
   const email = profile?.email ?? session.user.email ?? '—'
   const rolLabel = profile ? ROL_LABELS[profile.rol] : '—'
-  const nombre = profile?.nombre?.trim() || (isGuest ? 'Invitado' : email)
+  const guestLabel = guestKind === 'tecnico' ? 'Invitado técnico' : 'Invitado'
+  const nombre = profile?.nombre?.trim() || (isGuest ? guestLabel : email)
 
   return (
     <div className="relative shrink-0" ref={ref}>
@@ -33,7 +34,7 @@ export function UserMenu() {
             : 'text-slate-200 bg-slate-800 border-slate-700 hover:bg-slate-700'
         }`}
       >
-        <span>{isGuest ? '👤 Invitado' : `👤 ${nombre}`}</span>
+        <span>{isGuest ? `👤 ${guestLabel}` : `👤 ${nombre}`}</span>
         <span className="text-[9px] opacity-70">▼</span>
       </button>
 
@@ -54,7 +55,7 @@ export function UserMenu() {
           )}
 
           {isGuest ? (
-            <GuestPasswordRow />
+            <GuestPasswordRow password={guestKind === 'tecnico' ? guestTecnicoPassword : guestPassword} />
           ) : (
             <ChangePasswordRow changePassword={changePassword} />
           )}
@@ -72,7 +73,7 @@ export function UserMenu() {
 }
 
 /** Invitado: la contraseña está en el bundle; se puede mostrar. No se cambia aquí. */
-function GuestPasswordRow() {
+function GuestPasswordRow({ password }: { password: string }) {
   const [show, setShow] = useState(false)
   return (
     <div className="px-4 py-3 border-b border-slate-700 space-y-2">
@@ -87,7 +88,7 @@ function GuestPasswordRow() {
       </div>
       {show && (
         <p className="text-sm font-mono text-white bg-slate-900 rounded-lg px-3 py-2 break-all">
-          {guestPassword}
+          {password}
         </p>
       )}
       <p className="text-[11px] text-slate-500">
