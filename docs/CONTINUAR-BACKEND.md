@@ -156,6 +156,9 @@ npm run dev   # sin certs mkcert corre en http://localhost:5173
     - Vista "Material asignado" para el rol técnico en su propia Home (ver nota del paso 5).
     - Probar el flujo completo de Logística/Conteo con un usuario técnico/log real (hoy solo existen admin+jp en el proyecto Supabase compartido); crear cuentas de técnicos de cara al cutover a `main`.
     - El catálogo de materiales real ya se está cargando (import SAP) y ya hay bodegas C088/C103/C132 con stock físico real cargado — la app ya no está "vacía".
+16. **Panel de KPIs operacionales** — guinda de la torta, **al final**: solo después de que todo lo demás esté implementado, probado y en producción (cutover a `main` hecho). No es bloqueante para nada de lo anterior.
+    - **KPIs propuestos** (todos calculables con el esquema ya existente, sin modelado nuevo): exactitud de inventario (% conteos cerrados sin diferencia vs. con `eventos_inventario` abierto), descuadres activos (SKUs en negativo o bajo `stock_minimo` ahora mismo), ciclo de proyecto (promedio `created_at`→`fecha_cierre` por proyecto/área), consumo vs. plan (instalado/rebajado vs. entregado, ya vive en `proyecto_materiales`), actividad por técnico (de `getTecnicoLedger`, ya existe).
+    - **Cómo construirlo**: como vista/RPC en Postgres, no agregación en el cliente — con RLS activa, agregar en el cliente después de traer todo podría filtrar tarde y exponer de más a un `tecnico`; una vista SQL respeta RLS fila por fila. UI: pestaña nueva tipo "Panel", tarjetas numéricas + 1-2 gráficos simples, visible para jp/admin (y log si aplica).
 
 ## Verificar conexión (PowerShell)
 ```powershell
