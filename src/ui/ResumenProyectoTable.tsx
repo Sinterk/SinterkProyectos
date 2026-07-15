@@ -386,7 +386,7 @@ export function ResumenProyectoTable({ projectId, area, puntos, refreshKey = 0 }
                         {errMaterial && <p className="text-[9px] text-red-400 mt-0.5">{errMaterial}</p>}
                       </td>
                       <td className="px-2 py-2 align-top space-y-1">
-                        <LoteSelect materialId={fila.materialId} ubicacionId={null} naturaleza="fisico"
+                        <LoteSelect materialId={fila.materialId} ubicacionId={bodegaEdicion || null} naturaleza="fisico"
                           checkAvailability={false} value={fila.lote}
                           onChange={(lote) => actualizarFilaNueva(fila.localId, { lote })}
                           className="w-24 bg-slate-700 text-white text-xs rounded px-1.5 py-1 border border-slate-600 focus:border-brand-500 focus:outline-none" />
