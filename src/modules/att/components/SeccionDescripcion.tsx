@@ -6,14 +6,12 @@ import { useFileDrop } from '@/ui/useFileDrop'
 interface Props {
   recordId: string
   processFotoAerea: (file: File) => Promise<void>
-  /** Rol técnico: solo puede agregar/quitar la foto general, no tocar tramos/condiciones/hitos. */
-  soloFotos?: boolean
 }
 
 const inputCls = 'w-full bg-slate-700 text-white text-sm rounded-lg px-3 py-2 border border-slate-600 focus:border-brand-500 focus:outline-none placeholder-slate-500'
 const checkCls = 'w-4 h-4 rounded accent-brand-500 cursor-pointer'
 
-export function SeccionDescripcion({ recordId, processFotoAerea, soloFotos = false }: Props) {
+export function SeccionDescripcion({ recordId, processFotoAerea }: Props) {
   const { records, update, addTramo, removeTramo, updateTramo, addHito, removeHito, updateHito, removeFotoAerea } = useAttStore()
   const record = records[recordId]
   const aereoInputRef = useRef<HTMLInputElement>(null)
@@ -40,125 +38,121 @@ export function SeccionDescripcion({ recordId, processFotoAerea, soloFotos = fal
     <div className="bg-slate-800 rounded-2xl border border-slate-700 p-4 space-y-5">
       <h2 className="text-xs font-semibold text-brand-400 uppercase tracking-wide">3. Descripción general</h2>
 
-      {!soloFotos && (
-        <>
-          {/* Tramos */}
-          <div className="space-y-3">
+      {/* Tramos */}
+      <div className="space-y-3">
+        <div className="flex items-center justify-between">
+          <p className="text-xs font-medium text-slate-300">Tramos de cable</p>
+          <button type="button" onClick={() => addTramo(recordId)}
+            className="text-xs text-brand-400 hover:text-brand-300 font-medium">+ Agregar tramo</button>
+        </div>
+        {record.tramos.map((tramo, idx) => (
+          <div key={tramo.id} className="bg-slate-700/50 rounded-xl p-3 space-y-2 border border-slate-600/50">
             <div className="flex items-center justify-between">
-              <p className="text-xs font-medium text-slate-300">Tramos de cable</p>
-              <button type="button" onClick={() => addTramo(recordId)}
-                className="text-xs text-brand-400 hover:text-brand-300 font-medium">+ Agregar tramo</button>
+              <span className="text-xs text-slate-400 font-medium">Tramo {idx + 1}</span>
+              {record.tramos.length > 1 && (
+                <button type="button" onClick={() => removeTramo(recordId, tramo.id)}
+                  className="text-slate-500 hover:text-red-400 text-sm leading-none">×</button>
+              )}
             </div>
-            {record.tramos.map((tramo, idx) => (
-              <div key={tramo.id} className="bg-slate-700/50 rounded-xl p-3 space-y-2 border border-slate-600/50">
-                <div className="flex items-center justify-between">
-                  <span className="text-xs text-slate-400 font-medium">Tramo {idx + 1}</span>
-                  {record.tramos.length > 1 && (
-                    <button type="button" onClick={() => removeTramo(recordId, tramo.id)}
-                      className="text-slate-500 hover:text-red-400 text-sm leading-none">×</button>
-                  )}
-                </div>
-                <div>
-                  <label className="block text-xs text-slate-500 mb-1">Tipo de cable</label>
-                  <input type="text" value={tramo.tipoCable}
-                    onChange={(e) => updateTramo(recordId, tramo.id, { tipoCable: e.target.value })}
-                    placeholder="Ej. FO 24FO ADSS" className={inputCls} />
-                </div>
-                <div>
-                  <label className="block text-xs text-slate-500 mb-1">Metraje</label>
-                  <input type="text" value={tramo.metraje} inputMode="decimal"
-                    onChange={(e) => updateTramo(recordId, tramo.id, { metraje: e.target.value })}
-                    placeholder="Ej. 250" className={inputCls} />
-                </div>
-                <div className="grid grid-cols-2 gap-2">
-                  <div>
-                    <label className="block text-xs text-slate-500 mb-1">Desde</label>
-                    <input type="text" value={tramo.desde}
-                      onChange={(e) => updateTramo(recordId, tramo.id, { desde: e.target.value })}
-                      placeholder="Lugar / poste" className={inputCls} />
-                  </div>
-                  <div>
-                    <label className="block text-xs text-slate-500 mb-1">Hasta</label>
-                    <input type="text" value={tramo.hasta}
-                      onChange={(e) => updateTramo(recordId, tramo.id, { hasta: e.target.value })}
-                      placeholder="Lugar / poste" className={inputCls} />
-                  </div>
-                </div>
-              </div>
-            ))}
-          </div>
-
-          {/* Condiciones */}
-          <div className="space-y-3 pt-2 border-t border-slate-700">
-            <p className="text-xs font-medium text-slate-300">Condiciones del proyecto</p>
-
-            <label className="flex items-center gap-3 cursor-pointer">
-              <input type="checkbox" checked={record.instalaCMIC} onChange={(e) => update(recordId, { instalaCMIC: e.target.checked })} className={checkCls} />
-              <span className="text-sm text-slate-200">Instala CMIC</span>
-            </label>
-
-            <label className="flex items-center gap-3 cursor-pointer">
-              <input type="checkbox" checked={record.instalaMufas} onChange={(e) => update(recordId, { instalaMufas: e.target.checked })} className={checkCls} />
-              <span className="text-sm text-slate-200">Instala mufas</span>
-            </label>
-
-            <label className="flex items-center gap-3 cursor-pointer">
-              <input type="checkbox" checked={record.tieneReparacionDucto} onChange={(e) => update(recordId, { tieneReparacionDucto: e.target.checked })} className={checkCls} />
-              <span className="text-sm text-slate-200">Incluye reparación de ducto</span>
-            </label>
-
-            <label className="flex items-center gap-3 cursor-pointer">
-              <input type="checkbox" checked={record.tieneIngresoRed} onChange={(e) => update(recordId, { tieneIngresoRed: e.target.checked })} className={checkCls} />
-              <span className="text-sm text-slate-200">Ingreso a red</span>
-            </label>
-
-            {record.tieneIngresoRed && (
-              <div className="ml-7 space-y-2 bg-slate-700/30 rounded-xl p-3 border border-slate-600/40">
-                <p className="text-xs text-slate-400 font-medium mb-2">Datos de ingreso a red</p>
-                {(['nodo', 'rack', 'odf', 'fo'] as const).map((field) => (
-                  <div key={field}>
-                    <label className="block text-xs text-slate-500 mb-1 capitalize">{field.toUpperCase()}</label>
-                    <input type="text" value={record.ingresoRed[field]}
-                      onChange={(e) => update(recordId, { ingresoRed: { ...record.ingresoRed, [field]: e.target.value } })}
-                      placeholder={`Ej. ${field === 'nodo' ? 'Nodo-001' : field === 'rack' ? 'R-12' : field === 'odf' ? 'ODF-A' : '001-002'}`}
-                      className={inputCls} />
-                  </div>
-                ))}
-              </div>
-            )}
-          </div>
-
-          {/* Hitos */}
-          <div className="space-y-3 pt-2 border-t border-slate-700">
-            <div className="flex items-center justify-between">
-              <p className="text-xs font-medium text-slate-300">Hitos del proyecto</p>
-              <button type="button" onClick={() => addHito(recordId)}
-                className="text-xs text-brand-400 hover:text-brand-300 font-medium">+ Agregar hito</button>
+            <div>
+              <label className="block text-xs text-slate-500 mb-1">Tipo de cable</label>
+              <input type="text" value={tramo.tipoCable}
+                onChange={(e) => updateTramo(recordId, tramo.id, { tipoCable: e.target.value })}
+                placeholder="Ej. FO 24FO ADSS" className={inputCls} />
             </div>
-            {record.hitos.length === 0 && (
-              <p className="text-xs text-slate-500 italic">Sin hitos registrados.</p>
-            )}
-            {record.hitos.map((hito) => (
-              <div key={hito.id} className="bg-slate-700/50 rounded-xl p-3 space-y-2 border border-slate-600/50">
-                <div className="flex items-center justify-between">
-                  <label className="block text-xs text-slate-500 mb-0">Fecha (opcional)</label>
-                  <button type="button" onClick={() => removeHito(recordId, hito.id)}
-                    className="text-slate-500 hover:text-red-400 text-sm leading-none">×</button>
-                </div>
-                <input type="date" value={hito.fecha}
-                  onChange={(e) => updateHito(recordId, hito.id, { fecha: e.target.value })}
+            <div>
+              <label className="block text-xs text-slate-500 mb-1">Metraje</label>
+              <input type="text" value={tramo.metraje} inputMode="decimal"
+                onChange={(e) => updateTramo(recordId, tramo.id, { metraje: e.target.value })}
+                placeholder="Ej. 250" className={inputCls} />
+            </div>
+            <div className="grid grid-cols-2 gap-2">
+              <div>
+                <label className="block text-xs text-slate-500 mb-1">Desde</label>
+                <input type="text" value={tramo.desde}
+                  onChange={(e) => updateTramo(recordId, tramo.id, { desde: e.target.value })}
+                  placeholder="Lugar / poste" className={inputCls} />
+              </div>
+              <div>
+                <label className="block text-xs text-slate-500 mb-1">Hasta</label>
+                <input type="text" value={tramo.hasta}
+                  onChange={(e) => updateTramo(recordId, tramo.id, { hasta: e.target.value })}
+                  placeholder="Lugar / poste" className={inputCls} />
+              </div>
+            </div>
+          </div>
+        ))}
+      </div>
+
+      {/* Condiciones */}
+      <div className="space-y-3 pt-2 border-t border-slate-700">
+        <p className="text-xs font-medium text-slate-300">Condiciones del proyecto</p>
+
+        <label className="flex items-center gap-3 cursor-pointer">
+          <input type="checkbox" checked={record.instalaCMIC} onChange={(e) => update(recordId, { instalaCMIC: e.target.checked })} className={checkCls} />
+          <span className="text-sm text-slate-200">Instala CMIC</span>
+        </label>
+
+        <label className="flex items-center gap-3 cursor-pointer">
+          <input type="checkbox" checked={record.instalaMufas} onChange={(e) => update(recordId, { instalaMufas: e.target.checked })} className={checkCls} />
+          <span className="text-sm text-slate-200">Instala mufas</span>
+        </label>
+
+        <label className="flex items-center gap-3 cursor-pointer">
+          <input type="checkbox" checked={record.tieneReparacionDucto} onChange={(e) => update(recordId, { tieneReparacionDucto: e.target.checked })} className={checkCls} />
+          <span className="text-sm text-slate-200">Incluye reparación de ducto</span>
+        </label>
+
+        <label className="flex items-center gap-3 cursor-pointer">
+          <input type="checkbox" checked={record.tieneIngresoRed} onChange={(e) => update(recordId, { tieneIngresoRed: e.target.checked })} className={checkCls} />
+          <span className="text-sm text-slate-200">Ingreso a red</span>
+        </label>
+
+        {record.tieneIngresoRed && (
+          <div className="ml-7 space-y-2 bg-slate-700/30 rounded-xl p-3 border border-slate-600/40">
+            <p className="text-xs text-slate-400 font-medium mb-2">Datos de ingreso a red</p>
+            {(['nodo', 'rack', 'odf', 'fo'] as const).map((field) => (
+              <div key={field}>
+                <label className="block text-xs text-slate-500 mb-1 capitalize">{field.toUpperCase()}</label>
+                <input type="text" value={record.ingresoRed[field]}
+                  onChange={(e) => update(recordId, { ingresoRed: { ...record.ingresoRed, [field]: e.target.value } })}
+                  placeholder={`Ej. ${field === 'nodo' ? 'Nodo-001' : field === 'rack' ? 'R-12' : field === 'odf' ? 'ODF-A' : '001-002'}`}
                   className={inputCls} />
-                <div>
-                  <label className="block text-xs text-slate-500 mb-1">Descripción</label>
-                  <input type="text" value={hito.descripcion}
-                    onChange={(e) => updateHito(recordId, hito.id, { descripcion: e.target.value })}
-                    placeholder="Ej. Inicio de obras" className={inputCls} />
-                </div>
               </div>
             ))}
           </div>
-        </>
-      )}
+        )}
+      </div>
+
+      {/* Hitos */}
+      <div className="space-y-3 pt-2 border-t border-slate-700">
+        <div className="flex items-center justify-between">
+          <p className="text-xs font-medium text-slate-300">Hitos del proyecto</p>
+          <button type="button" onClick={() => addHito(recordId)}
+            className="text-xs text-brand-400 hover:text-brand-300 font-medium">+ Agregar hito</button>
+        </div>
+        {record.hitos.length === 0 && (
+          <p className="text-xs text-slate-500 italic">Sin hitos registrados.</p>
+        )}
+        {record.hitos.map((hito) => (
+          <div key={hito.id} className="bg-slate-700/50 rounded-xl p-3 space-y-2 border border-slate-600/50">
+            <div className="flex items-center justify-between">
+              <label className="block text-xs text-slate-500 mb-0">Fecha (opcional)</label>
+              <button type="button" onClick={() => removeHito(recordId, hito.id)}
+                className="text-slate-500 hover:text-red-400 text-sm leading-none">×</button>
+            </div>
+            <input type="date" value={hito.fecha}
+              onChange={(e) => updateHito(recordId, hito.id, { fecha: e.target.value })}
+              className={inputCls} />
+            <div>
+              <label className="block text-xs text-slate-500 mb-1">Descripción</label>
+              <input type="text" value={hito.descripcion}
+                onChange={(e) => updateHito(recordId, hito.id, { descripcion: e.target.value })}
+                placeholder="Ej. Inicio de obras" className={inputCls} />
+            </div>
+          </div>
+        ))}
+      </div>
 
       {/* Foto general */}
       <div className="pt-2 border-t border-slate-700">

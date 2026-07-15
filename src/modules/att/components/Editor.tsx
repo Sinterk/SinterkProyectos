@@ -108,12 +108,9 @@ export function Editor() {
 
       {tab === 'info' ? (
         isTecnico ? (
-          // Rol técnico: en Info de proyecto solo puede agregar/quitar fotos
-          // (foto general + galería) — el resto del informe lo llena oficina.
-          <>
-            <SeccionDescripcion recordId={id} processFotoAerea={processFotoAerea} soloFotos />
-            <SeccionFotos recordId={id} processPhoto={processPhoto} />
-          </>
+          // Rol técnico: en Info de proyecto solo el Registro fotográfico es
+          // suyo — la Foto general la busca el JP desde mapa, no la toca el técnico.
+          <SeccionFotos recordId={id} processPhoto={processPhoto} />
         ) : (
           <>
             <SeccionTipo recordId={id} />
