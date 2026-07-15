@@ -14,6 +14,7 @@ import { SeccionDescripcion } from './SeccionDescripcion'
 import { SeccionInfra } from './SeccionInfra'
 import { SeccionFotos } from './SeccionFotos'
 import { LogisticaTab } from '@/ui/LogisticaTab'
+import { EstadoProyectoBadge } from '@/ui/EstadoProyectoBadge'
 import { useAuth } from '@/lib/auth'
 
 type GenStatus = 'idle' | 'generating' | 'error'
@@ -24,6 +25,7 @@ export function Editor() {
   const isTecnico = useAuth((s) => s.profile?.rol === 'tecnico')
   const { record, processPhoto, processFotoAerea } = useAtt(id ?? '')
   const syncOne = useAttStore((s) => s.syncOne)
+  const setEstado = useAttStore((s) => s.setEstado)
   useRestoreAttPhotos()
   useResolveAttPhotoUrls()
 
@@ -93,6 +95,7 @@ export function Editor() {
         <button type="button" onClick={() => navigate('/att')}
           className="text-slate-400 hover:text-white text-sm">← Volver</button>
         <span className="flex-1 text-sm font-semibold text-white truncate">{title}</span>
+        <EstadoProyectoBadge estado={record.estado} onChange={(next) => setEstado(id, next)} />
       </div>
 
       <div className="flex gap-2">
@@ -121,7 +124,7 @@ export function Editor() {
           </>
         )
       ) : isUuid(id) ? (
-        <LogisticaTab projectId={id} projectOtt={record.ott || 'Sin OTT'} area="ATT" />
+        <LogisticaTab projectId={id} area="ATT" />
       ) : (
         <p className="text-xs text-slate-500 text-center py-8">Guarda el informe primero para gestionar logística.</p>
       )}

@@ -12,7 +12,7 @@
 // vacío al leer (se rellena luego con la signed URL).
 
 import { supabase } from '@/lib/supabaseClient'
-import { removeProject, closeProject } from '@/lib/projectLifecycle'
+import { removeProject, closeProject, reopenProject } from '@/lib/projectLifecycle'
 import { emptyPreventivo } from '../store'
 import type { Preventivo, Punto, FotoEntry } from '../types'
 
@@ -290,4 +290,7 @@ export const preventivoRepo = {
 
   /** "Cierra" un levantamiento (estado=cerrado + fecha_cierre) en vez de borrarlo. */
   close: closeProject,
+
+  /** Reabre un levantamiento cerrado. */
+  reopen: reopenProject,
 }

@@ -8,17 +8,26 @@
 // Entrega) — la función de la BD no permite cantidades negativas. Un solo
 // clic en "Guardar cambios" registra todas las celdas editadas de una vez,
 // una llamada (un movimiento) por celda.
+//
+// "+ Nuevo material" agrega una fila en blanco para dar de alta un material
+// que el proyecto todavía no tiene: se elige SKU/lote ahí mismo y se llena
+// como cualquier otra fila — reemplaza al formulario aparte de "Registrar
+// movimiento" que vivía en LogisticaTab (ver ese archivo).
 
 import { useEffect, useState } from 'react'
 import { adminRepo } from '@/lib/adminRepo'
 import type { MemberProfile } from '@/lib/adminRepo'
 import { useAuth } from '@/lib/auth'
+import { nanoid } from '@/core/utils/nanoid'
 import { BODEGA_DEFECTO_POR_AREA } from '@/lib/inventario/defaults'
 import {
-  corregirProyectoMaterial, getResumenProyecto, listUbicaciones, reasignarTransitoAPreventivo, registrarMovimiento,
+  corregirProyectoMaterial, getResumenProyecto, listMateriales, listUbicaciones,
+  reasignarTransitoAPreventivo, registrarMovimiento,
 } from '@/lib/inventario/inventarioRepo'
 import type { CampoCorregible } from '@/lib/inventario/inventarioRepo'
-import type { MovimientoTipoUI, ResumenMaterialProyecto, Ubicacion } from '@/lib/inventario/types'
+import type { Material, MovimientoTipoUI, ResumenMaterialProyecto, Ubicacion } from '@/lib/inventario/types'
+import { LoteSelect } from './LoteSelect'
+import { MaterialSelect } from './MaterialSelect'
 
 interface Punto { id: string; nombre: string }
 
@@ -53,6 +62,20 @@ const CAMPO_DB: Partial<Record<Campo, CampoCorregible>> = {
   cantDevuelta: 'cant_devuelta', cantRebajada: 'cant_rebajada',
 }
 
+const NINGUN_PUNTO = ''
+
+interface NuevaFila {
+  localId: string
+  materialId: string
+  lote: string
+  puntoId: string | null
+  edits: Partial<Record<Campo, string>>
+}
+
+function filaVacia(): NuevaFila {
+  return { localId: nanoid(8), materialId: '', lote: '', puntoId: null, edits: {} }
+}
+
 export function ResumenProyectoTable({ projectId, area, puntos, refreshKey = 0 }: Props) {
   const rol = useAuth((s) => s.profile?.rol)
   const puedeCorregir = rol === 'admin' || rol === 'jp' || rol === 'log'
@@ -64,6 +87,7 @@ export function ResumenProyectoTable({ projectId, area, puntos, refreshKey = 0 }
   // (ver "auto-democión" del admin en AdminScreen/UserRow).
   const editableCampos: Campo[] = rol === 'tecnico' ? ['cantInstalada', 'cantDevuelta'] : CAMPOS
   const [rows, setRows] = useState<ResumenMaterialProyecto[] | null>(null)
+  const [materiales, setMateriales] = useState<Material[]>([])
   const [members, setMembers] = useState<MemberProfile[]>([])
   const [bodegas, setBodegas] = useState<Ubicacion[]>([])
   const [error, setError] = useState<string | null>(null)
@@ -81,6 +105,11 @@ export function ResumenProyectoTable({ projectId, area, puntos, refreshKey = 0 }
   const [bodegaEdicion, setBodegaEdicion] = useState('')
   const [saving, setSaving] = useState(false)
 
+  // Filas nuevas (materiales aún no presentes en `rows`): mismo mecanismo de
+  // "+" que una fila existente, solo que además hay que elegir material/lote/
+  // punto ahí mismo antes de poder guardar.
+  const [nuevasFilas, setNuevasFilas] = useState<NuevaFila[]>([])
+
   // Modo corrección: sobreescribe el valor absoluto sin generar movimiento
   // ni tocar stock — solo para arreglar un error de tipeo. `corrections`
   // guarda el valor tecleado (no el delta); se compara contra el valor
@@ -96,6 +125,7 @@ export function ResumenProyectoTable({ projectId, area, puntos, refreshKey = 0 }
   useEffect(() => { setRows(null); reload() }, [projectId, refreshKey])
   useEffect(() => { adminRepo.listMembers(projectId).then(setMembers).catch(() => {}) }, [projectId])
   useEffect(() => { listUbicaciones({ tipo: 'bodega' }).then(setBodegas).catch(() => {}) }, [])
+  useEffect(() => { listMateriales().then(setMateriales).catch(() => {}) }, [])
 
   useEffect(() => { if (!tecnicoEdicion && members.length > 0) setTecnicoEdicion(members[0].id) }, [members, tecnicoEdicion])
   const defaultBodegaId = bodegas.find((b) => b.nombre === BODEGA_DEFECTO_POR_AREA[area])?.id ?? ''
@@ -108,8 +138,23 @@ export function ResumenProyectoTable({ projectId, area, puntos, refreshKey = 0 }
     setEdits((prev) => ({ ...prev, [key]: { ...prev[key], [campo]: v } }))
   }
 
-  const pendientes = Object.values(edits).flatMap((byCampo) =>
+  function agregarFilaNueva() {
+    setNuevasFilas((prev) => [...prev, filaVacia()])
+  }
+  function actualizarFilaNueva(localId: string, patch: Partial<Pick<NuevaFila, 'materialId' | 'lote' | 'puntoId'>>) {
+    setNuevasFilas((prev) => prev.map((f) => (f.localId === localId ? { ...f, ...patch } : f)))
+  }
+  function setDraftNueva(localId: string, campo: Campo, v: string) {
+    setNuevasFilas((prev) => prev.map((f) => (f.localId === localId ? { ...f, edits: { ...f.edits, [campo]: v } } : f)))
+  }
+  function quitarFilaNueva(localId: string) {
+    setNuevasFilas((prev) => prev.filter((f) => f.localId !== localId))
+  }
+
+  const pendientesExistentes = Object.values(edits).flatMap((byCampo) =>
     Object.values(byCampo).filter((v) => v && Number(v) > 0))
+  const pendientesNuevas = nuevasFilas.flatMap((f) => Object.values(f.edits).filter((v) => v && Number(v) > 0))
+  const pendientes = [...pendientesExistentes, ...pendientesNuevas]
   const hayPendientes = pendientes.length > 0
 
   async function guardarCambios() {
@@ -144,7 +189,43 @@ export function ResumenProyectoTable({ projectId, area, puntos, refreshKey = 0 }
         }
       }
     }
+
+    const nextNuevasFilas: NuevaFila[] = []
+    for (const fila of nuevasFilas) {
+      const teniaEdits = Object.values(fila.edits).some((v) => v && Number(v) > 0)
+      if (!teniaEdits) { nextNuevasFilas.push(fila); continue } // nada que guardar, se mantiene tal cual
+      if (!fila.materialId) {
+        nextErrors[`${fila.localId}|__material__`] = 'Elige un material antes de guardar'
+        nextNuevasFilas.push(fila)
+        continue
+      }
+      const nextFilaEdits: Partial<Record<Campo, string>> = {}
+      for (const campo of CAMPOS) {
+        const raw = fila.edits[campo]
+        const n = Number(raw)
+        if (!raw || !(n > 0)) continue
+        if (CAMPO_NECESITA_BODEGA.includes(campo) && !bodegaEdicion) {
+          nextErrors[`${fila.localId}|${campo}`] = 'Falta elegir bodega'
+          nextFilaEdits[campo] = raw
+          continue
+        }
+        try {
+          await registrarMovimiento({
+            tipoUI: CAMPO_TIPO[campo], materialId: fila.materialId, cantidad: n, lote: fila.lote || undefined,
+            projectId, puntoId: fila.puntoId, tecnicoUserId: tecnicoEdicion,
+            ubicacionBodegaId: CAMPO_NECESITA_BODEGA.includes(campo) ? bodegaEdicion : undefined,
+          })
+        } catch (err) {
+          nextErrors[`${fila.localId}|${campo}`] = err instanceof Error ? err.message : String(err)
+          nextFilaEdits[campo] = raw
+        }
+      }
+      if (Object.keys(nextFilaEdits).length > 0) nextNuevasFilas.push({ ...fila, edits: nextFilaEdits })
+      // si quedó sin edits pendientes, el material ya aparece como fila real tras el reload() — se descarta el borrador.
+    }
+
     setEdits(nextEdits)
+    setNuevasFilas(nextNuevasFilas)
     setCellErrors(nextErrors)
     setSaving(false)
     await reload()
@@ -153,6 +234,7 @@ export function ResumenProyectoTable({ projectId, area, puntos, refreshKey = 0 }
   function descartarCambios() {
     setEdits({})
     setCellErrors({})
+    setNuevasFilas((prev) => prev.map((f) => ({ ...f, edits: {} })))
   }
 
   function setCorrection(key: string, campo: Campo, v: string) {
@@ -240,32 +322,41 @@ export function ResumenProyectoTable({ projectId, area, puntos, refreshKey = 0 }
   }
 
   const selectCls = 'bg-slate-700 text-white text-xs rounded-lg px-2 py-1 border border-slate-600 focus:border-brand-500 focus:outline-none'
+  const hayFilas = (rows !== null && rows.length > 0) || nuevasFilas.length > 0
 
   return (
     <div className="bg-slate-800 rounded-2xl border border-slate-700 p-4 space-y-3">
       <div className="flex items-center justify-between gap-2">
         <h2 className="text-xs font-semibold text-brand-400 uppercase tracking-wide">Material</h2>
-        {puedeCorregir && rows && rows.length > 0 && (
-          <button type="button"
-            onClick={() => { setModoCorreccion((v) => !v); descartarCorrecciones() }}
-            className={`text-[10px] font-semibold px-2 py-1 rounded-lg ${modoCorreccion ? 'bg-amber-600 text-white' : 'text-amber-400 hover:bg-slate-700'}`}>
-            🔧 {modoCorreccion ? 'Salir de corrección' : 'Corregir errores de tipeo'}
-          </button>
-        )}
+        <div className="flex items-center gap-2">
+          {puedeCorregir && (
+            <button type="button" onClick={agregarFilaNueva}
+              className="text-[10px] font-semibold px-2 py-1 rounded-lg text-brand-400 hover:bg-slate-700">
+              ➕ Nuevo material
+            </button>
+          )}
+          {puedeCorregir && rows && rows.length > 0 && (
+            <button type="button"
+              onClick={() => { setModoCorreccion((v) => !v); descartarCorrecciones() }}
+              className={`text-[10px] font-semibold px-2 py-1 rounded-lg ${modoCorreccion ? 'bg-amber-600 text-white' : 'text-amber-400 hover:bg-slate-700'}`}>
+              🔧 {modoCorreccion ? 'Salir de corrección' : 'Corregir errores de tipeo'}
+            </button>
+          )}
+        </div>
       </div>
       {modoCorreccion && (
         <p className="text-[11px] text-amber-300 bg-amber-950/40 border border-amber-800/50 rounded-lg p-2">
           Esto sobreescribe el número directo, sin registrar un movimiento ni tocar el stock físico/digital de la
           bodega. Úsalo solo para arreglar un error de tipeo (ej. escribiste 15 en vez de 5) — si el número está mal
           porque realmente se entregó/instaló/devolvió/rebajó una cantidad distinta, no lo corrijas acá: usa el "+"
-          normal o el formulario de abajo, así queda el movimiento real registrado. <strong>Solicitado</strong> no
-          se puede corregir así, porque no es un valor propio — se calcula sumando los movimientos de Solicitud.
+          normal, así queda el movimiento real registrado. <strong>Solicitado</strong> no se puede corregir así,
+          porque no es un valor propio — se calcula sumando los movimientos de Solicitud.
         </p>
       )}
       {error && <p className="text-xs text-red-400">{error}</p>}
       {rows === null ? (
         <p className="text-xs text-slate-500">Cargando…</p>
-      ) : rows.length === 0 ? (
+      ) : !hayFilas ? (
         <p className="text-xs text-slate-500">Sin movimientos de material todavía.</p>
       ) : (
         <>
@@ -284,6 +375,51 @@ export function ResumenProyectoTable({ projectId, area, puntos, refreshKey = 0 }
                 </tr>
               </thead>
               <tbody>
+                {nuevasFilas.map((fila) => {
+                  const errMaterial = cellErrors[`${fila.localId}|__material__`]
+                  return (
+                    <tr key={fila.localId} className="border-t border-slate-700 divide-x divide-slate-700 bg-brand-950/20">
+                      <td className="px-2 py-2 align-top">
+                        <MaterialSelect materiales={materiales} value={fila.materialId}
+                          onChange={(id) => actualizarFilaNueva(fila.localId, { materialId: id, lote: '' })}
+                          className="w-36" />
+                        {errMaterial && <p className="text-[9px] text-red-400 mt-0.5">{errMaterial}</p>}
+                      </td>
+                      <td className="px-2 py-2 align-top space-y-1">
+                        <LoteSelect materialId={fila.materialId} ubicacionId={null} naturaleza="fisico"
+                          checkAvailability={false} value={fila.lote}
+                          onChange={(lote) => actualizarFilaNueva(fila.localId, { lote })}
+                          className="w-24 bg-slate-700 text-white text-xs rounded px-1.5 py-1 border border-slate-600 focus:border-brand-500 focus:outline-none" />
+                        {puntos && (
+                          <select value={fila.puntoId ?? NINGUN_PUNTO}
+                            onChange={(e) => actualizarFilaNueva(fila.localId, { puntoId: e.target.value || null })}
+                            className="w-24 bg-slate-700 text-white text-[10px] rounded px-1 py-0.5 border border-slate-600 focus:border-brand-500 focus:outline-none">
+                            <option value={NINGUN_PUNTO}>Sin punto</option>
+                            {puntos.map((p) => <option key={p.id} value={p.id}>{p.nombre}</option>)}
+                          </select>
+                        )}
+                      </td>
+                      {CAMPOS.map((campo) => {
+                        if (!editableCampos.includes(campo)) {
+                          return <td key={campo} className="px-2 py-2 text-center whitespace-nowrap align-top text-slate-600">—</td>
+                        }
+                        const err = cellErrors[`${fila.localId}|${campo}`]
+                        return (
+                          <td key={campo} className="px-2 py-2 text-center whitespace-nowrap align-top">
+                            <input type="number" min="0" step="any" placeholder="0" value={fila.edits[campo] ?? ''}
+                              onChange={(e) => setDraftNueva(fila.localId, campo, e.target.value)}
+                              className="w-14 bg-slate-700 text-white text-xs rounded px-1 py-0.5 border border-slate-600 focus:border-brand-500 focus:outline-none text-center" />
+                            {err && <p className="text-[9px] text-red-400 mt-0.5">{err}</p>}
+                          </td>
+                        )
+                      })}
+                      <td className="px-2 py-2 text-center align-top">
+                        <button type="button" onClick={() => quitarFilaNueva(fila.localId)}
+                          className="text-[10px] text-slate-500 hover:text-red-400">✕ Quitar</button>
+                      </td>
+                    </tr>
+                  )
+                })}
                 {rows.map((row) => {
                   const key = rowKey(row)
                   const draft = edits[key] ?? {}
@@ -370,9 +506,8 @@ export function ResumenProyectoTable({ projectId, area, puntos, refreshKey = 0 }
           {hayPendientes && (
             <div className="bg-slate-700/40 rounded-xl border border-dashed border-slate-600 p-3 space-y-2">
               <p className="text-[11px] text-slate-400">
-                Cada "+" tecleado se registra como su propio movimiento (igual que abajo en "Registrar movimiento") —
-                no se puede restar directamente; para corregir un exceso, registra el movimiento contrario
-                (ej. un Devuelto deshace una Entrega).
+                Cada "+" tecleado se registra como su propio movimiento — no se puede restar directamente; para
+                corregir un exceso, registra el movimiento contrario (ej. un Devuelto deshace una Entrega).
               </p>
               <div className="flex flex-wrap items-center gap-2">
                 <select value={tecnicoEdicion} onChange={(e) => setTecnicoEdicion(e.target.value)} className={selectCls}>

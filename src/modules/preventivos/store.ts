@@ -77,6 +77,8 @@ interface PreventivoState {
   createNew: () => string
   /** Borra (admin) o cierra (jp/invitado) según lo que la RLS permita al rol actual. */
   remove: (id: string) => Promise<RemoveResult>
+  /** Widget de estado del Editor (jp/admin): abrir/cerrar directo, sin pasar por `remove`. */
+  setEstado: (id: string, estado: 'activo' | 'cerrado') => Promise<{ ok: true } | { ok: false; error: string }>
   updateCuadrante: (id: string, data: Partial<CuadranteInfo>) => void
   addPunto: (id: string) => string
   removePunto: (id: string, puntoId: string) => void
@@ -113,6 +115,11 @@ export function emptyPreventivo(id: string, now: number): Preventivo {
 
 function touch(rec: Preventivo, extra?: Partial<Preventivo>): Preventivo {
   return { ...rec, ...extra, updatedAt: Date.now() }
+}
+
+function todayISO(): string {
+  const d = new Date()
+  return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`
 }
 
 export const usePreventivoStore = create<PreventivoState>()(
@@ -155,6 +162,22 @@ export const usePreventivoStore = create<PreventivoState>()(
             dropLocal()
             return { ok: true, mode: 'closed' }
           }
+        } catch (err) {
+          return { ok: false, error: err instanceof Error ? err.message : String(err) }
+        }
+      },
+
+      async setEstado(id, estado) {
+        if (!isUuid(id)) return { ok: false, error: 'Guarda el levantamiento primero.' }
+        try {
+          if (estado === 'cerrado') await preventivoRepo.close(id)
+          else await preventivoRepo.reopen(id)
+          set((s) => {
+            const rec = s.records[id]
+            if (!rec) return s
+            return { records: { ...s.records, [id]: { ...rec, estado, fechaCierre: estado === 'cerrado' ? todayISO() : undefined } } }
+          })
+          return { ok: true }
         } catch (err) {
           return { ok: false, error: err instanceof Error ? err.message : String(err) }
         }

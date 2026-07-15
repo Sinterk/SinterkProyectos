@@ -1,18 +1,16 @@
 // Pestaña "Logística" compartida por ATT y Preventivos: equipo asignado al
-// proyecto, resumen de material (solicitado/entregado/instalado/devuelto/
-// rebajado/tránsito) con acción de reasignar tránsito a preventivo, el
-// formulario de alta de movimientos fijado a este proyecto, y observaciones
-// libres. El rol técnico ve una versión reducida: solo Material y
-// Observaciones (sin equipo asignado ni formulario de alta) — edita
-// instalado/devuelto directo en la tabla de Material (ver
-// ResumenProyectoTable, que ya restringe qué campos son editables por rol).
+// proyecto, resumen/alta de material en una sola tabla (ver
+// ResumenProyectoTable — "+ Nuevo material" reemplaza al formulario aparte
+// que vivía acá), y observaciones libres. El rol técnico ve una versión
+// reducida: solo Material y Observaciones (sin equipo asignado) — edita
+// instalado/devuelto directo en la tabla de Material (ResumenProyectoTable
+// ya restringe qué campos son editables por rol).
 
 import { useEffect, useState } from 'react'
 import { adminRepo } from '@/lib/adminRepo'
 import type { MemberProfile } from '@/lib/adminRepo'
 import type { Profile } from '@/lib/auth'
 import { useAuth, ROL_LABELS } from '@/lib/auth'
-import { RegistrarMovimientoForm } from './RegistrarMovimientoForm'
 import { ResumenProyectoTable } from './ResumenProyectoTable'
 import { ObservacionesSection } from './ObservacionesSection'
 
@@ -20,25 +18,16 @@ interface Punto { id: string; nombre: string }
 
 interface Props {
   projectId: string
-  projectOtt: string
   area: 'ATT' | 'OyM'
   puntos?: Punto[]
 }
 
-export function LogisticaTab({ projectId, projectOtt, area, puntos }: Props) {
+export function LogisticaTab({ projectId, area, puntos }: Props) {
   const isTecnico = useAuth((s) => s.profile?.rol === 'tecnico')
-  const [refreshKey, setRefreshKey] = useState(0)
   return (
     <div className="space-y-4">
       {!isTecnico && <EquipoSection projectId={projectId} />}
-      <ResumenProyectoTable projectId={projectId} area={area} puntos={puntos} refreshKey={refreshKey} />
-      {!isTecnico && (
-        <RegistrarMovimientoForm
-          fixedProject={{ id: projectId, ott: projectOtt, area }}
-          puntos={puntos}
-          onRegistered={() => setRefreshKey((k) => k + 1)}
-        />
-      )}
+      <ResumenProyectoTable projectId={projectId} area={area} puntos={puntos} />
       <ObservacionesSection projectId={projectId} />
     </div>
   )

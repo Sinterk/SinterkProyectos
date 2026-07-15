@@ -9,6 +9,7 @@ import { usePreventivoStore } from '../store'
 import { usePreventivo } from '../hooks/usePreventivo'
 import { isUuid } from '../data/preventivoRepo'
 import { LogisticaTab } from '@/ui/LogisticaTab'
+import { EstadoProyectoBadge } from '@/ui/EstadoProyectoBadge'
 import { useRestorePhotoPreviews } from '../hooks/useRestorePhotoPreviews'
 import { useResolvePhotoUrls } from '../hooks/useResolvePhotoUrls'
 import { usePreventivoAutosave } from '../hooks/usePreventivoAutosave'
@@ -25,7 +26,7 @@ export function Editor() {
   const navigate = useNavigate()
   const isTecnico = useAuth((s) => s.profile?.rol === 'tecnico')
   const { record, processPhoto } = usePreventivo(id ?? '')
-  const { addPunto, movePunto, syncOne } = usePreventivoStore()
+  const { addPunto, movePunto, syncOne, setEstado } = usePreventivoStore()
   useRestorePhotoPreviews()
   useResolvePhotoUrls()
 
@@ -85,6 +86,7 @@ export function Editor() {
           className="text-slate-400 hover:text-brand-400 text-xs px-2 py-1 rounded-lg border border-slate-700 hover:border-brand-500 transition-colors shrink-0">
           📐 Plano
         </button>
+        <EstadoProyectoBadge estado={record.estado} onChange={(next) => setEstado(record.id, next)} />
       </div>
 
       <div className="flex gap-2">
@@ -100,7 +102,7 @@ export function Editor() {
 
       {tab === 'logistica' ? (
         isUuid(record.id) ? (
-          <LogisticaTab projectId={record.id} projectOtt={record.cuadrante.cuadrante || 'Sin cuadrante'} area="OyM"
+          <LogisticaTab projectId={record.id} area="OyM"
             puntos={puntos.filter((p) => isUuid(p.id)).map((p) => ({ id: p.id, nombre: p.nombre || 'Punto sin nombre' }))} />
         ) : (
           <p className="text-xs text-slate-500 text-center py-8">Guarda el levantamiento primero para gestionar logística.</p>

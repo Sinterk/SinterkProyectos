@@ -110,6 +110,8 @@ interface AttState {
   createNew: () => string
   /** Borra (admin) o cierra (jp/invitado) según lo que la RLS permita al rol actual. */
   remove: (id: string) => Promise<RemoveResult>
+  /** Widget de estado del Editor (jp/admin): abrir/cerrar directo, sin pasar por `remove`. */
+  setEstado: (id: string, estado: 'activo' | 'cerrado') => Promise<{ ok: true } | { ok: false; error: string }>
   update: (id: string, data: Partial<AttRecord>) => void
 
   /** Trae la lista del servidor y la fusiona en cache (Zustand = caché, Supabase = fuente). */
@@ -190,6 +192,22 @@ export const useAttStore = create<AttState>()(
             dropLocal() // se oculta de "activos"; sigue existiendo como cerrado en el servidor
             return { ok: true, mode: 'closed' }
           }
+        } catch (err) {
+          return { ok: false, error: err instanceof Error ? err.message : String(err) }
+        }
+      },
+
+      async setEstado(id, estado) {
+        if (!isUuid(id)) return { ok: false, error: 'Guarda el informe primero.' }
+        try {
+          if (estado === 'cerrado') await attRepo.close(id)
+          else await attRepo.reopen(id)
+          set((s) => {
+            const rec = s.records[id]
+            if (!rec) return s
+            return { records: { ...s.records, [id]: { ...rec, estado, fechaCierre: estado === 'cerrado' ? todayISO() : undefined } } }
+          })
+          return { ok: true }
         } catch (err) {
           return { ok: false, error: err instanceof Error ? err.message : String(err) }
         }

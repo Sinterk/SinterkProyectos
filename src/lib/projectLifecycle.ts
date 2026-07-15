@@ -48,3 +48,17 @@ export async function closeProject(id: string): Promise<void> {
     throw new Error('No tienes permiso para cerrar este informe.')
   }
 }
+
+/** Reabre un proyecto cerrado (estado=activo, sin fecha_cierre). Misma RLS que `closeProject` (jp/admin). */
+export async function reopenProject(id: string): Promise<void> {
+  if (!isUuid(id)) return
+  const { data, error } = await supabase
+    .from('projects')
+    .update({ estado: 'activo', fecha_cierre: null })
+    .eq('id', id)
+    .select('id')
+  if (error) throw new Error(`projects.reopen: ${error.message}`)
+  if (!data || data.length === 0) {
+    throw new Error('No tienes permiso para reabrir este informe.')
+  }
+}

@@ -11,7 +11,7 @@
 // vacío al leer (se rellena luego con la signed URL).
 
 import { supabase } from '@/lib/supabaseClient'
-import { removeProject, closeProject } from '@/lib/projectLifecycle'
+import { removeProject, closeProject, reopenProject } from '@/lib/projectLifecycle'
 import { emptyAttRecord } from '../store'
 import type {
   AttRecord, FotoEntry, TramoCable, Hito, TipoProyecto,
@@ -409,4 +409,7 @@ export const attRepo = {
 
   /** "Cierra" un informe (estado=cerrado + fecha_cierre) en vez de borrarlo. Ver `closeProject`. */
   close: closeProject,
+
+  /** Reabre un informe cerrado. Ver `reopenProject`. */
+  reopen: reopenProject,
 }
