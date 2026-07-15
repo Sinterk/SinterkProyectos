@@ -11,6 +11,8 @@ interface Props {
   index: number
   total: number
   editable?: boolean
+  /** Rol técnico: puede agregar/quitar las 3 fotos del punto, pero no tocar nombre/descripción/dirección/hallazgo ni reordenar/eliminar el punto. */
+  soloFotos?: boolean
   onSave: () => Promise<void>
   onMove: (from: number, to: number) => void
   onPhotoCapture: (file: File, key: FotoKey) => Promise<void>
@@ -41,18 +43,22 @@ const HALLAZGOS: string[] = [
   'CTO en condición insegura o no autorizada',
 ]
 
-export function PuntoCard({ preventivoId, punto, index, total, editable = true, onMove, onPhotoCapture }: Props) {
+export function PuntoCard({ preventivoId, punto, index, total, editable = true, soloFotos = false, onMove, onPhotoCapture }: Props) {
   const { updatePunto, removePunto, removeFoto } = usePreventivoStore()
   const [expanded, setExpanded] = useState(true)
 
   const { attributes, listeners, setNodeRef, transform, transition, isDragging } = useSortable({ id: punto.id })
+
+  // soloFotos (rol técnico): los campos de texto/estado quedan de solo lectura,
+  // pero las fotos siguen editables (siguen gobernadas por `editable`, no por esto).
+  const camposEditable = editable && !soloFotos
 
   function handleHallazgoChange(hallazgo: string) {
     updatePunto(preventivoId, punto.id, { hallazgo, resuelto: hallazgo !== '' })
   }
 
   const inputCls = `w-full text-sm rounded-lg px-3 py-2 border focus:outline-none placeholder-slate-500
-    ${editable
+    ${camposEditable
       ? 'bg-slate-700 text-white border-slate-600 focus:border-brand-500'
       : 'bg-slate-800 text-slate-300 border-slate-700 cursor-default'
     }`
@@ -69,7 +75,7 @@ export function PuntoCard({ preventivoId, punto, index, total, editable = true, 
       {/* Header */}
       <div className="flex items-center gap-2 px-3 py-2.5">
         {/* Drag handle */}
-        {editable && (
+        {camposEditable && (
           <button
             type="button"
             {...attributes}
@@ -90,7 +96,7 @@ export function PuntoCard({ preventivoId, punto, index, total, editable = true, 
           {index + 1}
         </span>
 
-        {editable ? (
+        {camposEditable ? (
           <input
             type="text"
             value={punto.nombre}
@@ -111,7 +117,7 @@ export function PuntoCard({ preventivoId, punto, index, total, editable = true, 
 
         <div className="flex items-center gap-1 shrink-0">
           {/* Mover al inicio / al final — solo visible con 3+ puntos */}
-          {editable && total >= 3 && (
+          {camposEditable && total >= 3 && (
             <>
               <button
                 type="button"
@@ -133,7 +139,7 @@ export function PuntoCard({ preventivoId, punto, index, total, editable = true, 
               </button>
             </>
           )}
-          {editable && (
+          {camposEditable && (
             <button
               type="button"
               onClick={() => removePunto(preventivoId, punto.id)}
@@ -162,8 +168,8 @@ export function PuntoCard({ preventivoId, punto, index, total, editable = true, 
             </label>
             <textarea
               value={punto.descripcion}
-              onChange={(e) => editable && updatePunto(preventivoId, punto.id, { descripcion: e.target.value })}
-              readOnly={!editable}
+              onChange={(e) => camposEditable && updatePunto(preventivoId, punto.id, { descripcion: e.target.value })}
+              readOnly={!camposEditable}
               rows={2}
               placeholder="Describe el trabajo realizado…"
               className={`${inputCls} resize-none`}
@@ -177,8 +183,8 @@ export function PuntoCard({ preventivoId, punto, index, total, editable = true, 
             <input
               type="text"
               value={punto.direccion}
-              onChange={(e) => editable && updatePunto(preventivoId, punto.id, { direccion: e.target.value })}
-              readOnly={!editable}
+              onChange={(e) => camposEditable && updatePunto(preventivoId, punto.id, { direccion: e.target.value })}
+              readOnly={!camposEditable}
               placeholder="Ej. 5a Av. 12-34, zona 1"
               className={inputCls}
             />
@@ -189,8 +195,8 @@ export function PuntoCard({ preventivoId, punto, index, total, editable = true, 
             <input
               type="text"
               value={punto.correccion ?? ''}
-              onChange={(e) => editable && updatePunto(preventivoId, punto.id, { correccion: e.target.value })}
-              readOnly={!editable}
+              onChange={(e) => camposEditable && updatePunto(preventivoId, punto.id, { correccion: e.target.value })}
+              readOnly={!camposEditable}
               placeholder="Corrección aplicada (opcional)"
               className={inputCls}
             />
@@ -200,8 +206,8 @@ export function PuntoCard({ preventivoId, punto, index, total, editable = true, 
             <label className="block text-xs text-slate-400 mb-1">Tipo de hallazgo</label>
             <select
               value={punto.hallazgo ?? ''}
-              onChange={(e) => editable && handleHallazgoChange(e.target.value)}
-              disabled={!editable}
+              onChange={(e) => camposEditable && handleHallazgoChange(e.target.value)}
+              disabled={!camposEditable}
               className={inputCls}
             >
               <option value="">Sin hallazgo</option>
@@ -215,8 +221,8 @@ export function PuntoCard({ preventivoId, punto, index, total, editable = true, 
             <input
               type="checkbox"
               checked={!!punto.resuelto}
-              disabled={!editable || !punto.hallazgo}
-              onChange={(e) => editable && updatePunto(preventivoId, punto.id, { resuelto: e.target.checked })}
+              disabled={!camposEditable || !punto.hallazgo}
+              onChange={(e) => camposEditable && updatePunto(preventivoId, punto.id, { resuelto: e.target.checked })}
               className="w-4 h-4 accent-brand-500 disabled:opacity-50"
             />
             Resuelto

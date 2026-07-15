@@ -9,6 +9,8 @@ export interface Material {
   activo: boolean
   /** Umbral de alerta ("hay que renovar"). null = sin umbral configurado. */
   stockMinimo: number | null
+  /** Observación libre sobre el material (ej. "viene sin marcar de fábrica"). null = sin comentario. */
+  comentario: string | null
 }
 
 export type UbicacionTipo = 'bodega' | 'tecnico'
@@ -33,6 +35,8 @@ export interface StockRow {
   cantidadDigital: number
   /** Umbral de alerta del material (null = sin umbral configurado). */
   stockMinimo: number | null
+  /** Observación libre del material (null = sin comentario). */
+  comentario: string | null
 }
 
 /**
@@ -155,6 +159,20 @@ export interface ConteoLinea {
   cantidadSistema: number
   /** True si la línea se agregó manualmente o por import (nunca antes con stock aquí): al cerrar no genera evento de diferencia. */
   primeraVez: boolean
+}
+
+/**
+ * Entrada libre de la pestaña "Observaciones" de un proyecto: notas generales
+ * (ej. material instalado que no quedó registrado como entregado, para que
+ * oficina lo corrija). Sin edición — solo agregar/borrar.
+ */
+export interface Observacion {
+  id: string
+  projectId: string
+  usuarioId: string
+  usuarioNombre: string | null
+  texto: string
+  createdAt: string
 }
 
 export type ResolucionEvento = 'devolucion_pendiente' | 'reubicacion' | 'perdida'

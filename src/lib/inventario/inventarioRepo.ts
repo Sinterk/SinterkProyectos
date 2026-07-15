@@ -10,7 +10,7 @@ import type {
   Material, Ubicacion, UbicacionTipo, StockRow, Movimiento,
   RegistrarMovimientoInput, ReasignarTransitoInput,
   ResumenMaterialProyecto, TecnicoLedgerRow,
-  Conteo, ConteoLinea, EventoInventario, ResolucionEvento,
+  Conteo, ConteoLinea, EventoInventario, ResolucionEvento, Observacion,
 } from './types'
 import type { FilaImportSap } from './importarSap'
 
@@ -35,6 +35,7 @@ interface MaterialRow {
   controla_lote_fisico: boolean
   activo: boolean
   stock_minimo: number | null
+  comentario: string | null
 }
 
 function materialFromRow(m: MaterialRow): Material {
@@ -43,6 +44,7 @@ function materialFromRow(m: MaterialRow): Material {
     unidad: m.unidad, categoria: m.categoria,
     controlaLoteFisico: m.controla_lote_fisico, activo: m.activo,
     stockMinimo: m.stock_minimo === null ? null : Number(m.stock_minimo),
+    comentario: m.comentario,
   }
 }
 
@@ -57,6 +59,13 @@ export async function listMateriales(): Promise<Material[]> {
 export async function updateMaterialStockMinimo(materialId: string, stockMinimo: number | null): Promise<void> {
   const { error } = await supabase.from('materiales').update({ stock_minimo: stockMinimo }).eq('id', materialId)
   if (error) throw new Error(`materiales.updateStockMinimo: ${error.message}`)
+}
+
+/** Observación libre del material — cadena vacía o null para quitarla. */
+export async function updateMaterialComentario(materialId: string, comentario: string | null): Promise<void> {
+  const valor = comentario?.trim() || null
+  const { error } = await supabase.from('materiales').update({ comentario: valor }).eq('id', materialId)
+  if (error) throw new Error(`materiales.updateComentario: ${error.message}`)
 }
 
 // ---------------------------------------------------------------------------
@@ -101,7 +110,7 @@ interface StockJoinRow {
   cantidad_fisico: number
   cantidad_digital: number
   ubicaciones: { nombre: string } | null
-  materiales: { sku: string; descripcion: string; stock_minimo: number | null } | null
+  materiales: { sku: string; descripcion: string; stock_minimo: number | null; comentario: string | null } | null
 }
 
 /** Filtro por ubicación/material/lote exactos; `search` filtra en el cliente sobre nombre/sku/descripción. */
@@ -110,7 +119,7 @@ export async function getStock(opts?: {
 }): Promise<StockRow[]> {
   let query = supabase
     .from('stock')
-    .select('ubicacion_id, material_id, lote, cantidad_fisico, cantidad_digital, ubicaciones(nombre), materiales(sku, descripcion, stock_minimo)')
+    .select('ubicacion_id, material_id, lote, cantidad_fisico, cantidad_digital, ubicaciones(nombre), materiales(sku, descripcion, stock_minimo, comentario)')
     .order('lote')
   if (opts?.ubicacionId) query = query.eq('ubicacion_id', opts.ubicacionId)
   if (opts?.materialId) query = query.eq('material_id', opts.materialId)
@@ -129,6 +138,7 @@ export async function getStock(opts?: {
     cantidadFisico: Number(r.cantidad_fisico),
     cantidadDigital: Number(r.cantidad_digital),
     stockMinimo: r.materiales?.stock_minimo === null || r.materiales?.stock_minimo === undefined ? null : Number(r.materiales.stock_minimo),
+    comentario: r.materiales?.comentario ?? null,
   }))
 
   const q = opts?.search?.trim().toLowerCase()
@@ -582,6 +592,48 @@ export async function resolverEventoInventario(eventoId: string, resolucion: Res
     p_evento_id: eventoId, p_resolucion: resolucion, p_nota: nota ?? null,
   })
   if (error) throw new Error(`resolver_evento_inventario: ${error.message}`)
+}
+
+// ---------------------------------------------------------------------------
+// Observaciones (pestaña "Observaciones" de Logística) — entradas libres,
+// solo agregar/borrar. Sirven, entre otras cosas, para que un técnico avise
+// de material instalado que no quedó registrado como entregado, y oficina lo
+// corrija por su cuenta (ver supabase/migrations/0016_observaciones.sql).
+// ---------------------------------------------------------------------------
+
+interface ObservacionJoinRow {
+  id: string
+  project_id: string
+  usuario_id: string
+  texto: string
+  created_at: string
+  profiles: { nombre: string | null; email: string | null } | null
+}
+
+export async function listObservaciones(projectId: string): Promise<Observacion[]> {
+  const { data, error } = await supabase
+    .from('observaciones')
+    .select('id, project_id, usuario_id, texto, created_at, profiles(nombre, email)')
+    .eq('project_id', projectId)
+    .order('created_at', { ascending: false })
+  if (error) throw new Error(`observaciones.list: ${error.message}`)
+  return (data as unknown as ObservacionJoinRow[]).map((r) => ({
+    id: r.id, projectId: r.project_id, usuarioId: r.usuario_id,
+    usuarioNombre: r.profiles?.nombre?.trim() || r.profiles?.email || null,
+    texto: r.texto, createdAt: r.created_at,
+  }))
+}
+
+/** `usuario_id` lo pone la BD (`default auth.uid()`) — no se manda desde el cliente. */
+export async function agregarObservacion(projectId: string, texto: string): Promise<void> {
+  const { error } = await supabase.from('observaciones').insert({ project_id: projectId, texto: texto.trim() })
+  if (error) throw new Error(`observaciones.agregar: ${error.message}`)
+}
+
+/** La RLS solo deja borrar la propia (o cualquiera, si eres jp/admin). */
+export async function eliminarObservacion(id: string): Promise<void> {
+  const { error } = await supabase.from('observaciones').delete().eq('id', id)
+  if (error) throw new Error(`observaciones.eliminar: ${error.message}`)
 }
 
 export interface ImportarSapResultado {

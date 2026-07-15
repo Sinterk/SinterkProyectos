@@ -14,12 +14,14 @@ import { SeccionDescripcion } from './SeccionDescripcion'
 import { SeccionInfra } from './SeccionInfra'
 import { SeccionFotos } from './SeccionFotos'
 import { LogisticaTab } from '@/ui/LogisticaTab'
+import { useAuth } from '@/lib/auth'
 
 type GenStatus = 'idle' | 'generating' | 'error'
 
 export function Editor() {
   const { id } = useParams<{ id: string }>()
   const navigate = useNavigate()
+  const isTecnico = useAuth((s) => s.profile?.rol === 'tecnico')
   const { record, processPhoto, processFotoAerea } = useAtt(id ?? '')
   const syncOne = useAttStore((s) => s.syncOne)
   useRestoreAttPhotos()
@@ -105,13 +107,22 @@ export function Editor() {
       </div>
 
       {tab === 'info' ? (
-        <>
-          <SeccionTipo recordId={id} />
-          <SeccionDatos recordId={id} />
-          <SeccionDescripcion recordId={id} processFotoAerea={processFotoAerea} />
-          <SeccionInfra recordId={id} />
-          <SeccionFotos recordId={id} processPhoto={processPhoto} />
-        </>
+        isTecnico ? (
+          // Rol técnico: en Info de proyecto solo puede agregar/quitar fotos
+          // (foto general + galería) — el resto del informe lo llena oficina.
+          <>
+            <SeccionDescripcion recordId={id} processFotoAerea={processFotoAerea} soloFotos />
+            <SeccionFotos recordId={id} processPhoto={processPhoto} />
+          </>
+        ) : (
+          <>
+            <SeccionTipo recordId={id} />
+            <SeccionDatos recordId={id} />
+            <SeccionDescripcion recordId={id} processFotoAerea={processFotoAerea} />
+            <SeccionInfra recordId={id} />
+            <SeccionFotos recordId={id} processPhoto={processPhoto} />
+          </>
+        )
       ) : isUuid(id) ? (
         <LogisticaTab projectId={id} projectOtt={record.ott || 'Sin OTT'} area="ATT" />
       ) : (

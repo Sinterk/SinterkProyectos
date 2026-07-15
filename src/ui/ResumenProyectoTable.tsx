@@ -54,10 +54,15 @@ const CAMPO_DB: Partial<Record<Campo, CampoCorregible>> = {
 }
 
 export function ResumenProyectoTable({ projectId, area, puntos, refreshKey = 0 }: Props) {
-  const puedeCorregir = useAuth((s) => {
-    const rol = s.profile?.rol
-    return rol === 'admin' || rol === 'jp' || rol === 'log'
-  })
+  const rol = useAuth((s) => s.profile?.rol)
+  const puedeCorregir = rol === 'admin' || rol === 'jp' || rol === 'log'
+  // El técnico solo reporta lo que instaló/devolvió — entregado/rebajado los
+  // registra oficina (entrega física, rebaja SAP), y solicitado no es un
+  // campo propio (se calcula solo). Candado de UI, no de RLS: la función
+  // registrar_movimiento ya autoriza al técnico para cualquier tipoUI sobre
+  // sus propios proyectos, igual que otros candados de este estilo en la app
+  // (ver "auto-democión" del admin en AdminScreen/UserRow).
+  const editableCampos: Campo[] = rol === 'tecnico' ? ['cantInstalada', 'cantDevuelta'] : CAMPOS
   const [rows, setRows] = useState<ResumenMaterialProyecto[] | null>(null)
   const [members, setMembers] = useState<MemberProfile[]>([])
   const [bodegas, setBodegas] = useState<Ubicacion[]>([])
@@ -304,6 +309,13 @@ export function ResumenProyectoTable({ projectId, area, puntos, refreshKey = 0 }
                                   className="w-12 bg-amber-950/30 text-amber-200 text-xs rounded px-1 py-0.5 border border-amber-700/60 focus:border-amber-500 focus:outline-none text-center" />
                               </div>
                               {err && <p className="text-[9px] text-red-400 mt-0.5">{err}</p>}
+                            </td>
+                          )
+                        }
+                        if (!editableCampos.includes(campo)) {
+                          return (
+                            <td key={campo} className="px-2 py-2 text-center whitespace-nowrap align-top">
+                              <span className="text-white font-medium">{valor}</span>
                             </td>
                           )
                         }

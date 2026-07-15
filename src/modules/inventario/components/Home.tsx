@@ -8,7 +8,8 @@ import { ResumenProyectoTable, Stat } from '@/ui/ResumenProyectoTable'
 import { UbicacionSelect } from '@/ui/UbicacionSelect'
 import { useFileDrop } from '@/ui/useFileDrop'
 import {
-  getStock, getTecnicoLedger, listMovimientos, listMateriales, listUbicaciones, updateMaterialStockMinimo,
+  getStock, getTecnicoLedger, listMovimientos, listMateriales, listUbicaciones,
+  updateMaterialStockMinimo, updateMaterialComentario,
   listConteos, getConteoLineas, abrirConteo, agregarLineaConteo, actualizarLineaConteo, cerrarConteo, descartarConteo,
   listEventosInventario, resolverEventoInventario, importarFilasSapAConteo,
 } from '@/lib/inventario/inventarioRepo'
@@ -161,7 +162,7 @@ function MovimientosTab({ refreshKey }: { refreshKey: number }) {
   )
 }
 
-type StockColKey = 'sku' | 'material' | 'bodega' | 'lote' | 'fisico' | 'digital' | 'umbral'
+type StockColKey = 'sku' | 'material' | 'bodega' | 'lote' | 'fisico' | 'digital' | 'umbral' | 'comentario'
 
 const STOCK_COLUMNS: { key: StockColKey; label: string; numeric?: boolean; align?: 'right' }[] = [
   { key: 'sku', label: 'SKU', numeric: true },
@@ -171,6 +172,7 @@ const STOCK_COLUMNS: { key: StockColKey; label: string; numeric?: boolean; align
   { key: 'fisico', label: 'Físico', numeric: true, align: 'right' },
   { key: 'digital', label: 'Digital', numeric: true, align: 'right' },
   { key: 'umbral', label: 'Umbral', numeric: true },
+  { key: 'comentario', label: 'Comentario' },
 ]
 
 function stockColValue(r: StockRow, key: StockColKey): string | number {
@@ -182,14 +184,17 @@ function stockColValue(r: StockRow, key: StockColKey): string | number {
     case 'fisico': return r.cantidadFisico
     case 'digital': return r.cantidadDigital
     case 'umbral': return r.stockMinimo ?? Number.NEGATIVE_INFINITY
+    case 'comentario': return r.comentario ?? ''
   }
 }
 
 const SIN_UMBRAL = 'Sin definir'
+const SIN_COMENTARIO = 'Sin comentario'
 
 /** Representación en texto de la celda, para el checklist de filtro (por eso umbral null se ve como "Sin definir", no como -Infinity). */
 function stockColDisplayValue(r: StockRow, key: StockColKey): string {
   if (key === 'umbral') return r.stockMinimo === null ? SIN_UMBRAL : String(r.stockMinimo)
+  if (key === 'comentario') return r.comentario?.trim() ? r.comentario : SIN_COMENTARIO
   const v = stockColValue(r, key)
   return String(v)
 }
@@ -343,6 +348,9 @@ function BodegaTab() {
                     <td className="px-2 py-2 whitespace-nowrap">
                       <UmbralEditor materialId={r.materialId} value={r.stockMinimo} onSaved={reload} />
                     </td>
+                    <td className="px-2 py-2 max-w-[220px]">
+                      <ComentarioEditor materialId={r.materialId} value={r.comentario} onSaved={reload} />
+                    </td>
                   </tr>
                 )
               })}
@@ -488,6 +496,43 @@ function UmbralEditor({ materialId, value, onSaved }: { materialId: string; valu
         className="w-16 bg-slate-700 text-white text-[10px] rounded px-1 py-0.5 border border-slate-600 focus:border-brand-500 focus:outline-none" />
       <button type="button" onClick={save} disabled={saving} className="text-[10px] text-brand-400 font-semibold">✓</button>
       <button type="button" onClick={() => setEditing(false)} className="text-[10px] text-slate-500">✕</button>
+    </span>
+  )
+}
+
+function ComentarioEditor({ materialId, value, onSaved }: { materialId: string; value: string | null; onSaved: () => void }) {
+  const [editing, setEditing] = useState(false)
+  const [draft, setDraft] = useState('')
+  const [saving, setSaving] = useState(false)
+
+  async function save() {
+    setSaving(true)
+    try {
+      await updateMaterialComentario(materialId, draft)
+      setEditing(false)
+      onSaved()
+    } catch (err) {
+      alert(err instanceof Error ? err.message : String(err))
+    } finally {
+      setSaving(false)
+    }
+  }
+
+  if (!editing) {
+    return (
+      <button type="button" onClick={() => { setDraft(value ?? ''); setEditing(true) }}
+        className="text-[10px] text-slate-500 hover:text-brand-400 underline decoration-dotted text-left truncate max-w-full">
+        {value?.trim() || 'sin comentario'}
+      </button>
+    )
+  }
+  return (
+    <span className="inline-flex items-center gap-1 w-full">
+      <input type="text" value={draft} onChange={(e) => setDraft(e.target.value)} autoFocus
+        placeholder="Comentario…"
+        className="w-32 bg-slate-700 text-white text-[10px] rounded px-1 py-0.5 border border-slate-600 focus:border-brand-500 focus:outline-none" />
+      <button type="button" onClick={save} disabled={saving} className="text-[10px] text-brand-400 font-semibold shrink-0">✓</button>
+      <button type="button" onClick={() => setEditing(false)} className="text-[10px] text-slate-500 shrink-0">✕</button>
     </span>
   )
 }
