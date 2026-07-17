@@ -69,11 +69,13 @@ interface NuevaFila {
   materialId: string
   lote: string
   puntoId: string | null
+  /** Por defecto el primer técnico asignado al proyecto — se elige en la misma fila, a la izquierda del SKU. */
+  tecnicoUserId: string
   edits: Partial<Record<Campo, string>>
 }
 
-function filaVacia(): NuevaFila {
-  return { localId: nanoid(8), materialId: '', lote: '', puntoId: null, edits: {} }
+function filaVacia(tecnicoUserId: string): NuevaFila {
+  return { localId: nanoid(8), materialId: '', lote: '', puntoId: null, tecnicoUserId, edits: {} }
 }
 
 export function ResumenProyectoTable({ projectId, area, puntos, refreshKey = 0 }: Props) {
@@ -139,9 +141,9 @@ export function ResumenProyectoTable({ projectId, area, puntos, refreshKey = 0 }
   }
 
   function agregarFilaNueva() {
-    setNuevasFilas((prev) => [...prev, filaVacia()])
+    setNuevasFilas((prev) => [...prev, filaVacia(members[0]?.id ?? '')])
   }
-  function actualizarFilaNueva(localId: string, patch: Partial<Pick<NuevaFila, 'materialId' | 'lote' | 'puntoId'>>) {
+  function actualizarFilaNueva(localId: string, patch: Partial<Pick<NuevaFila, 'materialId' | 'lote' | 'puntoId' | 'tecnicoUserId'>>) {
     setNuevasFilas((prev) => prev.map((f) => (f.localId === localId ? { ...f, ...patch } : f)))
   }
   function setDraftNueva(localId: string, campo: Campo, v: string) {
@@ -159,7 +161,10 @@ export function ResumenProyectoTable({ projectId, area, puntos, refreshKey = 0 }
 
   async function guardarCambios() {
     if (!rows) return
-    if (!tecnicoEdicion) { setError('Elige un técnico para registrar los movimientos'); return }
+    if (pendientesExistentes.length > 0 && !tecnicoEdicion) {
+      setError('Elige un técnico para registrar los movimientos')
+      return
+    }
     setSaving(true)
     setError(null)
     const nextEdits: typeof edits = {}
@@ -199,6 +204,11 @@ export function ResumenProyectoTable({ projectId, area, puntos, refreshKey = 0 }
         nextNuevasFilas.push(fila)
         continue
       }
+      if (!fila.tecnicoUserId) {
+        nextErrors[`${fila.localId}|__tecnico__`] = 'Elige un técnico antes de guardar'
+        nextNuevasFilas.push(fila)
+        continue
+      }
       const nextFilaEdits: Partial<Record<Campo, string>> = {}
       for (const campo of CAMPOS) {
         const raw = fila.edits[campo]
@@ -212,7 +222,7 @@ export function ResumenProyectoTable({ projectId, area, puntos, refreshKey = 0 }
         try {
           await registrarMovimiento({
             tipoUI: CAMPO_TIPO[campo], materialId: fila.materialId, cantidad: n, lote: fila.lote || undefined,
-            projectId, puntoId: fila.puntoId, tecnicoUserId: tecnicoEdicion,
+            projectId, puntoId: fila.puntoId, tecnicoUserId: fila.tecnicoUserId,
             ubicacionBodegaId: CAMPO_NECESITA_BODEGA.includes(campo) ? bodegaEdicion : undefined,
           })
         } catch (err) {
@@ -364,6 +374,7 @@ export function ResumenProyectoTable({ projectId, area, puntos, refreshKey = 0 }
             <table className="w-full text-xs border-collapse">
               <thead>
                 <tr className="bg-slate-900/60 text-slate-400 text-left divide-x divide-slate-700">
+                  <th className="px-2 py-2 font-medium whitespace-nowrap">Técnico</th>
                   <th className="px-2 py-2 font-medium whitespace-nowrap">SKU</th>
                   <th className="px-2 py-2 font-medium whitespace-nowrap">Lote</th>
                   <th className="px-2 py-2 font-medium text-center whitespace-nowrap">Solicitado</th>
@@ -377,8 +388,18 @@ export function ResumenProyectoTable({ projectId, area, puntos, refreshKey = 0 }
               <tbody>
                 {nuevasFilas.map((fila) => {
                   const errMaterial = cellErrors[`${fila.localId}|__material__`]
+                  const errTecnico = cellErrors[`${fila.localId}|__tecnico__`]
                   return (
                     <tr key={fila.localId} className="border-t border-slate-700 divide-x divide-slate-700 bg-brand-950/20">
+                      <td className="px-2 py-2 align-top">
+                        <select value={fila.tecnicoUserId}
+                          onChange={(e) => actualizarFilaNueva(fila.localId, { tecnicoUserId: e.target.value })}
+                          className="w-28 bg-slate-700 text-white text-xs rounded px-1.5 py-1 border border-slate-600 focus:border-brand-500 focus:outline-none">
+                          <option value="">Técnico…</option>
+                          {members.map((m) => <option key={m.id} value={m.id}>{m.nombre?.trim() || m.email}</option>)}
+                        </select>
+                        {errTecnico && <p className="text-[9px] text-red-400 mt-0.5">{errTecnico}</p>}
+                      </td>
                       <td className="px-2 py-2 align-top">
                         <MaterialSelect materiales={materiales} value={fila.materialId}
                           onChange={(id) => actualizarFilaNueva(fila.localId, { materialId: id, lote: '' })}
@@ -426,6 +447,7 @@ export function ResumenProyectoTable({ projectId, area, puntos, refreshKey = 0 }
                   const correctionDraft = corrections[key] ?? {}
                   return (
                     <tr key={key} className="border-t border-slate-700 divide-x divide-slate-700 bg-slate-800/60">
+                      <td className="px-2 py-2 text-slate-600 whitespace-nowrap">—</td>
                       <td className="px-2 py-2 text-slate-300 whitespace-nowrap">{row.materialSku}</td>
                       <td className="px-2 py-2 text-slate-300 whitespace-nowrap">
                         {row.lote}
