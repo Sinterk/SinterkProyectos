@@ -73,11 +73,13 @@ interface NuevaFila {
   puntoId: string | null
   /** Por defecto el primer técnico asignado al proyecto — se elige en la misma fila, a la izquierda del SKU. */
   tecnicoUserId: string
+  /** De dónde sale el material — por defecto la bodega del área (BODEGA_DEFECTO_POR_AREA). */
+  ubicacionBodegaId: string
   edits: Partial<Record<Campo, string>>
 }
 
-function filaVacia(tecnicoUserId: string): NuevaFila {
-  return { localId: nanoid(8), materialId: '', lote: '', puntoId: null, tecnicoUserId, edits: {} }
+function filaVacia(tecnicoUserId: string, ubicacionBodegaId: string): NuevaFila {
+  return { localId: nanoid(8), materialId: '', lote: '', puntoId: null, tecnicoUserId, ubicacionBodegaId, edits: {} }
 }
 
 export function ResumenProyectoTable({ projectId, area, puntos, refreshKey = 0, membersVersion = 0 }: Props) {
@@ -143,9 +145,9 @@ export function ResumenProyectoTable({ projectId, area, puntos, refreshKey = 0, 
   }
 
   function agregarFilaNueva() {
-    setNuevasFilas((prev) => [...prev, filaVacia(members[0]?.id ?? '')])
+    setNuevasFilas((prev) => [...prev, filaVacia(members[0]?.id ?? '', defaultBodegaId)])
   }
-  function actualizarFilaNueva(localId: string, patch: Partial<Pick<NuevaFila, 'materialId' | 'lote' | 'puntoId' | 'tecnicoUserId'>>) {
+  function actualizarFilaNueva(localId: string, patch: Partial<Pick<NuevaFila, 'materialId' | 'lote' | 'puntoId' | 'tecnicoUserId' | 'ubicacionBodegaId'>>) {
     setNuevasFilas((prev) => prev.map((f) => (f.localId === localId ? { ...f, ...patch } : f)))
   }
   function setDraftNueva(localId: string, campo: Campo, v: string) {
@@ -216,7 +218,7 @@ export function ResumenProyectoTable({ projectId, area, puntos, refreshKey = 0, 
         const raw = fila.edits[campo]
         const n = Number(raw)
         if (!raw || !(n > 0)) continue
-        if (CAMPO_NECESITA_BODEGA.includes(campo) && !bodegaEdicion) {
+        if (CAMPO_NECESITA_BODEGA.includes(campo) && !fila.ubicacionBodegaId) {
           nextErrors[`${fila.localId}|${campo}`] = 'Falta elegir bodega'
           nextFilaEdits[campo] = raw
           continue
@@ -225,7 +227,7 @@ export function ResumenProyectoTable({ projectId, area, puntos, refreshKey = 0, 
           await registrarMovimiento({
             tipoUI: CAMPO_TIPO[campo], materialId: fila.materialId, cantidad: n, lote: fila.lote || undefined,
             projectId, puntoId: fila.puntoId, tecnicoUserId: fila.tecnicoUserId,
-            ubicacionBodegaId: CAMPO_NECESITA_BODEGA.includes(campo) ? bodegaEdicion : undefined,
+            ubicacionBodegaId: CAMPO_NECESITA_BODEGA.includes(campo) ? fila.ubicacionBodegaId : undefined,
           })
         } catch (err) {
           nextErrors[`${fila.localId}|${campo}`] = err instanceof Error ? err.message : String(err)
@@ -379,6 +381,7 @@ export function ResumenProyectoTable({ projectId, area, puntos, refreshKey = 0, 
                   <th className="px-2 py-2 font-medium whitespace-nowrap">Técnico</th>
                   <th className="px-2 py-2 font-medium whitespace-nowrap">SKU</th>
                   <th className="px-2 py-2 font-medium whitespace-nowrap">Lote</th>
+                  <th className="px-2 py-2 font-medium whitespace-nowrap">Bodega</th>
                   <th className="px-2 py-2 font-medium text-center whitespace-nowrap">Solicitado</th>
                   <th className="px-2 py-2 font-medium text-center whitespace-nowrap">Entregado</th>
                   <th className="px-2 py-2 font-medium text-center whitespace-nowrap">Instalado</th>
@@ -409,7 +412,7 @@ export function ResumenProyectoTable({ projectId, area, puntos, refreshKey = 0, 
                         {errMaterial && <p className="text-[9px] text-red-400 mt-0.5">{errMaterial}</p>}
                       </td>
                       <td className="px-2 py-2 align-top space-y-1">
-                        <LoteSelect materialId={fila.materialId} ubicacionId={bodegaEdicion || null} naturaleza="fisico"
+                        <LoteSelect materialId={fila.materialId} ubicacionId={fila.ubicacionBodegaId || null} naturaleza="fisico"
                           checkAvailability={false} value={fila.lote}
                           onChange={(lote) => actualizarFilaNueva(fila.localId, { lote })}
                           className="w-24 bg-slate-700 text-white text-xs rounded px-1.5 py-1 border border-slate-600 focus:border-brand-500 focus:outline-none" />
@@ -421,6 +424,14 @@ export function ResumenProyectoTable({ projectId, area, puntos, refreshKey = 0, 
                             {puntos.map((p) => <option key={p.id} value={p.id}>{p.nombre}</option>)}
                           </select>
                         )}
+                      </td>
+                      <td className="px-2 py-2 align-top">
+                        <select value={fila.ubicacionBodegaId}
+                          onChange={(e) => actualizarFilaNueva(fila.localId, { ubicacionBodegaId: e.target.value, lote: '' })}
+                          className="w-24 bg-slate-700 text-white text-xs rounded px-1.5 py-1 border border-slate-600 focus:border-brand-500 focus:outline-none">
+                          <option value="">Bodega…</option>
+                          {bodegas.map((b) => <option key={b.id} value={b.id}>{b.nombre}</option>)}
+                        </select>
                       </td>
                       {CAMPOS.map((campo) => {
                         if (!editableCampos.includes(campo)) {
@@ -455,6 +466,7 @@ export function ResumenProyectoTable({ projectId, area, puntos, refreshKey = 0, 
                         {row.lote}
                         {puntos && <p className="text-[10px] text-slate-500">{puntoNombre(row.puntoId)}</p>}
                       </td>
+                      <td className="px-2 py-2 text-slate-600 whitespace-nowrap">—</td>
                       {CAMPOS.map((campo) => {
                         const valor = row[campo]
                         const esCorregible = modoCorreccion && CAMPO_DB[campo] !== undefined
