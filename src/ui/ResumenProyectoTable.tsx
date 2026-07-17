@@ -37,6 +37,8 @@ interface Props {
   /** Solo se pasa para Preventivos: habilita el desglose "· <nombre del punto>" por fila. */
   puntos?: Punto[]
   refreshKey?: number
+  /** Sube cuando `EquipoSection` (en LogisticaTab) agrega/quita un técnico — sin esto, esta tabla seguía mostrando la lista de técnicos vieja hasta salir y volver a entrar a la OTT. */
+  membersVersion?: number
 }
 
 export function Stat({ label, value, highlight }: { label: string; value: number; highlight?: boolean }) {
@@ -78,7 +80,7 @@ function filaVacia(tecnicoUserId: string): NuevaFila {
   return { localId: nanoid(8), materialId: '', lote: '', puntoId: null, tecnicoUserId, edits: {} }
 }
 
-export function ResumenProyectoTable({ projectId, area, puntos, refreshKey = 0 }: Props) {
+export function ResumenProyectoTable({ projectId, area, puntos, refreshKey = 0, membersVersion = 0 }: Props) {
   const rol = useAuth((s) => s.profile?.rol)
   const puedeCorregir = rol === 'admin' || rol === 'jp' || rol === 'log'
   // El técnico solo reporta lo que instaló/devolvió — entregado/rebajado los
@@ -125,7 +127,7 @@ export function ResumenProyectoTable({ projectId, area, puntos, refreshKey = 0 }
     try { setRows(await getResumenProyecto(projectId)) } catch (err) { setError(err instanceof Error ? err.message : String(err)) }
   }
   useEffect(() => { setRows(null); reload() }, [projectId, refreshKey])
-  useEffect(() => { adminRepo.listMembers(projectId).then(setMembers).catch(() => {}) }, [projectId])
+  useEffect(() => { adminRepo.listMembers(projectId).then(setMembers).catch(() => {}) }, [projectId, membersVersion])
   useEffect(() => { listUbicaciones({ tipo: 'bodega' }).then(setBodegas).catch(() => {}) }, [])
   useEffect(() => { listMateriales().then(setMateriales).catch(() => {}) }, [])
 

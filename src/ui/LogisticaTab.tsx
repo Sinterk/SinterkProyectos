@@ -24,16 +24,23 @@ interface Props {
 
 export function LogisticaTab({ projectId, area, puntos }: Props) {
   const isTecnico = useAuth((s) => s.profile?.rol === 'tecnico')
+  // EquipoSection y ResumenProyectoTable leen `project_members` cada uno por
+  // su cuenta (listas separadas, sin estado compartido) — sin este contador,
+  // asignar un técnico acá no se reflejaba en el selector de "+ Nuevo
+  // material" hasta salir y volver a entrar a la OTT.
+  const [membersVersion, setMembersVersion] = useState(0)
   return (
     <div className="space-y-4">
-      {!isTecnico && <EquipoSection projectId={projectId} />}
-      <ResumenProyectoTable projectId={projectId} area={area} puntos={puntos} />
+      {!isTecnico && (
+        <EquipoSection projectId={projectId} onMembersChanged={() => setMembersVersion((v) => v + 1)} />
+      )}
+      <ResumenProyectoTable projectId={projectId} area={area} puntos={puntos} membersVersion={membersVersion} />
       <ObservacionesSection projectId={projectId} />
     </div>
   )
 }
 
-function EquipoSection({ projectId }: { projectId: string }) {
+function EquipoSection({ projectId, onMembersChanged }: { projectId: string; onMembersChanged: () => void }) {
   const [members, setMembers] = useState<MemberProfile[] | null>(null)
   const [candidates, setCandidates] = useState<Profile[]>([])
   const [error, setError] = useState<string | null>(null)
@@ -57,6 +64,7 @@ function EquipoSection({ projectId }: { projectId: string }) {
       if (isMember) await adminRepo.removeMember(projectId, userId)
       else await adminRepo.addMember(projectId, userId)
       await reload()
+      onMembersChanged()
     } catch (err) {
       setError(err instanceof Error ? err.message : String(err))
     } finally {
