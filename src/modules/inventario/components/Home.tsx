@@ -90,18 +90,72 @@ function EntradasSalidasTab() {
   )
 }
 
+type MovColKey = 'fecha' | 'tipo' | 'sku' | 'material' | 'lote' | 'cantidad' | 'bodega' | 'proyecto' | 'tecnico' | 'nota'
+
+const MOV_COLUMNS: { key: MovColKey; label: string; numeric?: boolean; align?: 'right' }[] = [
+  { key: 'fecha', label: 'Fecha' },
+  { key: 'tipo', label: 'Tipo' },
+  { key: 'sku', label: 'SKU', numeric: true },
+  { key: 'material', label: 'Material' },
+  { key: 'lote', label: 'Lote' },
+  { key: 'cantidad', label: 'Cantidad', numeric: true, align: 'right' },
+  { key: 'bodega', label: 'Bodega' },
+  { key: 'proyecto', label: 'Proyecto' },
+  { key: 'tecnico', label: 'Técnico' },
+  { key: 'nota', label: 'Nota' },
+]
+
+const SIN_PROYECTO = 'Sin proyecto'
+const SIN_TECNICO = 'Sin técnico'
+const SIN_NOTA = 'Sin nota'
+
+function movColValue(m: Movimiento, key: MovColKey): string | number {
+  switch (key) {
+    case 'fecha': return m.fecha.slice(0, 10) // YYYY-MM-DD: ordena bien como string, sin ambigüedad de zona horaria
+    case 'tipo': return TIPO_LABELS_MOV[m.tipo] ?? m.tipo
+    case 'sku': return m.materialSku
+    case 'material': return m.materialDescripcion
+    case 'lote': return m.lote
+    case 'cantidad': return m.cantidad
+    case 'bodega': return m.ubicacionNombre
+    case 'proyecto': return m.projectOtt ?? ''
+    case 'tecnico': return m.usuarioNombre ?? ''
+    case 'nota': return m.nota ?? ''
+  }
+}
+
+/** Igual que stockColDisplayValue: texto para el checklist de filtro (por eso los campos vacíos se ven como "Sin X", no como cadena vacía). */
+function movColDisplayValue(m: Movimiento, key: MovColKey): string {
+  if (key === 'proyecto') return m.projectOtt || SIN_PROYECTO
+  if (key === 'tecnico') return m.usuarioNombre || SIN_TECNICO
+  if (key === 'nota') return m.nota?.trim() ? m.nota : SIN_NOTA
+  return String(movColValue(m, key))
+}
+
+function sortMovColumnValues(key: MovColKey, values: string[]): string[] {
+  if (key === 'sku') return [...values].sort((a, b) => compareSku(a, b, 'asc'))
+  if (key === 'cantidad') return [...values].sort((a, b) => Number(a) - Number(b))
+  if (key === 'fecha') return [...values].sort((a, b) => a.localeCompare(b))
+  return [...values].sort((a, b) => a.localeCompare(b))
+}
+
 function MovimientosTab({ refreshKey }: { refreshKey: number }) {
   const [rows, setRows] = useState<Movimiento[] | null>(null)
   const [error, setError] = useState<string | null>(null)
-  const [tipo, setTipo] = useState('')
   const [desde, setDesde] = useState('')
   const [hasta, setHasta] = useState('')
   const [search, setSearch] = useState('')
 
+  // Mismo patrón que BodegaTab: orden por defecto (acá, el que ya trae la API —
+  // fecha desc) reemplazado por un solo clic en una columna; filtro tipo Google
+  // Sheets por columna, además del buscador de texto libre.
+  const [sort, setSort] = useState<{ key: MovColKey; dir: 'asc' | 'desc' } | null>(null)
+  const [colSelected, setColSelected] = useState<Partial<Record<MovColKey, Set<string>>>>({})
+  const [openMenu, setOpenMenu] = useState<MovColKey | null>(null)
+
   async function reload() {
     try {
       const filters: ListMovimientosFilters = {}
-      if (tipo) filters.tipo = tipo
       if (desde) filters.desde = new Date(desde).toISOString()
       if (hasta) filters.hasta = new Date(`${hasta}T23:59:59`).toISOString()
       setRows(await listMovimientos(filters))
@@ -109,26 +163,50 @@ function MovimientosTab({ refreshKey }: { refreshKey: number }) {
       setError(err instanceof Error ? err.message : String(err))
     }
   }
-  useEffect(() => { reload() /* eslint-disable-next-line react-hooks/exhaustive-deps */ }, [tipo, desde, hasta, refreshKey])
+  useEffect(() => { reload() /* eslint-disable-next-line react-hooks/exhaustive-deps */ }, [desde, hasta, refreshKey])
 
   const q = search.trim().toLowerCase()
-  const filtered = (rows ?? []).filter((m) => !q
+  const searched = (rows ?? []).filter((m) => !q
     || m.materialSku.toLowerCase().includes(q)
     || m.materialDescripcion.toLowerCase().includes(q)
     || m.ubicacionNombre.toLowerCase().includes(q)
     || (m.usuarioNombre ?? '').toLowerCase().includes(q)
-    || (m.projectOtt ?? '').toLowerCase().includes(q))
+    || (m.projectOtt ?? '').toLowerCase().includes(q)
+    || (m.nota ?? '').toLowerCase().includes(q))
+
+  const valuesByColumn = useMemo(() => {
+    const result = {} as Record<MovColKey, string[]>
+    for (const col of MOV_COLUMNS) {
+      result[col.key] = sortMovColumnValues(col.key, [...new Set(searched.map((m) => movColDisplayValue(m, col.key)))])
+    }
+    return result
+  }, [searched])
+
+  const displayRows = useMemo(() => {
+    let out = searched
+    for (const key of Object.keys(colSelected) as MovColKey[]) {
+      const set = colSelected[key]
+      if (!set) continue
+      out = out.filter((m) => set.has(movColDisplayValue(m, key)))
+    }
+    if (!sort) return out
+    const sorted = [...out]
+    sorted.sort((a, b) => {
+      if (sort.key === 'sku') return compareSku(a.materialSku, b.materialSku, sort.dir)
+      const va = movColValue(a, sort.key)
+      const vb = movColValue(b, sort.key)
+      const cmp = typeof va === 'number' && typeof vb === 'number' ? va - vb : String(va).localeCompare(String(vb))
+      return sort.dir === 'asc' ? cmp : -cmp
+    })
+    return sorted
+  }, [searched, colSelected, sort])
 
   return (
     <div className="space-y-3">
       <div className="grid grid-cols-2 gap-2">
         <input value={search} onChange={(e) => setSearch(e.target.value)} placeholder="Buscar…"
           className={`${inputCls} col-span-2`} />
-        <select value={tipo} onChange={(e) => setTipo(e.target.value)} className={inputCls}>
-          <option value="">Todos los tipos</option>
-          {Object.entries(TIPO_LABELS_MOV).map(([k, v]) => <option key={k} value={k}>{v}</option>)}
-        </select>
-        <div className="flex gap-1">
+        <div className="flex gap-1 col-span-2">
           <input type="date" value={desde} onChange={(e) => setDesde(e.target.value)} className={`${inputCls} w-full`} />
           <input type="date" value={hasta} onChange={(e) => setHasta(e.target.value)} className={`${inputCls} w-full`} />
         </div>
@@ -137,25 +215,64 @@ function MovimientosTab({ refreshKey }: { refreshKey: number }) {
       {error && <p className="text-xs text-red-400">{error}</p>}
       {rows === null ? (
         <p className="text-xs text-slate-500">Cargando…</p>
-      ) : filtered.length === 0 ? (
+      ) : rows.length === 0 ? (
         <p className="text-xs text-slate-500">Sin movimientos.</p>
       ) : (
-        <div className="space-y-1.5">
-          {filtered.map((m) => (
-            <div key={m.id} className="bg-slate-800 rounded-xl border border-slate-700 p-3 text-xs">
-              <div className="flex items-center justify-between gap-2">
-                <span className="font-semibold text-white">{TIPO_LABELS_MOV[m.tipo] ?? m.tipo}</span>
-                <span className="text-slate-500">{new Date(m.fecha).toLocaleDateString('es-CL', { timeZone: 'UTC' })}</span>
-              </div>
-              <p className="text-slate-300 mt-1">{m.materialSku} — {m.materialDescripcion} · {m.cantidad} · lote {m.lote}</p>
-              <p className="text-slate-500 mt-0.5">
-                {m.ubicacionNombre}
-                {m.projectOtt ? ` · OTT ${m.projectOtt}` : ''}
-                {m.usuarioNombre ? ` · ${m.usuarioNombre}` : ''}
-              </p>
-              {m.nota && <p className="text-slate-500 italic mt-0.5">{m.nota}</p>}
-            </div>
-          ))}
+        <div className="overflow-x-auto rounded-xl border border-slate-700">
+          <table className="w-full text-xs border-collapse">
+            <thead>
+              <tr className="bg-slate-800 text-slate-400 text-left divide-x divide-slate-700">
+                {MOV_COLUMNS.map((col) => {
+                  const colValues = valuesByColumn[col.key]
+                  const colSelectedSet = colSelected[col.key]
+                  return (
+                    <ColumnHeader key={col.key} col={col}
+                      sort={sort} onSort={(dir) => { setSort(dir ? { key: col.key, dir } : null); setOpenMenu(null) }}
+                      checklist={{
+                        values: colValues,
+                        selected: colSelectedSet ?? null,
+                        onToggleValue: (v) => setColSelected((prev) => {
+                          const current = new Set(prev[col.key] ?? colValues)
+                          if (current.has(v)) current.delete(v); else current.add(v)
+                          const next = { ...prev }
+                          if (current.size === colValues.length) delete next[col.key]
+                          else next[col.key] = current
+                          return next
+                        }),
+                        onSelectAll: () => setColSelected((prev) => {
+                          const next = { ...prev }
+                          delete next[col.key]
+                          return next
+                        }),
+                        onSelectNone: () => setColSelected((prev) => ({ ...prev, [col.key]: new Set() })),
+                      }}
+                      open={openMenu === col.key} onToggle={() => setOpenMenu((k) => (k === col.key ? null : col.key))} />
+                  )
+                })}
+              </tr>
+            </thead>
+            <tbody>
+              {displayRows.length === 0 && (
+                <tr><td colSpan={MOV_COLUMNS.length} className="px-2 py-3 text-center text-slate-500">
+                  Ningún resultado con los filtros de columna actuales.
+                </td></tr>
+              )}
+              {displayRows.map((m) => (
+                <tr key={m.id} className="border-t border-slate-700 divide-x divide-slate-700 bg-slate-800/60">
+                  <td className="px-2 py-2 text-slate-300 whitespace-nowrap">{m.fecha.slice(0, 10)}</td>
+                  <td className="px-2 py-2 text-slate-300 whitespace-nowrap">{TIPO_LABELS_MOV[m.tipo] ?? m.tipo}</td>
+                  <td className="px-2 py-2 text-slate-300 whitespace-nowrap">{m.materialSku}</td>
+                  <td className="px-2 py-2 max-w-[220px]"><p className="text-white truncate">{m.materialDescripcion}</p></td>
+                  <td className="px-2 py-2 text-slate-300 whitespace-nowrap">{m.lote}</td>
+                  <td className="px-2 py-2 text-right font-semibold text-white whitespace-nowrap">{m.cantidad}</td>
+                  <td className="px-2 py-2 text-slate-300 whitespace-nowrap">{m.ubicacionNombre}</td>
+                  <td className="px-2 py-2 text-slate-300 whitespace-nowrap">{m.projectOtt ?? '—'}</td>
+                  <td className="px-2 py-2 text-slate-300 whitespace-nowrap">{m.usuarioNombre ?? '—'}</td>
+                  <td className="px-2 py-2 max-w-[220px]"><p className="text-slate-400 truncate">{m.nota ?? '—'}</p></td>
+                </tr>
+              ))}
+            </tbody>
+          </table>
         </div>
       )}
     </div>
@@ -294,7 +411,7 @@ function BodegaTab() {
                   const colValues = valuesByColumn[col.key]
                   const colSelectedSet = colSelected[col.key]
                   return (
-                    <StockColumnHeader key={col.key} col={col}
+                    <ColumnHeader key={col.key} col={col}
                       sort={sort} onSort={(dir) => { setSort(dir ? { key: col.key, dir } : null); setOpenMenu(null) }}
                       checklist={{
                         values: colValues,
@@ -362,7 +479,7 @@ function BodegaTab() {
   )
 }
 
-interface StockChecklistFilter {
+interface ChecklistFilter {
   values: string[]
   selected: Set<string> | null // null = todo seleccionado (sin filtro)
   onToggleValue: (v: string) => void
@@ -370,11 +487,12 @@ interface StockChecklistFilter {
   onSelectNone: () => void
 }
 
-function StockColumnHeader({ col, sort, onSort, checklist, open, onToggle }: {
-  col: { key: StockColKey; label: string; numeric?: boolean; align?: 'right' }
-  sort: { key: StockColKey; dir: 'asc' | 'desc' } | null
+/** Header de columna con orden + filtro tipo Google Sheets — compartido por Bodega y Movimientos. */
+function ColumnHeader<K extends string>({ col, sort, onSort, checklist, open, onToggle }: {
+  col: { key: K; label: string; numeric?: boolean; align?: 'right' }
+  sort: { key: K; dir: 'asc' | 'desc' } | null
   onSort: (dir: 'asc' | 'desc' | null) => void
-  checklist: StockChecklistFilter
+  checklist: ChecklistFilter
   open: boolean
   onToggle: () => void
 }) {
