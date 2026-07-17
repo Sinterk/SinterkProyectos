@@ -2,8 +2,16 @@
 // se puede filtrar y con cientos de materiales SAP es difícil de usar).
 // SKU se ordena numéricamente (ver src/lib/inventario/sku.ts), igual que en
 // la tabla Bodega.
+//
+// El panel se porta a document.body con position:fixed (posición calculada
+// desde el botón al abrir) en vez de vivir dentro del contenedor con
+// position:absolute — usado dentro de una celda de tabla (ResumenProyectoTable,
+// "+ Nuevo material"), quedaba recortado/tapando las filas de abajo por el
+// mismo motivo que el filtro de columna de la pestaña Bodega (contenedor con
+// overflow-x-auto). Mismo fix que ese caso.
 
-import { useMemo, useState } from 'react'
+import { useMemo, useRef, useState } from 'react'
+import { createPortal } from 'react-dom'
 import { compareSku } from '@/lib/inventario/sku'
 import type { Material } from '@/lib/inventario/types'
 
@@ -18,6 +26,8 @@ interface Props {
 export function MaterialSelect({ materiales, value, onChange, placeholder = 'Material…', className }: Props) {
   const [open, setOpen] = useState(false)
   const [query, setQuery] = useState('')
+  const [pos, setPos] = useState<{ top: number; left: number } | null>(null)
+  const btnRef = useRef<HTMLButtonElement>(null)
 
   const sorted = useMemo(() => [...materiales].sort((a, b) => compareSku(a.sku, b.sku)), [materiales])
   const selected = materiales.find((m) => m.id === value) ?? null
@@ -27,6 +37,15 @@ export function MaterialSelect({ materiales, value, onChange, placeholder = 'Mat
     ? sorted.filter((m) => m.sku.toLowerCase().includes(q) || (m.apodo || m.descripcion).toLowerCase().includes(q))
     : sorted
 
+  function toggle() {
+    if (!open && btnRef.current) {
+      const r = btnRef.current.getBoundingClientRect()
+      setPos({ top: r.bottom + 4, left: Math.min(r.left, window.innerWidth - 300) })
+    }
+    setQuery('')
+    setOpen((v) => !v)
+  }
+
   function select(id: string) {
     onChange(id)
     setOpen(false)
@@ -34,15 +53,16 @@ export function MaterialSelect({ materiales, value, onChange, placeholder = 'Mat
   }
 
   return (
-    <div className={`relative ${className ?? ''}`}>
-      <button type="button" onClick={() => setOpen((v) => !v)}
+    <div className={className}>
+      <button ref={btnRef} type="button" onClick={toggle}
         className="w-full text-left bg-slate-700 text-white text-sm rounded-lg px-2 py-1.5 border border-slate-600 focus:border-brand-500 focus:outline-none truncate">
         {selected ? `${selected.sku} — ${selected.apodo || selected.descripcion}` : <span className="text-slate-400">{placeholder}</span>}
       </button>
-      {open && (
+      {open && pos && createPortal(
         <>
-          <div className="fixed inset-0 z-10" onClick={() => setOpen(false)} />
-          <div className="absolute z-20 top-full mt-1 left-0 w-72 max-w-[90vw] bg-slate-800 border border-slate-600 rounded-lg shadow-lg p-2 space-y-1.5">
+          <div className="fixed inset-0 z-40" onClick={() => setOpen(false)} />
+          <div style={{ top: pos.top, left: pos.left }}
+            className="fixed z-50 w-72 max-w-[90vw] bg-slate-800 border border-slate-600 rounded-lg shadow-lg p-2 space-y-1.5">
             <input autoFocus value={query} onChange={(e) => setQuery(e.target.value)} placeholder="Buscar SKU o nombre…"
               onClick={(e) => e.stopPropagation()}
               className="w-full bg-slate-700 text-white text-xs rounded-lg px-2 py-1.5 border border-slate-600 focus:border-brand-500 focus:outline-none" />
@@ -56,7 +76,8 @@ export function MaterialSelect({ materiales, value, onChange, placeholder = 'Mat
               ))}
             </div>
           </div>
-        </>
+        </>,
+        document.body,
       )}
     </div>
   )
