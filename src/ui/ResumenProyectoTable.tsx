@@ -111,6 +111,15 @@ export function ResumenProyectoTable({ projectId, area, puntos, refreshKey = 0, 
   const [bodegaEdicion, setBodegaEdicion] = useState('')
   const [saving, setSaving] = useState(false)
 
+  // Lote/técnico de una fila EXISTENTE también editables (antes solo se podían
+  // elegir en "+ Nuevo material"): por defecto el lote propio de la fila y el
+  // técnico compartido de la barra de abajo, pero se pueden cambiar antes de
+  // guardar — sigue siendo aditivo (el "+" registra un movimiento nuevo con el
+  // lote/técnico elegidos, no reescribe la fila existente), así que si se
+  // elige un lote distinto simplemente aparece como fila propia tras recargar.
+  const [rowLoteOverride, setRowLoteOverride] = useState<Record<string, string>>({})
+  const [rowTecnicoOverride, setRowTecnicoOverride] = useState<Record<string, string>>({})
+
   // Filas nuevas (materiales aún no presentes en `rows`): mismo mecanismo de
   // "+" que una fila existente, solo que además hay que elegir material/lote/
   // punto ahí mismo antes de poder guardar.
@@ -144,6 +153,19 @@ export function ResumenProyectoTable({ projectId, area, puntos, refreshKey = 0, 
     setEdits((prev) => ({ ...prev, [key]: { ...prev[key], [campo]: v } }))
   }
 
+  function getRowLote(row: ResumenMaterialProyecto): string {
+    return rowLoteOverride[rowKey(row)] ?? row.lote
+  }
+  function setRowLote(key: string, lote: string) {
+    setRowLoteOverride((prev) => ({ ...prev, [key]: lote }))
+  }
+  function getRowTecnico(key: string): string {
+    return rowTecnicoOverride[key] || tecnicoEdicion
+  }
+  function setRowTecnico(key: string, tecnicoUserId: string) {
+    setRowTecnicoOverride((prev) => ({ ...prev, [key]: tecnicoUserId }))
+  }
+
   function agregarFilaNueva() {
     setNuevasFilas((prev) => [...prev, filaVacia(members[0]?.id ?? '', defaultBodegaId)])
   }
@@ -165,10 +187,6 @@ export function ResumenProyectoTable({ projectId, area, puntos, refreshKey = 0, 
 
   async function guardarCambios() {
     if (!rows) return
-    if (pendientesExistentes.length > 0 && !tecnicoEdicion) {
-      setError('Elige un técnico para registrar los movimientos')
-      return
-    }
     setSaving(true)
     setError(null)
     const nextEdits: typeof edits = {}
@@ -177,6 +195,16 @@ export function ResumenProyectoTable({ projectId, area, puntos, refreshKey = 0, 
       const key = rowKey(row)
       const byCampo = edits[key]
       if (!byCampo) continue
+      const loteFila = getRowLote(row)
+      const tecnicoFila = getRowTecnico(key)
+      if (!tecnicoFila) {
+        for (const campo of CAMPOS) {
+          const raw = byCampo[campo]
+          if (raw && Number(raw) > 0) nextEdits[key] = { ...nextEdits[key], [campo]: raw }
+        }
+        if (nextEdits[key]) nextErrors[`${key}|__tecnico__`] = 'Elige un técnico antes de guardar'
+        continue
+      }
       for (const campo of CAMPOS) {
         const raw = byCampo[campo]
         const n = Number(raw)
@@ -188,8 +216,8 @@ export function ResumenProyectoTable({ projectId, area, puntos, refreshKey = 0, 
         }
         try {
           await registrarMovimiento({
-            tipoUI: CAMPO_TIPO[campo], materialId: row.materialId, cantidad: n, lote: row.lote,
-            projectId, puntoId: row.puntoId, tecnicoUserId: tecnicoEdicion,
+            tipoUI: CAMPO_TIPO[campo], materialId: row.materialId, cantidad: n, lote: loteFila || undefined,
+            projectId, puntoId: row.puntoId, tecnicoUserId: tecnicoFila,
             ubicacionBodegaId: CAMPO_NECESITA_BODEGA.includes(campo) ? bodegaEdicion : undefined,
           })
         } catch (err) {
@@ -458,12 +486,23 @@ export function ResumenProyectoTable({ projectId, area, puntos, refreshKey = 0, 
                   const key = rowKey(row)
                   const draft = edits[key] ?? {}
                   const correctionDraft = corrections[key] ?? {}
+                  const errTecnicoFila = cellErrors[`${key}|__tecnico__`]
                   return (
                     <tr key={key} className="border-t border-slate-700 divide-x divide-slate-700 bg-slate-800/60">
-                      <td className="px-2 py-2 text-slate-600 whitespace-nowrap">—</td>
+                      <td className="px-2 py-2 align-top">
+                        <select value={getRowTecnico(key)} onChange={(e) => setRowTecnico(key, e.target.value)}
+                          className="w-28 bg-slate-700 text-white text-xs rounded px-1.5 py-1 border border-slate-600 focus:border-brand-500 focus:outline-none">
+                          <option value="">Técnico…</option>
+                          {members.map((m) => <option key={m.id} value={m.id}>{m.nombre?.trim() || m.email}</option>)}
+                        </select>
+                        {errTecnicoFila && <p className="text-[9px] text-red-400 mt-0.5">{errTecnicoFila}</p>}
+                      </td>
                       <td className="px-2 py-2 text-slate-300 whitespace-nowrap">{row.materialSku}</td>
-                      <td className="px-2 py-2 text-slate-300 whitespace-nowrap">
-                        {row.lote}
+                      <td className="px-2 py-2 align-top space-y-1">
+                        <LoteSelect materialId={row.materialId} ubicacionId={bodegaEdicion || null} naturaleza="fisico"
+                          checkAvailability={false} value={getRowLote(row)}
+                          onChange={(lote) => setRowLote(key, lote)}
+                          className="w-24 bg-slate-700 text-white text-xs rounded px-1.5 py-1 border border-slate-600 focus:border-brand-500 focus:outline-none" />
                         {puntos && <p className="text-[10px] text-slate-500">{puntoNombre(row.puntoId)}</p>}
                       </td>
                       <td className="px-2 py-2 text-slate-600 whitespace-nowrap">—</td>
