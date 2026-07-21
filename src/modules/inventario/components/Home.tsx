@@ -4,7 +4,7 @@ import { adminRepo } from '@/lib/adminRepo'
 import type { ProjectSummary } from '@/lib/adminRepo'
 import type { Profile } from '@/lib/auth'
 import { RegistrarMovimientoForm } from '@/ui/RegistrarMovimientoForm'
-import { ResumenProyectoTable, Stat } from '@/ui/ResumenProyectoTable'
+import { ResumenProyectoTable } from '@/ui/ResumenProyectoTable'
 import { UbicacionSelect } from '@/ui/UbicacionSelect'
 import { useFileDrop } from '@/ui/useFileDrop'
 import {
@@ -685,11 +685,64 @@ function ProyectoTab() {
   )
 }
 
+type TecColKey = 'sku' | 'material' | 'lote' | 'proyecto' | 'entregado' | 'instalado' | 'devuelto' | 'rebajado' | 'transito'
+
+const TEC_COLUMNS: { key: TecColKey; label: string; numeric?: boolean; align?: 'right' }[] = [
+  { key: 'sku', label: 'SKU', numeric: true },
+  { key: 'material', label: 'Material' },
+  { key: 'lote', label: 'Lote' },
+  { key: 'proyecto', label: 'Proyecto' },
+  { key: 'entregado', label: 'Entregado', numeric: true, align: 'right' },
+  { key: 'instalado', label: 'Instalado', numeric: true, align: 'right' },
+  { key: 'devuelto', label: 'Devuelto', numeric: true, align: 'right' },
+  { key: 'rebajado', label: 'Rebajado', numeric: true, align: 'right' },
+  { key: 'transito', label: 'Tránsito', numeric: true, align: 'right' },
+]
+
+const SIN_PROYECTO_TEC = '🅿️ Sin proyecto'
+
+function tecColValue(r: TecnicoLedgerRow, key: TecColKey): string | number {
+  switch (key) {
+    case 'sku': return r.materialSku
+    case 'material': return r.materialDescripcion
+    case 'lote': return r.lote
+    case 'proyecto': return r.projectOtt ?? ''
+    case 'entregado': return r.cantEntregada
+    case 'instalado': return r.cantInstalada
+    case 'devuelto': return r.cantDevuelta
+    case 'rebajado': return r.cantRebajada
+    case 'transito': return r.cantTransito
+  }
+}
+
+/** Igual que en Bodega/Movimientos: texto para el checklist de filtro. */
+function tecColDisplayValue(r: TecnicoLedgerRow, key: TecColKey): string {
+  if (key === 'proyecto') {
+    return r.projectOtt ? `[${r.projectArea === 'ATT' ? 'ATT' : 'Preventivo'}] ${r.projectOtt}` : SIN_PROYECTO_TEC
+  }
+  return String(tecColValue(r, key))
+}
+
+const TEC_NUMERIC_COLS: TecColKey[] = ['entregado', 'instalado', 'devuelto', 'rebajado', 'transito']
+
+function sortTecColumnValues(key: TecColKey, values: string[]): string[] {
+  if (key === 'sku') return [...values].sort((a, b) => compareSku(a, b, 'asc'))
+  if (TEC_NUMERIC_COLS.includes(key)) return [...values].sort((a, b) => Number(a) - Number(b))
+  return [...values].sort((a, b) => a.localeCompare(b))
+}
+
 function TecnicoTab() {
   const [tecnicos, setTecnicos] = useState<Profile[]>([])
   const [userId, setUserId] = useState('')
   const [rows, setRows] = useState<TecnicoLedgerRow[] | null>(null)
   const [error, setError] = useState<string | null>(null)
+
+  // Mismo patrón que Bodega/Movimientos: orden (por defecto, el que ya trae
+  // getTecnicoLedger — por OTT) reemplazado por un clic en una columna;
+  // filtro tipo Google Sheets por columna.
+  const [sort, setSort] = useState<{ key: TecColKey; dir: 'asc' | 'desc' } | null>(null)
+  const [colSelected, setColSelected] = useState<Partial<Record<TecColKey, Set<string>>>>({})
+  const [openMenu, setOpenMenu] = useState<TecColKey | null>(null)
 
   useEffect(() => {
     adminRepo.listProfiles()
@@ -704,8 +757,38 @@ function TecnicoTab() {
   useEffect(() => {
     if (!userId) return
     setRows(null)
+    setColSelected({})
+    setSort(null)
     getTecnicoLedger(userId).then(setRows).catch((err) => setError(err instanceof Error ? err.message : String(err)))
   }, [userId])
+
+  const valuesByColumn = useMemo(() => {
+    const result = {} as Record<TecColKey, string[]>
+    for (const col of TEC_COLUMNS) {
+      result[col.key] = sortTecColumnValues(col.key, [...new Set((rows ?? []).map((r) => tecColDisplayValue(r, col.key)))])
+    }
+    return result
+  }, [rows])
+
+  const displayRows = useMemo(() => {
+    if (!rows) return null
+    let out = rows
+    for (const key of Object.keys(colSelected) as TecColKey[]) {
+      const set = colSelected[key]
+      if (!set) continue
+      out = out.filter((r) => set.has(tecColDisplayValue(r, key)))
+    }
+    if (!sort) return out
+    const sorted = [...out]
+    sorted.sort((a, b) => {
+      if (sort.key === 'sku') return compareSku(a.materialSku, b.materialSku, sort.dir)
+      const va = tecColValue(a, sort.key)
+      const vb = tecColValue(b, sort.key)
+      const cmp = typeof va === 'number' && typeof vb === 'number' ? va - vb : String(va).localeCompare(String(vb))
+      return sort.dir === 'asc' ? cmp : -cmp
+    })
+    return sorted
+  }, [rows, colSelected, sort])
 
   return (
     <div className="space-y-3">
@@ -717,30 +800,70 @@ function TecnicoTab() {
             {tecnicos.map((t) => <option key={t.id} value={t.id}>{t.nombre?.trim() || t.email}</option>)}
           </select>
           {error && <p className="text-xs text-red-400">{error}</p>}
-          {rows === null ? (
+          {displayRows === null ? (
             <p className="text-xs text-slate-500">Cargando…</p>
-          ) : rows.length === 0 ? (
+          ) : rows && rows.length === 0 ? (
             <p className="text-xs text-slate-500">Sin material entregado.</p>
           ) : (
-            <div className="space-y-2">
-              {rows.map((r) => (
-                <div key={`${r.projectId ?? ''}|${r.materialId}|${r.lote}`} className="bg-slate-800 rounded-xl border border-slate-700 p-3 space-y-2">
-                  <div>
-                    <p className="text-sm text-white">{r.materialSku} — {r.materialDescripcion}</p>
-                    <p className="text-[11px] text-slate-500">
-                      Lote {r.lote} · {r.projectOtt
-                        ? `[${r.projectArea === 'ATT' ? 'ATT' : 'Preventivo'}] OTT ${r.projectOtt}`
-                        : '🅿️ Preventivo (sin proyecto)'}
-                    </p>
-                  </div>
-                  <div className="grid grid-cols-4 gap-1.5 text-center">
-                    <Stat label="Entreg." value={r.cantEntregada} />
-                    <Stat label="Instal." value={r.cantInstalada} />
-                    <Stat label="Devuelto" value={r.cantDevuelta} />
-                    <Stat label="Tránsito" value={r.cantTransito} highlight={r.cantTransito > 0} />
-                  </div>
-                </div>
-              ))}
+            <div className="overflow-x-auto rounded-xl border border-slate-700">
+              <table className="w-full text-xs border-collapse">
+                <thead>
+                  <tr className="bg-slate-900/60 text-slate-400 text-left divide-x divide-slate-700">
+                    {TEC_COLUMNS.map((col) => {
+                      const colValues = valuesByColumn[col.key]
+                      const colSelectedSet = colSelected[col.key]
+                      return (
+                        <ColumnHeader key={col.key} col={col}
+                          sort={sort} onSort={(dir) => { setSort(dir ? { key: col.key, dir } : null); setOpenMenu(null) }}
+                          checklist={{
+                            values: colValues,
+                            selected: colSelectedSet ?? null,
+                            onToggleValue: (v) => setColSelected((prev) => {
+                              const current = new Set(prev[col.key] ?? colValues)
+                              if (current.has(v)) current.delete(v); else current.add(v)
+                              const next = { ...prev }
+                              if (current.size === colValues.length) delete next[col.key]
+                              else next[col.key] = current
+                              return next
+                            }),
+                            onSelectAll: () => setColSelected((prev) => {
+                              const next = { ...prev }
+                              delete next[col.key]
+                              return next
+                            }),
+                            onSelectNone: () => setColSelected((prev) => ({ ...prev, [col.key]: new Set() })),
+                          }}
+                          open={openMenu === col.key} onToggle={() => setOpenMenu((k) => (k === col.key ? null : col.key))} />
+                      )
+                    })}
+                  </tr>
+                </thead>
+                <tbody>
+                  {displayRows.length === 0 && (
+                    <tr><td colSpan={TEC_COLUMNS.length} className="px-2 py-3 text-center text-slate-500">
+                      Ningún resultado con los filtros de columna actuales.
+                    </td></tr>
+                  )}
+                  {displayRows.map((r) => (
+                    <tr key={`${r.projectId ?? ''}|${r.materialId}|${r.lote}`}
+                      className="border-t border-slate-700 divide-x divide-slate-700 bg-slate-800/60">
+                      <td className="px-2 py-2 text-slate-300 whitespace-nowrap">{r.materialSku}</td>
+                      <td className="px-2 py-2 max-w-[220px]"><p className="text-white truncate">{r.materialDescripcion}</p></td>
+                      <td className="px-2 py-2 text-slate-300 whitespace-nowrap">{r.lote}</td>
+                      <td className="px-2 py-2 text-slate-300 whitespace-nowrap">
+                        {r.projectOtt ? `[${r.projectArea === 'ATT' ? 'ATT' : 'Preventivo'}] ${r.projectOtt}` : SIN_PROYECTO_TEC}
+                      </td>
+                      <td className="px-2 py-2 text-right text-white whitespace-nowrap">{r.cantEntregada}</td>
+                      <td className="px-2 py-2 text-right text-white whitespace-nowrap">{r.cantInstalada}</td>
+                      <td className="px-2 py-2 text-right text-white whitespace-nowrap">{r.cantDevuelta}</td>
+                      <td className="px-2 py-2 text-right text-white whitespace-nowrap">{r.cantRebajada}</td>
+                      <td className={`px-2 py-2 text-right font-semibold whitespace-nowrap ${r.cantTransito > 0 ? 'text-amber-400' : 'text-white'}`}>
+                        {r.cantTransito}
+                      </td>
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
             </div>
           )}
         </>
