@@ -5,13 +5,14 @@ import type { Observacion } from '@/lib/inventario/types'
 
 /**
  * Notas libres de un proyecto: sin edición, solo agregar/borrar (la RLS
- * limita el borrado a la propia entrada, salvo jp/admin que pueden borrar
- * cualquiera — ver supabase/migrations/0016_observaciones.sql).
+ * limita el borrado a la propia entrada, salvo admin/jp/log que pueden
+ * borrar cualquiera — log tiene los mismos privilegios que jp, ver
+ * supabase/migrations/0016_observaciones.sql y 0018_log_como_jp.sql).
  */
 export function ObservacionesSection({ projectId }: { projectId: string }) {
   const session = useAuth((s) => s.session)
   const rol = useAuth((s) => s.profile?.rol)
-  const puedeBorrarTodo = rol === 'admin' || rol === 'jp'
+  const puedeBorrarTodo = rol === 'admin' || rol === 'jp' || rol === 'log'
 
   const [items, setItems] = useState<Observacion[] | null>(null)
   const [texto, setTexto] = useState('')

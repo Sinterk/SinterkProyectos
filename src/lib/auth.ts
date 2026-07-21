@@ -4,10 +4,12 @@ import { supabase } from './supabaseClient'
 
 export type Rol = 'admin' | 'jp' | 'tecnico' | 'log'
 
+// Los valores internos ('admin'/'jp'/'tecnico'/'log') no cambian — son el
+// identificador real en BD/RLS. Solo el nombre visible para el usuario.
 export const ROL_LABELS: Record<Rol, string> = {
-  admin:   'Administrador',
-  jp:      'Jefe de proyecto',
-  tecnico: 'Técnico',
+  admin:   'Admin',
+  jp:      'Oficina',
+  tecnico: 'Terreno',
   log:     'Logística',
 }
 

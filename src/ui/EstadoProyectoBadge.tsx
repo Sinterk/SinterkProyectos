@@ -10,12 +10,13 @@ interface Props {
 
 /**
  * Selector de estado (Abierto/Cerrado) sobre las pestañas del Editor —
- * candado de UI nada más: solo jp/admin pueden cambiarlo (misma RLS de
- * `projects` que usa el cierre desde Home), el resto ve un badge fijo.
+ * candado de UI nada más: solo admin/jp/log pueden cambiarlo (misma RLS de
+ * `projects` que usa el cierre desde Home — log tiene los mismos privilegios
+ * que jp, ver 0018_log_como_jp.sql), el resto ve un badge fijo.
  */
 export function EstadoProyectoBadge({ estado, onChange }: Props) {
   const rol = useAuth((s) => s.profile?.rol)
-  const puedeCambiar = rol === 'admin' || rol === 'jp'
+  const puedeCambiar = rol === 'admin' || rol === 'jp' || rol === 'log'
   const [busy, setBusy] = useState(false)
   const [error, setError] = useState<string | null>(null)
 
