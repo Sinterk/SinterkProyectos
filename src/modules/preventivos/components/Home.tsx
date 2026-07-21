@@ -34,7 +34,12 @@ export function Home() {
   }
   useEffect(() => { reloadExtra().catch(console.error) }, [estadoFilter])
 
-  const base = estadoFilter === 'activo' ? Object.values(records) : extra
+  // No basta con confiar en que `records` solo tiene activos: el selector de
+  // estado del Editor (EstadoProyectoBadge) cierra un levantamiento
+  // actualizando su `estado` en la caché SIN sacarlo de `records` (a
+  // propósito, para no hacer desaparecer la página mientras se está
+  // editando) — hay que filtrar acá.
+  const base = estadoFilter === 'activo' ? Object.values(records).filter((r) => r.estado === 'activo') : extra
   const list = base.filter((r) => matchesSearch(r, search)).sort((a, b) => b.updatedAt - a.updatedAt)
   const pending = Object.values(records).filter(hasPendingSync)
 
