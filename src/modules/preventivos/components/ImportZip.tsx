@@ -12,7 +12,7 @@ export function ImportZip({ onImported }: Props) {
   const fileRef = useRef<HTMLInputElement>(null)
   const [state, setState] = useState<'idle'|'loading'|'error'>('idle')
   const [msg, setMsg] = useState('')
-  const { upsert } = usePreventivoStore()
+  const { upsert, persistToServer } = usePreventivoStore()
 
   // ── Procesar el archivo ZIP (lógica compartida) ───────────────────────────
   async function processFile(file: File) {
@@ -36,7 +36,13 @@ export function ImportZip({ onImported }: Props) {
         cuadrante: { cuadrante:lev.cuadrante.cuadrante||'', comuna:lev.cuadrante.comuna||'', grupo:lev.cuadrante.grupo||'', fecha:lev.cuadrante.fecha||'', semana:lev.cuadrante.semana||'', semestre:lev.cuadrante.semestre||'', nombreCuadrante:lev.cuadrante.nombreCuadrante||'', direccion:lev.cuadrante.direccion||'', zona:lev.cuadrante.zona||'', responsable:lev.cuadrante.responsable||'', fotoPlano:await loadFoto(lev.cuadrante.fotoPlano) },
         puntos: await Promise.all((lev.puntos||[]).map(async (pt: any) => ({ id:pt.id||nanoid(), nombre:pt.nombre||'', descripcion:pt.descripcion||'', direccion:pt.direccion||'', correccion:pt.correccion||'', hallazgo:pt.hallazgo||'', resuelto:!!pt.resuelto, fotoLevantamiento:await loadFoto(pt.fotos?.levantamiento), fotoAntes:await loadFoto(pt.fotos?.antes), fotoDespues:await loadFoto(pt.fotos?.despues) })))
       }
-      upsert(p); onImported(p.id)
+      upsert(p)
+      // Guardar en el servidor de inmediato: antes quedaba solo en el store
+      // local hasta que el usuario editara algo (el autoguardado del Editor
+      // no dispara en el primer montaje) — si nunca tocaba nada más, el
+      // levantamiento importado quedaba "sin sincronizar" indefinidamente.
+      const saved = await persistToServer(p.id)
+      onImported(saved.id)
     } catch(err) {
       setMsg(err instanceof Error ? err.message : 'Error al importar')
       setState('error')

@@ -25,7 +25,7 @@ export function ExportLevButton({ preventivo }: { preventivo: Preventivo }) {
       className="py-2 px-3 rounded-xl bg-emerald-700 hover:bg-emerald-600 disabled:opacity-40 disabled:cursor-not-allowed text-white text-xs font-semibold transition-colors shrink-0 flex items-center gap-1.5"
     >
       {loading ? <span className="animate-spin">⏳</span> : '📊'}
-      <span className="hidden sm:inline">Levantamiento</span>
+      <span>Levantamiento</span>
     </button>
   )
 }

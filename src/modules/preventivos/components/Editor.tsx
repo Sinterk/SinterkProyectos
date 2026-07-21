@@ -162,26 +162,23 @@ export function Editor() {
       )}
 
       {/* Barra inferior fija */}
-      <div className="fixed bottom-0 left-0 right-0 bg-slate-900/95 backdrop-blur border-t border-slate-700 px-4 py-3 flex items-center gap-3">
+      <div className="fixed bottom-0 left-0 right-0 bg-slate-900/95 backdrop-blur border-t border-slate-700 px-4 py-3 flex items-center gap-2 overflow-x-auto">
         <button type="button" onClick={() => navigate('/preventivos')}
           className="py-2.5 px-4 rounded-xl bg-slate-700 text-white text-sm font-medium hover:bg-slate-600 transition-colors shrink-0">
           ← Volver
         </button>
 
-        {/* Indicador de guardado automático */}
-        <div className="flex-1 flex items-center justify-center">
-          {saveStatus === 'saving' && <span className="text-xs text-amber-400 animate-pulse">⏳ Guardando…</span>}
-          {saveStatus === 'error' && (
-            <button type="button" onClick={retryNow}
-              className="text-xs text-red-400 hover:text-red-300 underline"
-              title={saveError ?? undefined}>
-              ⚠️ Sin guardar — reintentar
-            </button>
-          )}
-          {(saveStatus === 'saved' || saveStatus === 'idle') && (
-            <span className="text-xs text-green-500">✅ Guardado</span>
-          )}
-        </div>
+        {/* Guarda manualmente (además del autoguardado): el mismo botón muestra
+            el estado, así siempre hay una forma explícita de forzar el guardado
+            sin depender de que el debounce dispare solo. */}
+        <button type="button" onClick={retryNow} disabled={saveStatus === 'saving'}
+          title={saveError ?? undefined}
+          className={`py-2 px-3 rounded-xl text-white text-xs font-semibold transition-colors shrink-0 flex items-center gap-1.5 disabled:opacity-60 ${
+            saveStatus === 'error' ? 'bg-red-700 hover:bg-red-600' : 'bg-slate-700 hover:bg-slate-600'
+          }`}>
+          {saveStatus === 'saving' ? <span className="animate-spin">⏳</span> : saveStatus === 'error' ? '⚠️' : '💾'}
+          <span>Guardar cambios</span>
+        </button>
 
         <ExportLevButton preventivo={record} />
         <ExportInformeButton preventivo={record} />

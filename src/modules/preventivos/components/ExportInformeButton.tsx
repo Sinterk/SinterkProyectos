@@ -25,7 +25,7 @@ export function ExportInformeButton({ preventivo }: { preventivo: Preventivo }) 
       className="py-2 px-3 rounded-xl bg-blue-700 hover:bg-blue-600 disabled:opacity-40 disabled:cursor-not-allowed text-white text-xs font-semibold transition-colors shrink-0 flex items-center gap-1.5"
     >
       {loading ? <span className="animate-spin inline-block">⏳</span> : '📋'}
-      <span className="hidden sm:inline">Informe</span>
+      <span>Informe</span>
     </button>
   )
 }

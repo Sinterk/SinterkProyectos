@@ -1,4 +1,4 @@
-import { useState, useEffect, useRef } from 'react'
+import { useState } from 'react'
 import JSZip from 'jszip'
 import { getPhotoBlob } from '@/core/offline/photoStore'
 import type { Preventivo, FotoKey } from '../types'
@@ -55,250 +55,35 @@ async function buildZip(preventivo: Preventivo): Promise<{ blob: Blob; fileName:
 }
 
 // ── Componente ────────────────────────────────────────────────────────────────
+// Antes tenía un botón "Compartir ZIP" (Web Share API) y un panel de
+// diagnóstico ("🧪 texto"/"🧪 archivo txt") para depurar por qué compartir
+// fallaba en Chrome (nunca llegó a funcionar de forma confiable). Con todo
+// online ya no tiene sentido: se descarga el ZIP nada más.
 export function ExportZipButton({ preventivo }: Props) {
-  // UI state (para renderizado)
-  const [isBuilding, setIsBuilding] = useState(false)
-  const [shareDone,  setShareDone]  = useState(false)
-  const [saveState,  setSaveState]  = useState<'idle' | 'loading' | 'done'>('idle')
-  const [errorMsg,   setErrorMsg]   = useState('')
-  const [debugMsg,   setDebugMsg]   = useState('')  // diagnóstico en pantalla (v0.11)
+  const [state, setState] = useState<'idle' | 'loading' | 'done'>('idle')
 
-  // Refs para evitar closures obsoletos y await antes de share()
-  const prebuildFileRef = useRef<File | null>(null)
-  const errorTimerRef   = useRef<ReturnType<typeof setTimeout> | null>(null)
-  // Chrome rechaza share() si hay otro share() cuya promesa aún no se resolvió
-  const sharePendingRef = useRef(false)
-
-  // ── Pre-construir ZIP en segundo plano (1 s de debounce) ─────────────────
-  // Objetivo: cuando el usuario toque "Compartir", el archivo ya está listo
-  // y navigator.share() se puede llamar SIN ningún await intermedio. Cruzar
-  // un await consumiría la "transient activation" y share() lanzaría
-  // NotAllowedError. Por eso pre-construimos aquí, fuera del gesto.
-  useEffect(() => {
-    prebuildFileRef.current = null
-    let cancelled = false
-
-    const timer = setTimeout(async () => {
-      setIsBuilding(true)
-      try {
-        const { blob, fileName } = await buildZip(preventivo)
-        if (cancelled) return
-        prebuildFileRef.current = new File([blob], fileName, { type: 'application/zip' })
-      } catch (err) {
-        console.error('[TelecomCatalog] prebuild error:', err)
-      } finally {
-        if (!cancelled) setIsBuilding(false)
-      }
-    }, 1000)
-
-    return () => { cancelled = true; clearTimeout(timer) }
-  }, [preventivo.updatedAt])
-
-  function showError(msg: string) {
-    if (errorTimerRef.current) clearTimeout(errorTimerRef.current)
-    setErrorMsg(msg)
-    errorTimerRef.current = setTimeout(() => setErrorMsg(''), 8000)
-  }
-
-  // ── Compartir (onClick de React) ──────────────────────────────────────────
-  //
-  // Por qué `click` y NO `touchstart`:
-  //   Según la HTML spec, los eventos que otorgan "transient activation" son:
-  //   keydown, mousedown, pointerdown, pointerup, touchend y click.
-  //   `touchstart` está EXCLUIDO a propósito (podría ser el inicio de un
-  //   scroll), por eso userActivation.isActive llegaba false y share() fallaba.
-  //   Un onClick de React es un `click` trusted → sí concede activación.
-  //
-  // Clave: NO hacer ningún await antes de share(). El archivo se pre-construye
-  //   en el useEffect de arriba; aquí solo lo leemos del ref y compartimos.
-  function handleShare() {
-    if (isBuilding || shareDone || saveState === 'loading') return
-
-    // ── Sonda de tipos (v0.13): ¿qué MIME acepta canShare en este device? ────
-    const probe = (type: string, name: string) => {
-      try {
-        return navigator.canShare?.({ files: [new File([new Blob(['x'])], name, { type })] })
-      } catch { return 'err' }
-    }
-    const probes =
-      `zip=${probe('application/zip', 't.zip')} ` +
-      `oct=${probe('application/octet-stream', 't.bin')} ` +
-      `txt=${probe('text/plain', 't.txt')} ` +
-      `pdf=${probe('application/pdf', 't.pdf')} ` +
-      `png=${probe('image/png', 't.png')}`
-
-    const file = prebuildFileRef.current
-    const canShareFiles = file && navigator.canShare
-      ? navigator.canShare({ files: [file] })
-      : 'n/a'
-    // v0.14: ¿la Permissions Policy permite web-share? ¿qué Chrome es? ¿pesa mucho el zip?
-    const fp = (document as any).featurePolicy ?? (document as any).permissionsPolicy
-    const pol = fp?.allowsFeature ? fp.allowsFeature('web-share') : 'n/a'
-    const chromeVer = /Chrome\/(\d+)/.exec(navigator.userAgent)?.[1] ?? '?'
-    const diag = `canShareFiles=${canShareFiles} pol=${pol} cr=${chromeVer} ` +
-      `pend=${sharePendingRef.current} sz=${file ? Math.round(file.size / 1024) : '?'}KB | ${probes}`
-    setDebugMsg(diag)
-    console.log('[TelecomCatalog] share diag:', diag)
-
-    if (!window.isSecureContext) {
-      showError('⚠️ Necesita HTTPS — abre desde GitHub Pages')
-      return
-    }
-    if (!('share' in navigator)) {
-      showError('⚠️ Abre en Chrome o Safari para compartir')
-      return
-    }
-    if (!file) {
-      showError('⚠️ ZIP aún no está listo — espera un momento')
-      return
-    }
-
-    const shareData: ShareData = { files: [file] }
-
-    // Guard: no lanzar TypeError crudo si el device no comparte este archivo
-    if (navigator.canShare && !navigator.canShare(shareData)) {
-      showError('⚠️ Este Chrome no comparte este archivo (ver sonda) — usa "Guardar archivo"')
-      return
-    }
-    // Guard v0.14: un share() anterior sin resolver hace fallar al siguiente
-    if (sharePendingRef.current) {
-      showError('⚠️ Hay un share anterior pendiente — cierra el panel de compartir y reintenta')
-      return
-    }
-
-    sharePendingRef.current = true
-    navigator.share(shareData).then(() => {
-      setShareDone(true)
-      setTimeout(() => setShareDone(false), 3000)
-    }).catch((err: Error) => {
-      console.warn('[TelecomCatalog] share error:', err.name, err.message)
-      // v0.14: mostrar el MENSAJE del error, que discrimina la causa
-      // (gesto consumido / permiso denegado / share pendiente / etc.)
-      setDebugMsg(`${diag} → ERR ${err.name}: ${(err.message || 's/d').slice(0, 140)}`)
-      if (err.name !== 'AbortError') {
-        showError(`⚠️ ${err.name}: ${err.message || 's/d'} — usa "Guardar archivo"`)
-      }
-    }).finally(() => {
-      sharePendingRef.current = false
-    })
-  }
-
-  // ── Pruebas mínimas de share (v0.14, temporal — quitar con el panel) ──────
-  // Dos casos extremos para aislar la causa del NotAllowedError:
-  //  · solo texto  → si falla, el Web Share entero está roto en este device
-  //  · archivo txt diminuto → si funciona pero el zip no, es tamaño/MIME real
-  function debugShare(label: string, data: ShareData) {
-    const report = (msg: string) => {
-      setDebugMsg(`🧪 ${label} → ${msg}`)
-      console.log('[TelecomCatalog] debugShare', label, msg)
-    }
-    if (sharePendingRef.current) { report('share anterior PENDIENTE'); return }
-    if (data.files && navigator.canShare && !navigator.canShare(data)) {
-      report('canShare=false')
-      return
-    }
-    sharePendingRef.current = true
-    navigator.share(data)
-      .then(() => report('OK ✅'))
-      .catch((e: Error) => report(`ERR ${e.name}: ${(e.message || 's/d').slice(0, 140)}`))
-      .finally(() => { sharePendingRef.current = false })
-  }
-
-  // ── Guardar (descarga directa — escritorio / fallback) ────────────────────
-  async function handleSave() {
-    setSaveState('loading')
+  async function handleClick() {
+    if (state === 'loading') return
+    setState('loading')
     try {
       const { blob, fileName } = await buildZip(preventivo)
       const url = URL.createObjectURL(blob)
       const a = document.createElement('a')
       a.href = url; a.download = fileName; a.click()
       URL.revokeObjectURL(url)
-      setSaveState('done')
-      setTimeout(() => setSaveState('idle'), 3000)
+      setState('done')
+      setTimeout(() => setState('idle'), 3000)
     } catch (err) {
       console.error('Error al guardar ZIP:', err)
-      setSaveState('idle')
+      setState('idle')
     }
   }
 
-  const shareLabel =
-    isBuilding ? '⏳ Preparando…' :
-    shareDone  ? '✅ Compartido'  :
-    '📤 Compartir ZIP'
-
-  const shareClass =
-    isBuilding ? 'bg-emerald-700/50 text-white/60 cursor-wait' :
-    shareDone  ? 'bg-green-700 text-white'                     :
-    'bg-emerald-700 hover:bg-emerald-600 text-white'
-
   return (
-    <div className="flex flex-col items-end gap-1.5 shrink-0">
-
-      {/* Panel de error persistente con botón de cierre */}
-      {errorMsg && (
-        <div className="max-w-[220px] text-[11px] text-amber-200 bg-amber-900/80 border border-amber-700/60 px-2.5 py-2 rounded-lg flex items-start gap-2">
-          <span className="flex-1 leading-snug">{errorMsg}</span>
-          <button type="button" onClick={() => setErrorMsg('')}
-            className="text-amber-300 hover:text-white font-bold text-base leading-none shrink-0 ml-1">×</button>
-        </div>
-      )}
-
-      {/* Guardar — botón principal (compartir no está operacional) */}
-      <button type="button" onClick={handleSave} disabled={saveState === 'loading'}
-        className={`flex items-center gap-2 text-base font-semibold px-5 py-3 rounded-xl transition-colors disabled:opacity-60 ${
-          saveState === 'done' ? 'bg-slate-600 text-green-300' :
-          'bg-brand-600 hover:bg-brand-500 text-white'
-        }`}>
-        {saveState === 'loading' ? '⏳ Guardando…'
-          : saveState === 'done'  ? '✅ Guardado'
-          : '📥 Guardar archivo'}
-      </button>
-
-      {/*
-        onClick directo: `click` es un gesto que concede transient activation,
-        así que navigator.share() funciona. El archivo ya viene pre-construido,
-        por lo que no hay await entre el gesto y share(). Secundario: compartir
-        no está operacional (Chrome veta .zip en Web Share), se deja chico.
-      */}
-      <button
-        type="button"
-        onClick={handleShare}
-        aria-disabled={isBuilding || shareDone || saveState === 'loading'}
-        className={`flex items-center gap-1 text-xs font-medium px-3 py-1.5 rounded-lg transition-colors opacity-80 ${shareClass}`}
-      >
-        {shareLabel}
-      </button>
-
-      {saveState === 'done' && (
-        <p className="text-[10px] text-slate-500">
-          ⚠ En WhatsApp: enviar como <strong>Documento</strong>
-        </p>
-      )}
-
-      {/* Diagnóstico temporal (v0.11) — quitar cuando share funcione */}
-      {debugMsg && (
-        <div className="max-w-[240px] text-[9px] font-mono text-cyan-200 bg-slate-800 border border-cyan-800/50 px-2 py-1.5 rounded-lg break-all leading-snug">
-          {debugMsg}
-          <button type="button" onClick={() => setDebugMsg('')}
-            className="ml-1 text-cyan-400 font-bold">×</button>
-        </div>
-      )}
-
-      {/* Pruebas mínimas de share (v0.14, temporal — quitar con el panel) */}
-      <div className="flex gap-1">
-        <button type="button"
-          onClick={() => debugShare('texto', { title: 'Prueba', text: 'Prueba TelecomCatalog' })}
-          className="text-[10px] font-mono px-2 py-1 rounded bg-slate-800 border border-cyan-800/50 text-cyan-300">
-          🧪 texto
-        </button>
-        <button type="button"
-          onClick={() => debugShare('txtFile', {
-            files: [new File([new Blob(['prueba TelecomCatalog'])], 'prueba.txt', { type: 'text/plain' })],
-          })}
-          className="text-[10px] font-mono px-2 py-1 rounded bg-slate-800 border border-cyan-800/50 text-cyan-300">
-          🧪 archivo txt
-        </button>
-      </div>
-    </div>
+    <button type="button" onClick={handleClick} disabled={state === 'loading'}
+      className="py-2 px-3 rounded-xl bg-brand-600 hover:bg-brand-500 disabled:opacity-60 text-white text-xs font-semibold transition-colors shrink-0 flex items-center gap-1.5">
+      {state === 'loading' ? <span className="animate-spin">⏳</span> : state === 'done' ? '✅' : '📦'}
+      <span>Guardar ZIP</span>
+    </button>
   )
 }
