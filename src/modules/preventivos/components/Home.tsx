@@ -4,6 +4,8 @@ import { usePreventivoStore, hasPendingSync } from '../store'
 import { preventivoRepo } from '../data/preventivoRepo'
 import { useAuth } from '@/lib/auth'
 import { ImportZip } from './ImportZip'
+import { DescargarCerradosPanel } from './DescargarCerradosPanel'
+import { ZipArchiveViewer } from '@/ui/ZipArchiveViewer'
 import type { Preventivo } from '../types'
 
 type EstadoFilter = 'activo' | 'cerrado' | 'todos'
@@ -25,6 +27,7 @@ export function Home() {
   const [estadoFilter, setEstadoFilter] = useState<EstadoFilter>('activo')
   const [search, setSearch] = useState('')
   const [extra, setExtra] = useState<Preventivo[]>([])
+  const [showViewer, setShowViewer] = useState(false)
 
   useEffect(() => { syncList().catch(console.error) }, [syncList])
 
@@ -65,11 +68,19 @@ export function Home() {
           <h1 className="text-lg font-bold text-white">📡 Levantamientos</h1>
           <p className="text-xs text-slate-400">{list.length} levantamiento(s)</p>
         </div>
-        <button type="button" onClick={handleNew}
-          className="bg-brand-600 hover:bg-brand-700 text-white text-sm font-semibold px-3 py-2 rounded-xl">
-          ➕ Nuevo
-        </button>
+        <div className="flex items-center gap-2">
+          <button type="button" onClick={() => setShowViewer(true)}
+            className="bg-slate-700 hover:bg-slate-600 text-white text-sm font-semibold px-3 py-2 rounded-xl">
+            📂 Abrir descargado
+          </button>
+          <button type="button" onClick={handleNew}
+            className="bg-brand-600 hover:bg-brand-700 text-white text-sm font-semibold px-3 py-2 rounded-xl">
+            ➕ Nuevo
+          </button>
+        </div>
       </div>
+
+      {showViewer && <ZipArchiveViewer onClose={() => setShowViewer(false)} />}
 
       <div className="flex gap-2">
         <input value={search} onChange={(e) => setSearch(e.target.value)}
@@ -92,6 +103,10 @@ export function Home() {
       </div>
 
       {pending.length > 0 && <MigrationBanner pending={pending} />}
+
+      {estadoFilter === 'cerrado' && (
+        <DescargarCerradosPanel records={extra} onChanged={() => { reloadExtra().catch(console.error) }} />
+      )}
 
       {list.length === 0 ? (
         <div className="text-center py-16 text-slate-500 space-y-2">

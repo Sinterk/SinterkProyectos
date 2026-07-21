@@ -64,6 +64,9 @@ function b64ToBuffer(b64: string): ArrayBuffer {
 function resizeToBuffer(url: string, dw: number, dh: number, quality = 0.92): Promise<ArrayBuffer> {
   return new Promise((resolve, reject) => {
     const img = new Image()
+    // Sin esto, una URL cross-origin (signed URL de Supabase Storage) mancha
+    // el canvas y `toBlob` resuelve `null` en vez de la imagen.
+    img.crossOrigin = 'anonymous'
     img.onload = () => {
       const canvas = document.createElement('canvas')
       canvas.width = dw
@@ -91,7 +94,8 @@ function slugify(cuadrante: Preventivo['cuadrante']): string {
 
 // ── Main export ───────────────────────────────────────────────────────────────
 
-export async function generarInformeEntel(preventivo: Preventivo): Promise<void> {
+// ── Core: arma el Blob sin descargarlo ────────────────────────────────────────
+export async function buildInformeEntelBlob(preventivo: Preventivo): Promise<{ blob: Blob; fileName: string }> {
   // Lazy-load ExcelJS browser build to avoid bloating the initial bundle
   // eslint-disable-next-line @typescript-eslint/no-explicit-any
   const ExcelJSMod = await import('exceljs') as any
@@ -114,10 +118,16 @@ export async function generarInformeEntel(preventivo: Preventivo): Promise<void>
   const blob = new Blob([buffer], {
     type: 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet',
   })
+  return { blob, fileName: `Preventivo_${slugify(preventivo.cuadrante)}.xlsx` }
+}
+
+// ── Wrapper: descarga directa (comportamiento histórico del botón) ───────────
+export async function generarInformeEntel(preventivo: Preventivo): Promise<void> {
+  const { blob, fileName } = await buildInformeEntelBlob(preventivo)
   const url = URL.createObjectURL(blob)
   const a = document.createElement('a')
   a.href = url
-  a.download = `Preventivo_${slugify(preventivo.cuadrante)}.xlsx`
+  a.download = fileName
   a.click()
   URL.revokeObjectURL(url)
 }
@@ -198,6 +208,7 @@ const SUPERSAMPLE = 2
 function getImgSize(url: string): Promise<{ w: number; h: number }> {
   return new Promise((resolve) => {
     const img = new Image()
+    img.crossOrigin = 'anonymous'
     img.onload  = () => resolve({ w: img.naturalWidth, h: img.naturalHeight })
     img.onerror = () => resolve({ w: 255, h: 333 }) // fallback: portrait
     img.src = url

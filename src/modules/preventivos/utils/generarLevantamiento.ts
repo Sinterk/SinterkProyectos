@@ -40,7 +40,8 @@ function slugify(meta: Preventivo['cuadrante']): string {
   return `${s}_${c}_${q}`.replace(/[^\w._-]/g, '') || 'salida'
 }
 
-export function generarLevantamiento(preventivo: Preventivo): void {
+// ── Core: arma el workbook sin descargarlo ────────────────────────────────────
+function buildLevantamientoWorkbook(preventivo: Preventivo): { wb: XLSX.WorkBook; fileName: string } {
   const { cuadrante, puntos } = preventivo
   const semestre = cuadrante.semestre || ''
   const comuna   = cuadrante.comuna   || ''
@@ -78,5 +79,21 @@ export function generarLevantamiento(preventivo: Preventivo): void {
 
   const wb = XLSX.utils.book_new()
   XLSX.utils.book_append_sheet(wb, ws, 'Levantamiento')
-  XLSX.writeFile(wb, `Levantamiento_${slugify(cuadrante)}.xlsx`)
+  return { wb, fileName: `Levantamiento_${slugify(cuadrante)}.xlsx` }
+}
+
+// ── Wrapper: descarga directa (comportamiento histórico del botón) ───────────
+export function generarLevantamiento(preventivo: Preventivo): void {
+  const { wb, fileName } = buildLevantamientoWorkbook(preventivo)
+  XLSX.writeFile(wb, fileName)
+}
+
+// ── Wrapper: devuelve el Blob sin descargar (para el ZIP masivo) ─────────────
+export function generarLevantamientoBlob(preventivo: Preventivo): { blob: Blob; fileName: string } {
+  const { wb, fileName } = buildLevantamientoWorkbook(preventivo)
+  const buffer = XLSX.write(wb, { type: 'array', bookType: 'xlsx' })
+  const blob = new Blob([buffer], {
+    type: 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet',
+  })
+  return { blob, fileName }
 }

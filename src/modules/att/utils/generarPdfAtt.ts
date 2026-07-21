@@ -66,13 +66,23 @@ async function compressImg(url: string, maxW: number, maxH: number, q: number): 
   if (!url) return null
   return new Promise(resolve => {
     const img = new Image()
+    // Sin esto, una URL cross-origin (signed URL de Supabase Storage, en vez
+    // de un blob: local) mancha el canvas y `toDataURL` lanza SecurityError
+    // dentro de `onload` — como no hay try/catch ahí, `resolve` nunca se
+    // llama y el Promise.all que espera esto queda colgado para siempre.
+    img.crossOrigin = 'anonymous'
     img.onload = () => {
-      const c = document.createElement('canvas')
-      const s = Math.min(1, maxW / img.naturalWidth, maxH / img.naturalHeight)
-      c.width  = Math.round(img.naturalWidth  * s)
-      c.height = Math.round(img.naturalHeight * s)
-      c.getContext('2d')!.drawImage(img, 0, 0, c.width, c.height)
-      resolve({ src: c.toDataURL('image/jpeg', q), iw: c.width, ih: c.height })
+      try {
+        const c = document.createElement('canvas')
+        const s = Math.min(1, maxW / img.naturalWidth, maxH / img.naturalHeight)
+        c.width  = Math.round(img.naturalWidth  * s)
+        c.height = Math.round(img.naturalHeight * s)
+        c.getContext('2d')!.drawImage(img, 0, 0, c.width, c.height)
+        resolve({ src: c.toDataURL('image/jpeg', q), iw: c.width, ih: c.height })
+      } catch (err) {
+        console.warn('[generarPdfAtt] compressImg falló:', url, err)
+        resolve(null)
+      }
     }
     img.onerror = () => resolve(null)
     img.src = url
@@ -300,8 +310,8 @@ function photoBox(doc: jsPDF, x: number, y: number, w: number, label: string, ci
   }
 }
 
-// ── Main export ───────────────────────────────────────────────────────────────
-export async function generarPdfAtt(record: AttRecord): Promise<void> {
+// ── Core: arma el documento sin descargarlo ───────────────────────────────────
+async function buildPdfAtt(record: AttRecord): Promise<{ doc: jsPDF; fileName: string }> {
   const fecha      = fechaDesdeISO(record.fecha)
   const ott        = record.ott || ''
   const titulo     = record.tituloInforme?.trim() || `Informe posterior OTT ${ott}`
@@ -475,6 +485,18 @@ export async function generarPdfAtt(record: AttRecord): Promise<void> {
   // Paginación en el encabezado (ya se conoce el total de páginas)
   stampPageNumbers(doc)
 
-  // Direct download — no print dialog
-  doc.save(`Informe OTT ${ott || 'sin-ott'}.pdf`)
+  return { doc, fileName: `Informe OTT ${ott || 'sin-ott'}.pdf` }
+}
+
+// ── Wrapper: descarga directa (comportamiento histórico del botón) ───────────
+export async function generarPdfAtt(record: AttRecord): Promise<void> {
+  const { doc, fileName } = await buildPdfAtt(record)
+  doc.save(fileName)
+}
+
+// ── Wrapper: devuelve el Blob sin descargar (para el ZIP masivo) ─────────────
+export async function generarPdfAttBlob(record: AttRecord): Promise<{ blob: Blob; fileName: string }> {
+  const { doc, fileName } = await buildPdfAtt(record)
+  const blob = doc.output('blob')
+  return { blob, fileName }
 }

@@ -5,6 +5,8 @@ import { attRepo } from '../data/attRepo'
 import { useAuth } from '@/lib/auth'
 import { TIPO_PROYECTO_LABELS } from '../types'
 import type { AttRecord } from '../types'
+import { DescargarCerradosPanel } from './DescargarCerradosPanel'
+import { ZipArchiveViewer } from '@/ui/ZipArchiveViewer'
 
 type EstadoFilter = 'activo' | 'cerrado' | 'todos'
 
@@ -24,6 +26,7 @@ export function Home() {
   // Cerrados/todos no viven en el store (que solo cachea activos editables):
   // se piden aparte, de solo consulta, y se refrescan al cambiar el filtro.
   const [extra, setExtra] = useState<AttRecord[]>([])
+  const [showViewer, setShowViewer] = useState(false)
 
   useEffect(() => { syncList().catch(console.error) }, [syncList])
 
@@ -63,11 +66,19 @@ export function Home() {
           <h1 className="text-lg font-bold text-white">🔧 Informes ATT</h1>
           <p className="text-xs text-slate-400">{list.length} informe(s)</p>
         </div>
-        <button type="button" onClick={handleNew}
-          className="bg-brand-600 hover:bg-brand-700 text-white text-sm font-semibold px-3 py-2 rounded-xl">
-          ➕ Nuevo
-        </button>
+        <div className="flex items-center gap-2">
+          <button type="button" onClick={() => setShowViewer(true)}
+            className="bg-slate-700 hover:bg-slate-600 text-white text-sm font-semibold px-3 py-2 rounded-xl">
+            📂 Abrir descargado
+          </button>
+          <button type="button" onClick={handleNew}
+            className="bg-brand-600 hover:bg-brand-700 text-white text-sm font-semibold px-3 py-2 rounded-xl">
+            ➕ Nuevo
+          </button>
+        </div>
       </div>
+
+      {showViewer && <ZipArchiveViewer onClose={() => setShowViewer(false)} />}
 
       <div className="flex gap-2">
         <input value={search} onChange={(e) => setSearch(e.target.value)}
@@ -82,6 +93,10 @@ export function Home() {
       </div>
 
       {pending.length > 0 && <MigrationBanner pending={pending} />}
+
+      {estadoFilter === 'cerrado' && (
+        <DescargarCerradosPanel records={extra} onChanged={() => { reloadExtra().catch(console.error) }} />
+      )}
 
       {list.length === 0 ? (
         <div className="text-center py-16 text-slate-500 space-y-2">
