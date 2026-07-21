@@ -1138,7 +1138,7 @@ function ConteoDetail({ conteoId, onBack }: { conteoId: string; onBack: () => vo
           {abierto ? (
             <>
               {hayPendientes && (
-                <p className="text-[11px] text-amber-400 text-center">Hay cantidades sin guardar — toca fuera del campo para guardarlas.</p>
+                <p className="text-[11px] text-amber-400 text-center">Hay cantidades sin guardar — toca ✓ junto al campo para guardarlas.</p>
               )}
               <button type="button" onClick={cerrar} disabled={closing || discarding || hayPendientes}
                 className="w-full text-sm font-semibold py-2 rounded-xl bg-brand-600 hover:bg-brand-700 disabled:opacity-40 text-white">
@@ -1192,9 +1192,22 @@ function ConteoLineaRow({ linea, editable, onSaved, onPendienteChange }: {
       </div>
       <div className="flex items-center gap-2 shrink-0">
         {editable ? (
-          <input type="number" step="any" value={draft} onChange={(e) => setDraft(e.target.value)} onBlur={save}
-            onKeyDown={(e) => { if (e.key === 'Enter') (e.target as HTMLInputElement).blur() }} disabled={saving}
-            className="w-20 bg-slate-700 text-white text-sm rounded-lg px-2 py-1 border border-slate-600 focus:border-brand-500 focus:outline-none text-right" />
+          <>
+            <input type="number" step="any" value={draft} onChange={(e) => setDraft(e.target.value)} onBlur={save}
+              onKeyDown={(e) => { if (e.key === 'Enter') (e.target as HTMLInputElement).blur() }} disabled={saving}
+              className={`w-20 bg-slate-700 text-white text-sm rounded-lg px-2 py-1 border text-right focus:outline-none ${
+                dirty ? 'border-amber-500' : 'border-slate-600 focus:border-brand-500'
+              }`} />
+            {/* Botón explícito: en varios celulares el teclado numérico no deja "tocar
+                fuera del campo" para disparar el blur (o el teclado tapa toda la
+                pantalla) — sin esto, el cambio quedaba solo en el draft local y nunca
+                se guardaba. */}
+            <button type="button" onClick={save} disabled={!dirty || saving}
+              title="Guardar" aria-label="Guardar"
+              className="text-sm w-7 h-7 rounded-lg bg-slate-700 border border-slate-600 disabled:opacity-30 text-green-400 hover:bg-slate-600 disabled:hover:bg-slate-700">
+              {saving ? '⏳' : '✓'}
+            </button>
+          </>
         ) : (
           <span className="text-white font-semibold">{linea.cantidadContada}</span>
         )}
