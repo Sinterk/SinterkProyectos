@@ -87,15 +87,17 @@ function leerFilas(path) {
   const filas = XLSX.utils.sheet_to_json(ws, { defval: '' })
 
   // Columnas case-insensitive por si el Excel real las trae con otra
-  // capitalización (Nombres, nombres, NOMBRES, ...). APELLIDOPATERNO admite
-  // también el typo "APELLIDOPARTERNO" (visto en el pedido original).
+  // capitalización (Nombres, nombres, NOMBRES, ...). Los encabezados reales
+  // de la planilla de personal resultaron ser distintos de los acordados al
+  // principio (con espacio, no pegados) — causó que las primeras 36 cuentas
+  // se crearan sin nombre completo. Se admiten ambas variantes.
   return filas.map((fila) => {
     const norm = {}
     for (const [k, v] of Object.entries(fila)) norm[k.trim().toUpperCase()] = String(v).trim()
     return {
-      nombres: norm.NOMBRES || '',
-      apellidoPaterno: norm.APELLIDOPATERNO || norm.APELLIDOPARTERNO || '',
-      apellidoMaterno: norm.APELLIDOMATERNO || '',
+      nombres: norm.NOMBRES || norm['NOMBRES TRABAJADOR'] || '',
+      apellidoPaterno: norm.APELLIDOPATERNO || norm.APELLIDOPARTERNO || norm['APELLIDO PATERNO'] || '',
+      apellidoMaterno: norm.APELLIDOMATERNO || norm['APELLIDO MATERNO'] || '',
       rut: normalizarRut(norm.RUT || ''),
       email: (norm.CORREO || '').toLowerCase(),
       cargo: norm.CARGO || '',
@@ -139,25 +141,44 @@ for (const f of filas) {
   })
 
   if (error) {
-    if (/already registered|already exists/i.test(error.message)) {
-      console.log(`— ${f.email}: ya existe, se omite`)
-      saltados++
-    } else {
-      console.error(`✗ ${f.email}: ${error.message}`)
-      errores++
+    if (/already.*registered|already exists/i.test(error.message)) {
+      // La cuenta ya existe (ej. una corrida anterior con un bug en el
+      // mapeo de columnas) — en vez de solo saltarla, se reparan sus datos
+      // de perfil contra lo que dice esta fila, para que el script sea
+      // seguro de re-correr.
+      const { data: existing, error: findError } = await supabase
+        .from('profiles').select('id').eq('email', f.email).maybeSingle()
+      if (findError || !existing) {
+        console.error(`— ${f.email}: ya existe pero no se encontró su perfil (${findError?.message ?? 's/d'}), se omite`)
+        saltados++
+        continue
+      }
+      const { error: repairError } = await supabase.from('profiles')
+        .update({ nombre: nombreCompleto, rol, rut: f.rut, cargo: f.cargo || null }).eq('id', existing.id)
+      if (repairError) {
+        console.error(`✗ ${f.email}: ya existía, error al reparar su perfil: ${repairError.message}`)
+        errores++
+      } else {
+        console.log(`↻ ${f.email}: ya existía, perfil actualizado (${nombreCompleto}, rol ${rol})`)
+        saltados++
+      }
+      continue
     }
+    console.error(`✗ ${f.email}: ${error.message}`)
+    errores++
     continue
   }
 
   console.log(`✓ ${f.email} creado (${nombreCompleto}, rol ${rol})`)
   creados++
 
-  // El trigger handle_new_user ya usa nombre/rol de user_metadata; acá solo
-  // faltan rut/cargo, que no son parte del trigger.
+  // El trigger handle_new_user ya usa nombre/rol de user_metadata; se
+  // reafirma nombre acá también (por si el trigger no llegó a aplicarlo) y
+  // se agregan rut/cargo, que no son parte del trigger.
   const { error: updateError } = await supabase.from('profiles')
-    .update({ rut: f.rut, cargo: f.cargo || null }).eq('id', data.user.id)
+    .update({ nombre: nombreCompleto, rut: f.rut, cargo: f.cargo || null }).eq('id', data.user.id)
   if (updateError) {
-    console.error(`  (no se pudo guardar rut/cargo: ${updateError.message} — ¿faltan correr 0017/0019?)`)
+    console.error(`  (no se pudo guardar nombre/rut/cargo: ${updateError.message} — ¿faltan correr 0017/0019?)`)
   }
 }
 

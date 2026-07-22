@@ -143,6 +143,7 @@ function TeamsSection() {
   const [candidates, setCandidates] = useState<Profile[]>([])
   const [error, setError] = useState<string | null>(null)
   const [busyUserId, setBusyUserId] = useState<string | null>(null)
+  const [selectedUserId, setSelectedUserId] = useState('')
 
   useEffect(() => {
     adminRepo.listActiveProjects()
@@ -156,15 +157,30 @@ function TeamsSection() {
   useEffect(() => {
     if (!selectedId) return
     setMembers(null)
+    setSelectedUserId('')
     adminRepo.listMembers(selectedId).catch((err) => { setError(err instanceof Error ? err.message : String(err)); return [] }).then(setMembers)
   }, [selectedId])
 
-  async function toggleMember(userId: string, isMember: boolean) {
+  async function addMember(userId: string) {
+    if (!userId) return
     setBusyUserId(userId)
     setError(null)
     try {
-      if (isMember) await adminRepo.removeMember(selectedId, userId)
-      else await adminRepo.addMember(selectedId, userId)
+      await adminRepo.addMember(selectedId, userId)
+      setMembers(await adminRepo.listMembers(selectedId))
+      setSelectedUserId('')
+    } catch (err) {
+      setError(err instanceof Error ? err.message : String(err))
+    } finally {
+      setBusyUserId(null)
+    }
+  }
+
+  async function removeMember(userId: string) {
+    setBusyUserId(userId)
+    setError(null)
+    try {
+      await adminRepo.removeMember(selectedId, userId)
       setMembers(await adminRepo.listMembers(selectedId))
     } catch (err) {
       setError(err instanceof Error ? err.message : String(err))
@@ -172,6 +188,10 @@ function TeamsSection() {
       setBusyUserId(null)
     }
   }
+
+  // Mismo patrón que EquipoSection (src/ui/LogisticaTab.tsx): con 30+
+  // técnicos reales, un checklist con todos a la vista dejó de ser práctico.
+  const disponibles = candidates.filter((c) => !members?.some((m) => m.id === c.id))
 
   return (
     <div className="bg-slate-800 rounded-2xl border border-slate-700 p-4 space-y-3">
@@ -196,23 +216,48 @@ function TeamsSection() {
 
           {members === null ? (
             <p className="text-xs text-slate-500">Cargando equipo…</p>
-          ) : candidates.length === 0 ? (
-            <p className="text-xs text-slate-500">No hay técnicos ni logística registrados todavía.</p>
           ) : (
-            <div className="space-y-1.5">
-              {candidates.map((c) => {
-                const isMember = members.some((m) => m.id === c.id)
-                return (
-                  <label key={c.id} className="flex items-center justify-between gap-2 bg-slate-700/50 rounded-lg px-3 py-2 text-sm cursor-pointer">
-                    <span className="text-slate-200 truncate">
-                      {c.nombre?.trim() || c.email} <span className="text-slate-500 text-xs">({ROL_LABELS[c.rol]})</span>
-                    </span>
-                    <input type="checkbox" checked={isMember} disabled={busyUserId === c.id}
-                      onChange={() => toggleMember(c.id, isMember)} />
-                  </label>
-                )
-              })}
-            </div>
+            <>
+              {members.length === 0 ? (
+                <p className="text-xs text-slate-500">Nadie asignado todavía.</p>
+              ) : (
+                <div className="space-y-1.5">
+                  {members.map((m) => {
+                    const c = candidates.find((cc) => cc.id === m.id)
+                    return (
+                      <div key={m.id} className="flex items-center justify-between gap-2 bg-slate-700/50 rounded-lg px-3 py-2 text-sm">
+                        <span className="text-slate-200 truncate">
+                          {m.nombre?.trim() || m.email}
+                          {c && <span className="text-slate-500 text-xs"> ({ROL_LABELS[c.rol]})</span>}
+                        </span>
+                        <button type="button" onClick={() => removeMember(m.id)} disabled={busyUserId === m.id}
+                          className="text-slate-500 hover:text-red-400 text-base leading-none shrink-0 disabled:opacity-40">
+                          ×
+                        </button>
+                      </div>
+                    )
+                  })}
+                </div>
+              )}
+
+              {disponibles.length === 0 ? (
+                members.length === 0 && <p className="text-xs text-slate-500">No hay técnicos ni logística registrados todavía.</p>
+              ) : (
+                <div className="flex gap-2">
+                  <select value={selectedUserId} onChange={(e) => setSelectedUserId(e.target.value)}
+                    className="flex-1 min-w-0 bg-slate-700 text-white text-sm rounded-lg px-2 py-1.5 border border-slate-600 focus:border-brand-500 focus:outline-none">
+                    <option value="">Elegir técnico o logística…</option>
+                    {disponibles.map((c) => (
+                      <option key={c.id} value={c.id}>{c.nombre?.trim() || c.email} ({ROL_LABELS[c.rol]})</option>
+                    ))}
+                  </select>
+                  <button type="button" onClick={() => addMember(selectedUserId)} disabled={!selectedUserId || busyUserId === selectedUserId}
+                    className="shrink-0 px-3 py-1.5 rounded-lg bg-brand-600 hover:bg-brand-700 disabled:opacity-40 text-white text-sm font-semibold">
+                    + Agregar
+                  </button>
+                </div>
+              )}
+            </>
           )}
         </>
       )}
