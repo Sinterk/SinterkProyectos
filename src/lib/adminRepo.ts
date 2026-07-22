@@ -37,16 +37,16 @@ export const adminRepo = {
   async listProfiles(): Promise<Profile[]> {
     const { data, error } = await supabase
       .from('profiles')
-      .select('id, nombre, email, rol, area, activo')
+      .select('id, nombre, email, rol, area, activo, rut, cargo')
       .order('nombre', { ascending: true })
     if (error) throw new Error(`profiles.list: ${error.message}`)
     return data as Profile[]
   },
 
-  /** Edita nombre/rol/área/activo de un perfil existente. */
+  /** Edita nombre/rol/área/activo/rut/cargo de un perfil existente. */
   async updateProfile(
     id: string,
-    patch: Partial<Pick<Profile, 'nombre' | 'rol' | 'area' | 'activo'>>,
+    patch: Partial<Pick<Profile, 'nombre' | 'rol' | 'area' | 'activo' | 'rut' | 'cargo'>>,
   ): Promise<void> {
     const { error } = await supabase.from('profiles').update(patch).eq('id', id)
     if (error) throw new Error(`profiles.update: ${error.message}`)

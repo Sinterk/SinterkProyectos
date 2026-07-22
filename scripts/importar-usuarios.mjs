@@ -1,20 +1,24 @@
 // Carga masiva de usuarios (técnicos u otros roles) desde un Excel con
-// columnas APELLIDO, NOMBRE, RUT, CORREOEMPRESA y, opcionalmente, ROL — vía
-// el Admin API de Supabase Auth. Requiere la service_role key — NUNCA la
-// pongas en .env con prefijo VITE_ (se empaquetaría en el bundle público).
-// Pásala solo como variable de entorno al correr este script, en tu propia
-// terminal.
+// columnas NOMBRES, APELLIDOPATERNO, APELLIDOMATERNO, RUT, CORREO, CARGO,
+// TIPO (las dos últimas opcionales) — vía el Admin API de Supabase Auth.
+// Requiere la service_role key — NUNCA la pongas en .env con prefijo VITE_
+// (se empaquetaría en el bundle público). Pásala solo como variable de
+// entorno al correr este script, en tu propia terminal.
 //
 // Uso (PowerShell, desde la raíz del repo):
 //
 //   $env:SUPABASE_SERVICE_ROLE_KEY = "tu_clave_aqui"
 //   node scripts/importar-usuarios.mjs ruta\al\archivo.xlsx
 //
-// Columna ROL (opcional, por fila): acepta el valor interno (admin/jp/
+// Columna TIPO (opcional, por fila): acepta el valor interno (admin/jp/
 // tecnico/log) o el nombre visible actual/histórico en la app (Admin,
 // Oficina, Jefe de proyecto, Terreno, Técnico, Logística — sin distinguir
-// mayúsculas/tildes). Si viene vacía, se usa IMPORTAR_ROL (por defecto
-// 'tecnico'); si viene con un valor que no se reconoce, esa fila se omite
+// mayúsculas/tildes). Si viene vacía, se intenta derivar del CARGO (ver
+// `derivarTipoDesdeCargo`: técnico/liniero/empalmador/capataz → Terreno,
+// logístico → Logística, ingeniero/jefe/director/supervisor/asesor/admin →
+// Oficina); si no se puede derivar tampoco, se usa IMPORTAR_ROL (por
+// defecto 'tecnico', el rol menos privilegiado — nunca se asigna Oficina a
+// ciegas). Si TIPO viene con un valor que no se reconoce, esa fila se omite
 // con aviso en vez de asignar cualquier cosa a ciegas.
 //
 // Contraseña inicial de cada cuenta = su propio RUT (con guion, sin puntos:
@@ -63,22 +67,39 @@ function normalizarRol(valor) {
   return { rol: ROL_ALIASES[key] || null, vacio: false }
 }
 
+// Clasificación por palabras clave del cargo real (planilla de personal),
+// para cuando la columna TIPO viene vacía. Deliberadamente conservadora: un
+// cargo no reconocido devuelve `null` (nunca asume Oficina a ciegas — eso
+// da privilegios de jp/admin sobre todos los proyectos) y cae al default
+// IMPORTAR_ROL, que es 'tecnico' salvo que se indique lo contrario.
+function derivarTipoDesdeCargo(cargo) {
+  const c = String(cargo || '').toUpperCase()
+  if (!c) return null
+  if (c.includes('LOGISTIC')) return 'log'
+  if (c.includes('TECNICO') || c.includes('TÉCNICO') || c.includes('LINIERO') || c.includes('EMPALMADOR') || c.includes('CAPATAZ')) return 'tecnico'
+  if (c.includes('INGENIERO') || c.includes('JEFE') || c.includes('DIRECTOR') || c.includes('GERENTE') || c.includes('SUPERVISOR') || c.includes('ASESOR') || c.includes('ADMIN') || c.includes('COORDINADOR')) return 'jp'
+  return null
+}
+
 function leerFilas(path) {
   const wb = XLSX.readFile(path)
   const ws = wb.Sheets[wb.SheetNames[0]]
   const filas = XLSX.utils.sheet_to_json(ws, { defval: '' })
 
   // Columnas case-insensitive por si el Excel real las trae con otra
-  // capitalización (Apellido, apellido, APELLIDO, ...).
+  // capitalización (Nombres, nombres, NOMBRES, ...). APELLIDOPATERNO admite
+  // también el typo "APELLIDOPARTERNO" (visto en el pedido original).
   return filas.map((fila) => {
     const norm = {}
     for (const [k, v] of Object.entries(fila)) norm[k.trim().toUpperCase()] = String(v).trim()
     return {
-      apellido: norm.APELLIDO || '',
-      nombre: norm.NOMBRE || '',
+      nombres: norm.NOMBRES || '',
+      apellidoPaterno: norm.APELLIDOPATERNO || norm.APELLIDOPARTERNO || '',
+      apellidoMaterno: norm.APELLIDOMATERNO || '',
       rut: normalizarRut(norm.RUT || ''),
-      email: (norm.CORREOEMPRESA || '').toLowerCase(),
-      rolCrudo: norm.ROL || '',
+      email: (norm.CORREO || '').toLowerCase(),
+      cargo: norm.CARGO || '',
+      rolCrudo: norm.TIPO || '',
     }
   }).filter((r) => r.email) // sin correo no hay cuenta que crear
 }
@@ -105,9 +126,9 @@ for (const f of filas) {
     errores++
     continue
   }
-  const rol = rolFila || ROL
+  const rol = rolFila || derivarTipoDesdeCargo(f.cargo) || ROL
 
-  const nombreCompleto = [f.nombre, f.apellido].filter(Boolean).join(' ')
+  const nombreCompleto = [f.nombres, f.apellidoPaterno, f.apellidoMaterno].filter(Boolean).join(' ')
   const password = f.rut // contraseña inicial = RUT con guion, sin puntos
 
   const { data, error } = await supabase.auth.admin.createUser({
@@ -132,10 +153,11 @@ for (const f of filas) {
   creados++
 
   // El trigger handle_new_user ya usa nombre/rol de user_metadata; acá solo
-  // falta el rut, que no es parte del trigger.
-  const { error: updateError } = await supabase.from('profiles').update({ rut: f.rut }).eq('id', data.user.id)
+  // faltan rut/cargo, que no son parte del trigger.
+  const { error: updateError } = await supabase.from('profiles')
+    .update({ rut: f.rut, cargo: f.cargo || null }).eq('id', data.user.id)
   if (updateError) {
-    console.error(`  (no se pudo guardar el rut: ${updateError.message} — ¿falta correr 0017_profiles_rut.sql?)`)
+    console.error(`  (no se pudo guardar rut/cargo: ${updateError.message} — ¿faltan correr 0017/0019?)`)
   }
 }
 

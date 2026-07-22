@@ -68,17 +68,23 @@ function UserRow({ profile, isSelf, onSaved }: { profile: Profile; isSelf: boole
   const [rol, setRol] = useState<Rol>(profile.rol)
   const [area, setArea] = useState(profile.area ?? '')
   const [activo, setActivo] = useState(profile.activo)
+  const [rut, setRut] = useState(profile.rut ?? '')
+  const [cargo, setCargo] = useState(profile.cargo ?? '')
   const [saving, setSaving] = useState(false)
   const [msg, setMsg] = useState<{ ok: boolean; text: string } | null>(null)
 
   const dirty = nombre !== (profile.nombre ?? '') || rol !== profile.rol
     || area !== (profile.area ?? '') || activo !== profile.activo
+    || rut !== (profile.rut ?? '') || cargo !== (profile.cargo ?? '')
 
   async function save() {
     setSaving(true)
     setMsg(null)
     try {
-      await adminRepo.updateProfile(profile.id, { nombre: nombre.trim() || null, rol, area: area || null, activo })
+      await adminRepo.updateProfile(profile.id, {
+        nombre: nombre.trim() || null, rol, area: area || null, activo,
+        rut: rut.trim() || null, cargo: cargo.trim() || null,
+      })
       setMsg({ ok: true, text: 'Guardado' })
       onSaved()
     } catch (err) {
@@ -110,6 +116,10 @@ function UserRow({ profile, isSelf, onSaved }: { profile: Profile; isSelf: boole
           <option value="">Sin área</option>
           {AREAS.map((a) => <option key={a} value={a}>{a}</option>)}
         </select>
+        <input value={rut} onChange={(e) => setRut(e.target.value)} placeholder="RUT"
+          className="bg-slate-700 text-white text-sm rounded-lg px-2 py-1.5 border border-slate-600 focus:border-brand-500 focus:outline-none" />
+        <input value={cargo} onChange={(e) => setCargo(e.target.value)} placeholder="Cargo"
+          className="col-span-2 sm:col-span-2 bg-slate-700 text-white text-sm rounded-lg px-2 py-1.5 border border-slate-600 focus:border-brand-500 focus:outline-none" />
       </div>
       {isSelf && (
         <p className="text-[11px] text-slate-500">No puedes cambiar tu propio rol ni desactivarte — pide a otro admin que lo haga.</p>

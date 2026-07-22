@@ -20,6 +20,8 @@ export interface Profile {
   rol: Rol
   area: string | null
   activo: boolean
+  rut: string | null
+  cargo: string | null
 }
 
 // Cuenta compartida de "invitado" (temporal, mientras se definen los usuarios
@@ -75,7 +77,7 @@ interface AuthState {
 async function fetchProfile(userId: string): Promise<Profile | null> {
   const { data, error } = await supabase
     .from('profiles')
-    .select('id, nombre, email, rol, area, activo')
+    .select('id, nombre, email, rol, area, activo, rut, cargo')
     .eq('id', userId)
     .single()
   if (error) {

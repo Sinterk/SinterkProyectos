@@ -10,3 +10,7 @@ proxy-server/service-account.json
 
 # Certificados locales mkcert (nunca commitear claves privadas)
 certs/
+
+# Planillas reales de personal (RUT/correo/nombre) usadas para alta masiva —
+# nunca deben llegar al repo.
+Trabajadores*
