@@ -50,18 +50,18 @@ export function Stat({ label, value, highlight }: { label: string; value: number
   )
 }
 
-type Campo = 'cantSolicitada' | 'cantEntregada' | 'cantInstalada' | 'cantDevuelta' | 'cantRebajada'
-const CAMPOS: Campo[] = ['cantSolicitada', 'cantEntregada', 'cantInstalada', 'cantDevuelta', 'cantRebajada']
+type Campo = 'cantSolicitada' | 'cantEntregada' | 'cantInstalada' | 'cantDevuelta' | 'cantRebajada' | 'cantMerma'
+const CAMPOS: Campo[] = ['cantSolicitada', 'cantEntregada', 'cantInstalada', 'cantDevuelta', 'cantRebajada', 'cantMerma']
 const CAMPO_TIPO: Record<Campo, MovimientoTipoUI> = {
   cantSolicitada: 'solicitud', cantEntregada: 'entrega', cantInstalada: 'instalado',
-  cantDevuelta: 'devuelto', cantRebajada: 'rebajado',
+  cantDevuelta: 'devuelto', cantRebajada: 'rebajado', cantMerma: 'merma',
 }
-/** Campos cuyo movimiento requiere elegir bodega (origen para Entrega/Rebajado, destino para Devuelto). */
+/** Campos cuyo movimiento requiere elegir bodega (origen para Entrega/Rebajado, destino para Devuelto). Merma, como Instalado, sale del stock propio del técnico — sin bodega. */
 const CAMPO_NECESITA_BODEGA: Campo[] = ['cantEntregada', 'cantDevuelta', 'cantRebajada']
 /** Campos corregibles directo (viven como columna propia en proyecto_materiales). Solicitado queda afuera: es un cálculo (suma de movimientos tipo='solicitud'), no una columna. */
 const CAMPO_DB: Partial<Record<Campo, CampoCorregible>> = {
   cantEntregada: 'cant_entregada', cantInstalada: 'cant_instalada',
-  cantDevuelta: 'cant_devuelta', cantRebajada: 'cant_rebajada',
+  cantDevuelta: 'cant_devuelta', cantRebajada: 'cant_rebajada', cantMerma: 'cant_merma',
 }
 
 const NINGUN_PUNTO = ''
@@ -91,7 +91,7 @@ export function ResumenProyectoTable({ projectId, area, puntos, refreshKey = 0, 
   // registrar_movimiento ya autoriza al técnico para cualquier tipoUI sobre
   // sus propios proyectos, igual que otros candados de este estilo en la app
   // (ver "auto-democión" del admin en AdminScreen/UserRow).
-  const editableCampos: Campo[] = rol === 'tecnico' ? ['cantInstalada', 'cantDevuelta'] : CAMPOS
+  const editableCampos: Campo[] = rol === 'tecnico' ? ['cantInstalada', 'cantDevuelta', 'cantMerma'] : CAMPOS
   const [rows, setRows] = useState<ResumenMaterialProyecto[] | null>(null)
   const [materiales, setMateriales] = useState<Material[]>([])
   const [members, setMembers] = useState<MemberProfile[]>([])
@@ -440,6 +440,7 @@ export function ResumenProyectoTable({ projectId, area, puntos, refreshKey = 0, 
                   <th className="px-2 py-2 font-medium text-center whitespace-nowrap">Instalado</th>
                   <th className="px-2 py-2 font-medium text-center whitespace-nowrap">Devuelto</th>
                   <th className="px-2 py-2 font-medium text-center whitespace-nowrap">Rebajado</th>
+                  <th className="px-2 py-2 font-medium text-center whitespace-nowrap">Merma</th>
                   <th className="px-2 py-2 font-medium text-center whitespace-nowrap">Tránsito</th>
                 </tr>
               </thead>

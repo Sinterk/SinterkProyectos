@@ -46,7 +46,7 @@ export interface StockRow {
  * supabase/migrations/0005_registrar_movimiento.sql para la tabla completa
  * de qué toca cada uno.
  */
-export type MovimientoTipoUI = 'entrada' | 'solicitud' | 'entrega' | 'instalado' | 'devuelto' | 'rebajado'
+export type MovimientoTipoUI = 'entrada' | 'solicitud' | 'entrega' | 'instalado' | 'devuelto' | 'rebajado' | 'merma'
 
 export interface Movimiento {
   id: string
@@ -114,7 +114,8 @@ export interface ResumenMaterialProyecto {
   cantDevuelta: number
   cantRezagada: number
   cantRebajada: number
-  /** Calculado: entregada - instalada - devuelta - rezagada. Nunca se guarda. */
+  cantMerma: number
+  /** Calculado: entregada - instalada - devuelta - rezagada - merma. Nunca se guarda. */
   cantTransito: number
 }
 
@@ -131,6 +132,7 @@ export interface TecnicoLedgerRow {
   cantInstalada: number
   cantDevuelta: number
   cantRebajada: number
+  cantMerma: number
   cantTransito: number
 }
 

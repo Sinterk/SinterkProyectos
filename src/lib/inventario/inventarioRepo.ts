@@ -285,7 +285,7 @@ export async function registrarMovimiento(input: RegistrarMovimientoInput): Prom
   }
 }
 
-export type CampoCorregible = 'cant_entregada' | 'cant_instalada' | 'cant_devuelta' | 'cant_rebajada'
+export type CampoCorregible = 'cant_entregada' | 'cant_instalada' | 'cant_devuelta' | 'cant_rebajada' | 'cant_merma'
 
 /**
  * Corrección directa de un error de tipeo (Entregado/Instalado/Devuelto/
@@ -330,6 +330,7 @@ interface ProyectoMaterialJoinRow {
   cant_devuelta: number
   cant_rezagada: number
   cant_rebajada: number
+  cant_merma: number
   materiales: { sku: string; descripcion: string } | null
 }
 
@@ -351,7 +352,7 @@ export async function getResumenProyecto(projectId: string): Promise<ResumenMate
   const [pmRes, solRes] = await Promise.all([
     supabase
       .from('proyecto_materiales')
-      .select('material_id, lote, punto_id, cant_entregada, cant_instalada, cant_devuelta, cant_rezagada, cant_rebajada, materiales(sku, descripcion)')
+      .select('material_id, lote, punto_id, cant_entregada, cant_instalada, cant_devuelta, cant_rezagada, cant_rebajada, cant_merma, materiales(sku, descripcion)')
       .eq('project_id', projectId),
     supabase
       .from('movimientos')
@@ -373,7 +374,7 @@ export async function getResumenProyecto(projectId: string): Promise<ResumenMate
         materialId, materialSku: mat?.sku ?? '', materialDescripcion: mat?.descripcion ?? '',
         lote, puntoId,
         cantSolicitada: 0, cantEntregada: 0, cantInstalada: 0, cantDevuelta: 0, cantRezagada: 0, cantRebajada: 0,
-        cantTransito: 0,
+        cantMerma: 0, cantTransito: 0,
       }
       map.set(k, row)
     }
@@ -387,6 +388,7 @@ export async function getResumenProyecto(projectId: string): Promise<ResumenMate
     row.cantDevuelta = Number(r.cant_devuelta)
     row.cantRezagada = Number(r.cant_rezagada)
     row.cantRebajada = Number(r.cant_rebajada)
+    row.cantMerma = Number(r.cant_merma)
   }
 
   for (const r of (solRes.data as unknown as SolicitudJoinRow[])) {
@@ -395,7 +397,7 @@ export async function getResumenProyecto(projectId: string): Promise<ResumenMate
   }
 
   for (const row of map.values()) {
-    row.cantTransito = row.cantEntregada - row.cantInstalada - row.cantDevuelta - row.cantRezagada
+    row.cantTransito = row.cantEntregada - row.cantInstalada - row.cantDevuelta - row.cantRezagada - row.cantMerma
   }
 
   return [...map.values()].sort((a, b) => a.materialSku.localeCompare(b.materialSku))
@@ -427,7 +429,7 @@ export async function getTecnicoLedger(userId: string): Promise<TecnicoLedgerRow
     .from('movimientos')
     .select('project_id, material_id, lote, tipo, cantidad, materiales(sku,descripcion), projects(ott,area)')
     .eq('usuario_id', userId)
-    .in('tipo', ['salida', 'instalado', 'traslado', 'rebaja'])
+    .in('tipo', ['salida', 'instalado', 'traslado', 'rebaja', 'merma'])
   if (error) throw new Error(`movimientos.tecnico: ${error.message}`)
 
   const key = (r: MovimientoLedgerJoinRow) => `${r.project_id ?? ''}|${r.material_id}|${r.lote}`
@@ -441,7 +443,7 @@ export async function getTecnicoLedger(userId: string): Promise<TecnicoLedgerRow
         projectId: r.project_id, projectOtt: r.projects?.ott ?? null, projectArea: r.projects?.area ?? null,
         materialId: r.material_id, materialSku: r.materiales?.sku ?? '', materialDescripcion: r.materiales?.descripcion ?? '',
         lote: r.lote,
-        cantEntregada: 0, cantInstalada: 0, cantDevuelta: 0, cantRebajada: 0, cantTransito: 0,
+        cantEntregada: 0, cantInstalada: 0, cantDevuelta: 0, cantRebajada: 0, cantMerma: 0, cantTransito: 0,
       }
       map.set(k, row)
     }
@@ -450,10 +452,11 @@ export async function getTecnicoLedger(userId: string): Promise<TecnicoLedgerRow
     else if (r.tipo === 'instalado') row.cantInstalada += cantidad
     else if (r.tipo === 'traslado') row.cantDevuelta += cantidad
     else if (r.tipo === 'rebaja') row.cantRebajada += cantidad
+    else if (r.tipo === 'merma') row.cantMerma += cantidad
   }
 
   for (const row of map.values()) {
-    row.cantTransito = row.cantEntregada - row.cantInstalada - row.cantDevuelta - row.cantRebajada
+    row.cantTransito = row.cantEntregada - row.cantInstalada - row.cantDevuelta - row.cantRebajada - row.cantMerma
   }
 
   return [...map.values()]

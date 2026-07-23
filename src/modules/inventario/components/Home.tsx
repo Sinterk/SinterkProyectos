@@ -26,7 +26,7 @@ type MainTab = 'movimientos' | 'bodega' | 'proyecto' | 'tecnico' | 'conteo'
 
 const TIPO_LABELS_MOV: Record<string, string> = {
   entrada: 'Entrada', salida: 'Salida', traslado: 'Traslado/Devuelto',
-  rebaja: 'Rebajado (SAP)', solicitud: 'Solicitud', instalado: 'Instalado',
+  rebaja: 'Rebajado (SAP)', solicitud: 'Solicitud', instalado: 'Instalado', merma: 'Merma',
 }
 
 const inputCls = 'bg-slate-800 text-white text-sm rounded-lg px-2 py-1.5 border border-slate-700 focus:border-brand-500 focus:outline-none'
@@ -690,7 +690,7 @@ function ProyectoTab() {
   )
 }
 
-type TecColKey = 'sku' | 'material' | 'lote' | 'proyecto' | 'entregado' | 'instalado' | 'devuelto' | 'rebajado' | 'transito'
+type TecColKey = 'sku' | 'material' | 'lote' | 'proyecto' | 'entregado' | 'instalado' | 'devuelto' | 'rebajado' | 'merma' | 'transito'
 
 const TEC_COLUMNS: { key: TecColKey; label: string; numeric?: boolean; align?: 'right' }[] = [
   { key: 'sku', label: 'SKU', numeric: true },
@@ -701,6 +701,7 @@ const TEC_COLUMNS: { key: TecColKey; label: string; numeric?: boolean; align?: '
   { key: 'instalado', label: 'Instalado', numeric: true, align: 'right' },
   { key: 'devuelto', label: 'Devuelto', numeric: true, align: 'right' },
   { key: 'rebajado', label: 'Rebajado', numeric: true, align: 'right' },
+  { key: 'merma', label: 'Merma', numeric: true, align: 'right' },
   { key: 'transito', label: 'Tránsito', numeric: true, align: 'right' },
 ]
 
@@ -716,6 +717,7 @@ function tecColValue(r: TecnicoLedgerRow, key: TecColKey): string | number {
     case 'instalado': return r.cantInstalada
     case 'devuelto': return r.cantDevuelta
     case 'rebajado': return r.cantRebajada
+    case 'merma': return r.cantMerma
     case 'transito': return r.cantTransito
   }
 }
@@ -728,7 +730,7 @@ function tecColDisplayValue(r: TecnicoLedgerRow, key: TecColKey): string {
   return String(tecColValue(r, key))
 }
 
-const TEC_NUMERIC_COLS: TecColKey[] = ['entregado', 'instalado', 'devuelto', 'rebajado', 'transito']
+const TEC_NUMERIC_COLS: TecColKey[] = ['entregado', 'instalado', 'devuelto', 'rebajado', 'merma', 'transito']
 
 function sortTecColumnValues(key: TecColKey, values: string[]): string[] {
   if (key === 'sku') return [...values].sort((a, b) => compareSku(a, b, 'asc'))

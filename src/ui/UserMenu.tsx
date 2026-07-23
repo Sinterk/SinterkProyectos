@@ -54,6 +54,13 @@ export function UserMenu() {
             </Link>
           )}
 
+          {(profile?.rol === 'admin' || profile?.rol === 'jp' || profile?.rol === 'log') && (
+            <Link to="/kpi" onClick={() => setOpen(false)}
+              className="block px-4 py-3 text-sm text-brand-400 hover:bg-slate-700/60 border-b border-slate-700 transition-colors">
+              📊 KPI
+            </Link>
+          )}
+
           {isGuest ? (
             <GuestPasswordRow password={guestKind === 'tecnico' ? guestTecnicoPassword : guestPassword} />
           ) : (

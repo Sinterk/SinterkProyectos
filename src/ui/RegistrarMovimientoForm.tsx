@@ -21,10 +21,10 @@ import { UbicacionSelect } from './UbicacionSelect'
 const PREVENTIVA = '__preventiva__'
 const NINGUN_PUNTO = ''
 
-const SALIDA_TIPOS: MovimientoTipoUI[] = ['solicitud', 'entrega', 'instalado', 'devuelto', 'rebajado']
+const SALIDA_TIPOS: MovimientoTipoUI[] = ['solicitud', 'entrega', 'instalado', 'devuelto', 'rebajado', 'merma']
 const TIPO_LABELS: Record<MovimientoTipoUI, string> = {
   entrada: 'Entrada', solicitud: 'Solicitud', entrega: 'Entrega',
-  instalado: 'Instalado', devuelto: 'Devuelto', rebajado: 'Rebajado (SAP)',
+  instalado: 'Instalado', devuelto: 'Devuelto', rebajado: 'Rebajado (SAP)', merma: 'Merma',
 }
 /** Tipos de Salida que no exigen proyecto (permiten "Salida preventiva"). */
 const PROYECTO_OPCIONAL: MovimientoTipoUI[] = ['entrega', 'devuelto']
@@ -142,6 +142,7 @@ export function RegistrarMovimientoForm({ fixedProject, puntos, lockTipoUI, onRe
       case 'rebajado': return { ubicacionId: l.ubicacionBodegaId || null, naturaleza: 'digital', checkAvailability: true }
       case 'devuelto': return { ubicacionId: tecnicoUbicacionId, naturaleza: 'fisico', checkAvailability: true }
       case 'instalado': return { ubicacionId: tecnicoUbicacionId, naturaleza: 'fisico', checkAvailability: true }
+      case 'merma': return { ubicacionId: tecnicoUbicacionId, naturaleza: 'fisico', checkAvailability: true }
       default: return { ubicacionId: null, naturaleza: 'fisico', checkAvailability: false }
     }
   }

@@ -23,8 +23,8 @@ export function Layout({ children }: Props) {
   // /preventivos (no a "/" — esos paths no cambiaron por rol): sin incluirlos
   // acá el nav completo desaparecía al volver de una asignación.
   const homeScreens = isTecnico
-    ? ['/', '/admin', '/mi-inventario', ...modules.map((m) => m.indexPath)]
-    : ['/', '/admin', ...modules.map((m) => m.indexPath)]
+    ? ['/', '/admin', '/kpi', '/mi-inventario', ...modules.map((m) => m.indexPath)]
+    : ['/', '/admin', '/kpi', ...modules.map((m) => m.indexPath)]
   const showNav = homeScreens.includes(pathname)
 
   return (
