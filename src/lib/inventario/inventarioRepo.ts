@@ -162,6 +162,7 @@ interface MovimientoJoinRow {
   tipo: string
   cantidad: number
   project_id: string | null
+  area: 'ATT' | 'OyM' | null
   punto_id: string | null
   usuario_id: string | null
   fecha: string
@@ -189,6 +190,7 @@ function movimientoFromJoinRow(r: MovimientoJoinRow): Movimiento {
     cantidad: Number(r.cantidad),
     projectId: r.project_id,
     projectOtt: r.projects?.ott ?? null,
+    area: r.area,
     puntoId: r.punto_id,
     usuarioId: r.usuario_id,
     usuarioNombre: r.profiles?.nombre?.trim() || r.profiles?.email || null,
@@ -244,6 +246,7 @@ export interface MovimientoCreado {
   tipo: string
   cantidad: number
   projectId: string | null
+  area: 'ATT' | 'OyM' | null
   puntoId: string | null
   usuarioId: string | null
   fecha: string
@@ -252,7 +255,8 @@ export interface MovimientoCreado {
 interface MovimientoRpcRow {
   id: string; material_id: string; ubicacion_id: string; lote: string
   naturaleza: 'fisico' | 'digital'; tipo: string; cantidad: number
-  project_id: string | null; punto_id: string | null; usuario_id: string | null; fecha: string
+  project_id: string | null; area: 'ATT' | 'OyM' | null
+  punto_id: string | null; usuario_id: string | null; fecha: string
 }
 
 /** Sube el movimiento vía la función de BD (atómica: stock + movimientos + proyecto_materiales). */
@@ -270,13 +274,14 @@ export async function registrarMovimiento(input: RegistrarMovimientoInput): Prom
     p_project_id: input.projectId ?? null,
     p_punto_id: input.puntoId ?? null,
     p_tecnico_user_id: input.tecnicoUserId ?? null,
+    p_area: input.area ?? null,
   })
   if (error) throw new Error(`registrar_movimiento: ${error.message}`)
   const row = data as MovimientoRpcRow
   return {
     id: row.id, materialId: row.material_id, ubicacionId: row.ubicacion_id, lote: row.lote,
     naturaleza: row.naturaleza, tipo: row.tipo, cantidad: Number(row.cantidad),
-    projectId: row.project_id, puntoId: row.punto_id, usuarioId: row.usuario_id, fecha: row.fecha,
+    projectId: row.project_id, area: row.area, puntoId: row.punto_id, usuarioId: row.usuario_id, fecha: row.fecha,
   }
 }
 

@@ -62,6 +62,7 @@ export interface Movimiento {
   cantidad: number
   projectId: string | null
   projectOtt: string | null
+  area: 'ATT' | 'OyM' | null
   puntoId: string | null
   usuarioId: string | null
   usuarioNombre: string | null
@@ -87,6 +88,8 @@ export interface RegistrarMovimientoInput {
   projectId?: string
   puntoId?: string | null
   tecnicoUserId?: string
+  /** Solo se usa cuando no hay proyecto (salida preventiva/consumibles) — con proyecto, el área se deriva sola. */
+  area?: 'ATT' | 'OyM'
 }
 
 export interface ReasignarTransitoInput {

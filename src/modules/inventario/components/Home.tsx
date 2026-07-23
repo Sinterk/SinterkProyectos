@@ -90,7 +90,7 @@ function EntradasSalidasTab() {
   )
 }
 
-type MovColKey = 'fecha' | 'tipo' | 'sku' | 'material' | 'lote' | 'cantidad' | 'bodega' | 'proyecto' | 'tecnico' | 'nota'
+type MovColKey = 'fecha' | 'tipo' | 'sku' | 'material' | 'lote' | 'cantidad' | 'bodega' | 'proyecto' | 'area' | 'tecnico' | 'nota'
 
 const MOV_COLUMNS: { key: MovColKey; label: string; numeric?: boolean; align?: 'right' }[] = [
   { key: 'fecha', label: 'Fecha' },
@@ -101,11 +101,13 @@ const MOV_COLUMNS: { key: MovColKey; label: string; numeric?: boolean; align?: '
   { key: 'cantidad', label: 'Cantidad', numeric: true, align: 'right' },
   { key: 'bodega', label: 'Bodega' },
   { key: 'proyecto', label: 'Proyecto' },
+  { key: 'area', label: 'Área' },
   { key: 'tecnico', label: 'Técnico' },
   { key: 'nota', label: 'Nota' },
 ]
 
 const SIN_PROYECTO = 'Sin proyecto'
+const SIN_AREA = 'Sin área'
 const SIN_TECNICO = 'Sin técnico'
 const SIN_NOTA = 'Sin nota'
 
@@ -119,6 +121,7 @@ function movColValue(m: Movimiento, key: MovColKey): string | number {
     case 'cantidad': return m.cantidad
     case 'bodega': return m.ubicacionNombre
     case 'proyecto': return m.projectOtt ?? ''
+    case 'area': return m.area ?? ''
     case 'tecnico': return m.usuarioNombre ?? ''
     case 'nota': return m.nota ?? ''
   }
@@ -127,6 +130,7 @@ function movColValue(m: Movimiento, key: MovColKey): string | number {
 /** Igual que stockColDisplayValue: texto para el checklist de filtro (por eso los campos vacíos se ven como "Sin X", no como cadena vacía). */
 function movColDisplayValue(m: Movimiento, key: MovColKey): string {
   if (key === 'proyecto') return m.projectOtt || SIN_PROYECTO
+  if (key === 'area') return m.area || SIN_AREA
   if (key === 'tecnico') return m.usuarioNombre || SIN_TECNICO
   if (key === 'nota') return m.nota?.trim() ? m.nota : SIN_NOTA
   return String(movColValue(m, key))
@@ -267,6 +271,7 @@ function MovimientosTab({ refreshKey }: { refreshKey: number }) {
                   <td className="px-2 py-2 text-right font-semibold text-white whitespace-nowrap">{m.cantidad}</td>
                   <td className="px-2 py-2 text-slate-300 whitespace-nowrap">{m.ubicacionNombre}</td>
                   <td className="px-2 py-2 text-slate-300 whitespace-nowrap">{m.projectOtt ?? '—'}</td>
+                  <td className="px-2 py-2 text-slate-300 whitespace-nowrap">{m.area ?? '—'}</td>
                   <td className="px-2 py-2 text-slate-300 whitespace-nowrap">{m.usuarioNombre ?? '—'}</td>
                   <td className="px-2 py-2 max-w-[220px]"><p className="text-slate-400 truncate">{m.nota ?? '—'}</p></td>
                 </tr>

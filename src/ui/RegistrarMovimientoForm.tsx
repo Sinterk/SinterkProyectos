@@ -79,6 +79,9 @@ export function RegistrarMovimientoForm({ fixedProject, puntos, lockTipoUI, onRe
   const [projectSel, setProjectSel] = useState(fixedProject ? fixedProject.id : '')
   const [tecnicoUserId, setTecnicoUserId] = useState('')
   const [puntoId, setPuntoId] = useState(NINGUN_PUNTO)
+  // Solo se usa sin proyecto (salida preventiva / consumibles): con proyecto,
+  // el área se deriva sola del proyecto — no se le pide al usuario que la repita.
+  const [areaSel, setAreaSel] = useState<'ATT' | 'OyM'>('OyM')
 
   const [fecha, setFecha] = useState(todayISODate())
   const [nota, setNota] = useState('')
@@ -120,6 +123,10 @@ export function RegistrarMovimientoForm({ fixedProject, puntos, lockTipoUI, onRe
   const requiereProyecto = !PROYECTO_OPCIONAL.includes(tipoUI)
   const proyectoIdEfectivo = fixedProject ? fixedProject.id : (projectSel === PREVENTIVA ? null : projectSel || null)
   const necesitaBodegaPorLinea = !esEntrada && NECESITA_BODEGA_POR_LINEA.includes(tipoUI)
+  // Sin proyecto (salida preventiva o consumibles): el área no se puede
+  // derivar de ningún lado (puede salir material de cualquier bodega), así
+  // que se elige a mano.
+  const necesitaArea = !esEntrada && !requiereProyecto && proyectoIdEfectivo === null
   const tecnicoOptions = fixedProject
     ? members.map((m) => ({ id: m.id, label: m.nombre?.trim() || m.email || '' }))
     : tecnicos.map((t) => ({ id: t.id, label: t.nombre?.trim() || t.email }))
@@ -192,6 +199,7 @@ export function RegistrarMovimientoForm({ fixedProject, puntos, lockTipoUI, onRe
           projectId: esEntrada ? undefined : (proyectoIdEfectivo ?? undefined),
           puntoId: esEntrada ? undefined : (puntos ? (puntoId || null) : undefined),
           tecnicoUserId: esEntrada ? undefined : tecnicoUserId,
+          area: necesitaArea ? areaSel : undefined,
         })
         nuevos[l.localId] = { ok: true, texto: 'Registrado' }
       } catch (e) {
@@ -267,6 +275,15 @@ export function RegistrarMovimientoForm({ fixedProject, puntos, lockTipoUI, onRe
                       [{p.area === 'ATT' ? 'ATT' : 'Preventivo'}] {p.ott || 'Sin código'}
                     </option>
                   ))}
+                </select>
+              </label>
+            )}
+            {necesitaArea && (
+              <label className="space-y-1 col-span-2">
+                <span className={labelCls}>Área (consumibles / salida preventiva)</span>
+                <select value={areaSel} onChange={(e) => setAreaSel(e.target.value as 'ATT' | 'OyM')} className={`${inputCls} w-full`}>
+                  <option value="ATT">ATT</option>
+                  <option value="OyM">OyM (Preventivos/Incidencias)</option>
                 </select>
               </label>
             )}

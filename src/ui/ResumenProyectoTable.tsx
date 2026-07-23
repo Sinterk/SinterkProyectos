@@ -21,7 +21,7 @@ import { useAuth } from '@/lib/auth'
 import { nanoid } from '@/core/utils/nanoid'
 import { BODEGA_DEFECTO_POR_AREA } from '@/lib/inventario/defaults'
 import {
-  corregirProyectoMaterial, getResumenProyecto, listMateriales, listUbicaciones,
+  corregirProyectoMaterial, getResumenProyecto, getStock, listMateriales, listUbicaciones,
   reasignarTransitoAPreventivo, registrarMovimiento,
 } from '@/lib/inventario/inventarioRepo'
 import type { CampoCorregible } from '@/lib/inventario/inventarioRepo'
@@ -171,6 +171,31 @@ export function ResumenProyectoTable({ projectId, area, puntos, refreshKey = 0, 
   }
   function actualizarFilaNueva(localId: string, patch: Partial<Pick<NuevaFila, 'materialId' | 'lote' | 'puntoId' | 'tecnicoUserId' | 'ubicacionBodegaId'>>) {
     setNuevasFilas((prev) => prev.map((f) => (f.localId === localId ? { ...f, ...patch } : f)))
+  }
+
+  // Al elegir material para una fila nueva, la bodega parte en la bodega por
+  // defecto del área (C088/C132) sin importar si el material realmente vive
+  // ahí — si no tiene stock en esa bodega pero sí en otra (ej. un material
+  // de OyM elegido desde una OTT ATT, o de la bodega Consumibles), la fila
+  // saltaba una "salida" de una bodega donde el material nunca estuvo,
+  // generando negativos falsos. Se corrige buscando dónde el material
+  // realmente tiene stock y saltando la bodega de la fila para allá.
+  async function handleMaterialSeleccionado(fila: NuevaFila, materialId: string) {
+    actualizarFilaNueva(fila.localId, { materialId, lote: '' })
+    if (!materialId) return
+    try {
+      const stockRows = await getStock({ materialId })
+      const bodegaIds = new Set(bodegas.map((b) => b.id))
+      const enBodegas = stockRows.filter((s) => bodegaIds.has(s.ubicacionId))
+      const tieneStockActual = enBodegas.some((s) => s.ubicacionId === fila.ubicacionBodegaId && (s.cantidadFisico > 0 || s.cantidadDigital > 0))
+      if (tieneStockActual) return
+      const mejor = [...enBodegas].sort((a, b) => (b.cantidadFisico + b.cantidadDigital) - (a.cantidadFisico + a.cantidadDigital))[0]
+      if (mejor && (mejor.cantidadFisico > 0 || mejor.cantidadDigital > 0) && mejor.ubicacionId !== fila.ubicacionBodegaId) {
+        actualizarFilaNueva(fila.localId, { ubicacionBodegaId: mejor.ubicacionId })
+      }
+    } catch {
+      // silencioso: el usuario igual puede elegir la bodega a mano si esto falla
+    }
   }
   function setDraftNueva(localId: string, campo: Campo, v: string) {
     setNuevasFilas((prev) => prev.map((f) => (f.localId === localId ? { ...f, edits: { ...f.edits, [campo]: v } } : f)))
@@ -435,7 +460,7 @@ export function ResumenProyectoTable({ projectId, area, puntos, refreshKey = 0, 
                       </td>
                       <td className="px-2 py-2 align-top">
                         <MaterialSelect materiales={materiales} value={fila.materialId}
-                          onChange={(id) => actualizarFilaNueva(fila.localId, { materialId: id, lote: '' })}
+                          onChange={(id) => { handleMaterialSeleccionado(fila, id).catch(() => {}) }}
                           className="w-36" />
                         {errMaterial && <p className="text-[9px] text-red-400 mt-0.5">{errMaterial}</p>}
                       </td>
