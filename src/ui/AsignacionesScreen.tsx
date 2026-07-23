@@ -2,9 +2,10 @@ import { useEffect, useState } from 'react'
 import { useNavigate } from 'react-router-dom'
 import { attRepo } from '@/modules/att/data/attRepo'
 import { preventivoRepo } from '@/modules/preventivos/data/preventivoRepo'
+import { incidenciaRepo } from '@/modules/incidencias/data/incidenciaRepo'
 
 interface Asignacion {
-  area: 'ATT' | 'Preventivo'
+  area: 'ATT' | 'Preventivo' | 'Incidencia'
   id: string
   codigo: string
   nombre: string | null
@@ -12,9 +13,9 @@ interface Asignacion {
 }
 
 /**
- * Home del rol técnico: proyectos ATT + Preventivos donde está asignado
- * (project_members). No hace falta filtrar por técnico en la query — la RLS
- * de `projects` ya solo devuelve lo suyo (is_member()).
+ * Home del rol técnico: proyectos ATT + Preventivos + Incidencias donde está
+ * asignado (project_members). No hace falta filtrar por técnico en la
+ * query — la RLS de `projects` ya solo devuelve lo suyo (is_member()).
  */
 export function AsignacionesScreen() {
   const navigate = useNavigate()
@@ -25,8 +26,9 @@ export function AsignacionesScreen() {
     Promise.all([
       attRepo.list({ estado: 'activo' }),
       preventivoRepo.list({ estado: 'activo' }),
+      incidenciaRepo.list({ estado: 'activo' }),
     ])
-      .then(([att, prev]) => {
+      .then(([att, prev, inc]) => {
         const merged: Asignacion[] = [
           ...att.map((r) => ({
             area: 'ATT' as const, id: r.id,
@@ -36,6 +38,10 @@ export function AsignacionesScreen() {
             area: 'Preventivo' as const, id: r.id,
             codigo: r.cuadrante.cuadrante || 'Sin código', nombre: r.cuadrante.nombreCuadrante || null, comuna: r.cuadrante.comuna || null,
           })),
+          ...inc.map((r) => ({
+            area: 'Incidencia' as const, id: r.id,
+            codigo: r.codigo || 'Sin código', nombre: r.ingeniero || null, comuna: r.direccion || null,
+          })),
         ]
         merged.sort((a, b) => a.area.localeCompare(b.area) || a.codigo.localeCompare(b.codigo))
         setItems(merged)
@@ -44,7 +50,9 @@ export function AsignacionesScreen() {
   }, [])
 
   function open(a: Asignacion) {
-    navigate(a.area === 'ATT' ? `/att/${a.id}` : `/preventivos/${a.id}`)
+    if (a.area === 'ATT') navigate(`/att/${a.id}`)
+    else if (a.area === 'Preventivo') navigate(`/preventivos/${a.id}`)
+    else navigate(`/incidencias/${a.id}`)
   }
 
   return (

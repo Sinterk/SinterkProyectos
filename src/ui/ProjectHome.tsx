@@ -1,14 +1,7 @@
 import { useNavigate } from 'react-router-dom'
 import { registry } from '@/core/registry/projectRegistry'
 
-const COMING_SOON = [
-  {
-    id: 'incidencias',
-    name: 'Incidencias',
-    icon: '🚨',
-    description: 'Registro y seguimiento de incidentes OyM',
-  },
-]
+const COMING_SOON: { id: string; name: string; icon: string; description: string }[] = []
 
 export function ProjectHome() {
   const navigate = useNavigate()

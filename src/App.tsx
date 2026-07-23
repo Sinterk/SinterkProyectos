@@ -11,6 +11,7 @@ import { useAuth } from '@/lib/auth'
 
 import '@/modules/preventivos'
 import '@/modules/att'
+import '@/modules/incidencias'
 import '@/modules/inventario'
 
 export function App() {

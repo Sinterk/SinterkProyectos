@@ -20,9 +20,11 @@ interface Props {
   projectId: string
   area: 'ATT' | 'OyM'
   puntos?: Punto[]
+  /** Incidencias tiene su propia pestaña "Comentarios" separada — evita duplicar ObservacionesSection acá. Default true (ATT/Preventivos sin cambios). */
+  incluirComentarios?: boolean
 }
 
-export function LogisticaTab({ projectId, area, puntos }: Props) {
+export function LogisticaTab({ projectId, area, puntos, incluirComentarios = true }: Props) {
   const isTecnico = useAuth((s) => s.profile?.rol === 'tecnico')
   // EquipoSection y ResumenProyectoTable leen `project_members` cada uno por
   // su cuenta (listas separadas, sin estado compartido) — sin este contador,
@@ -35,7 +37,7 @@ export function LogisticaTab({ projectId, area, puntos }: Props) {
         <EquipoSection projectId={projectId} onMembersChanged={() => setMembersVersion((v) => v + 1)} />
       )}
       <ResumenProyectoTable projectId={projectId} area={area} puntos={puntos} membersVersion={membersVersion} />
-      <ObservacionesSection projectId={projectId} />
+      {incluirComentarios && <ObservacionesSection projectId={projectId} />}
     </div>
   )
 }

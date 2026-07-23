@@ -203,7 +203,9 @@ export const preventivoRepo = {
    */
   async list(opts?: { estado?: 'activo' | 'cerrado' | 'todos' }): Promise<Preventivo[]> {
     const estado = opts?.estado ?? 'activo'
-    let query = supabase.from('projects').select(SELECT_NESTED).eq('area', 'OyM')
+    // subarea='preventivo': sin esto, las Incidencias (también area='OyM')
+    // se mezclarían acá como levantamientos vacíos.
+    let query = supabase.from('projects').select(SELECT_NESTED).eq('area', 'OyM').eq('subarea', 'preventivo')
     if (estado !== 'todos') query = query.eq('estado', estado)
     const { data, error } = await query.order('updated_at', { ascending: false })
     if (error) throw new Error(`projects.list: ${error.message}`)
@@ -244,7 +246,7 @@ export const preventivoRepo = {
       const userId = await currentUserId()
       const { data, error } = await supabase
         .from('projects')
-        .insert({ ...projectPatch, area: 'OyM', created_by: userId })
+        .insert({ ...projectPatch, area: 'OyM', subarea: 'preventivo', created_by: userId })
         .select('id')
         .single()
       if (error) throw new Error(`projects.insert: ${error.message}`)
