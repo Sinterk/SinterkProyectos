@@ -50,10 +50,11 @@ export function KpiScreen() {
   const [hasta, setHasta] = useState(meses[0]?.hasta ?? toISODate(new Date()))
   const [area, setArea] = useState<AreaSel>('ATT')
   // Físico/Digital son un saldo VIVO (no hay historial por fecha en `stock`)
-  // — solo tienen sentido cuando el periodo termina hoy, si no se estaría
-  // mostrando el saldo de hoy con la etiqueta de un mes pasado.
+  // — solo tienen sentido cuando hoy cae dentro del periodo elegido (si no,
+  // se estaría mostrando el saldo de hoy con la etiqueta de un periodo que
+  // ya terminó, o que todavía no empieza).
   const hoy = useMemo(() => toISODate(new Date()), [])
-  const hastaEsHoy = hasta === hoy
+  const hoyEnPeriodo = desde <= hoy && hoy <= hasta
 
   const [bodegas, setBodegas] = useState<Ubicacion[]>([])
   const [tecnicos, setTecnicos] = useState<Profile[]>([])
@@ -161,7 +162,7 @@ export function KpiScreen() {
           <KpiProyectosPanel titulo="OTT" area="ATT" desde={desde} hasta={hasta} />
           <KpiMaterialesTable titulo="Material usado en proyectos" area="ATT" desde={desde} hasta={hasta}
             excluirUbicacionIds={excluirInsumos} bodegaDefecto="C088"
-            stockUbicacionIds={hastaEsHoy && bodegaC088 ? [bodegaC088] : null} />
+            stockUbicacionIds={hoyEnPeriodo && bodegaC088 ? [bodegaC088] : null} />
           {bodegaInsumos && (
             <KpiMaterialesTable titulo="Insumos" area="ATT" desde={desde} hasta={hasta}
               ubicacionIds={[bodegaInsumos]} columnas="soloEntregado" />
@@ -177,7 +178,7 @@ export function KpiScreen() {
           </div>
           <KpiMaterialesTable titulo="Todo OyM" area="OyM" desde={desde} hasta={hasta}
             excluirUbicacionIds={excluirInsumos} bodegaDefecto="C132"
-            stockUbicacionIds={hastaEsHoy && bodegaC132 ? [bodegaC132] : null} />
+            stockUbicacionIds={hoyEnPeriodo && bodegaC132 ? [bodegaC132] : null} />
           <KpiMaterialesTable titulo="Preventivos" area="OyM" subarea="preventivo" desde={desde} hasta={hasta}
             excluirUbicacionIds={excluirInsumos} />
           <KpiMaterialesTable titulo="Incidencias" area="OyM" subarea="incidencia" desde={desde} hasta={hasta}
@@ -267,7 +268,7 @@ export function KpiScreen() {
           {invModo === 'bodega' ? (
             <KpiMaterialesTable titulo="Inventario" area={null} desde={desde} hasta={hasta}
               ubicacionIds={bodegaIds.length > 0 ? bodegaIds : null}
-              stockUbicacionIds={hastaEsHoy ? bodegaIdsEfectivos : null} />
+              stockUbicacionIds={hoyEnPeriodo ? bodegaIdsEfectivos : null} />
           ) : (
             <KpiMaterialesTable titulo="Inventario" area={null} desde={desde} hasta={hasta}
               tecnicoIds={tecnicoIds} mostrarOrigenTecnico />
