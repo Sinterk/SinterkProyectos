@@ -250,6 +250,8 @@ export interface MovimientoCreado {
   puntoId: string | null
   usuarioId: string | null
   fecha: string
+  /** true solo para 'instalado' forzado en negativo (sin stock en el proyecto ni el equipo) — ver 0025_prioridad_instalado.sql. */
+  requiereRevision: boolean
 }
 
 interface MovimientoRpcRow {
@@ -257,6 +259,7 @@ interface MovimientoRpcRow {
   naturaleza: 'fisico' | 'digital'; tipo: string; cantidad: number
   project_id: string | null; area: 'ATT' | 'OyM' | null
   punto_id: string | null; usuario_id: string | null; fecha: string
+  requiere_revision: boolean
 }
 
 /** Sube el movimiento vía la función de BD (atómica: stock + movimientos + proyecto_materiales). */
@@ -282,6 +285,7 @@ export async function registrarMovimiento(input: RegistrarMovimientoInput): Prom
     id: row.id, materialId: row.material_id, ubicacionId: row.ubicacion_id, lote: row.lote,
     naturaleza: row.naturaleza, tipo: row.tipo, cantidad: Number(row.cantidad),
     projectId: row.project_id, area: row.area, puntoId: row.punto_id, usuarioId: row.usuario_id, fecha: row.fecha,
+    requiereRevision: row.requiere_revision,
   }
 }
 
@@ -612,29 +616,38 @@ export async function resolverEventoInventario(eventoId: string, resolucion: Res
 interface ObservacionJoinRow {
   id: string
   project_id: string
+  punto_id: string | null
   usuario_id: string
   texto: string
   created_at: string
   profiles: { nombre: string | null; email: string | null } | null
 }
 
-export async function listObservaciones(projectId: string): Promise<Observacion[]> {
-  const { data, error } = await supabase
+/**
+ * `puntoId` por defecto `null` = comentarios generales del proyecto (mismo
+ * comportamiento de siempre). Con un id de punto, trae solo los de ESE punto
+ * — nunca se mezclan (evita que "Comentarios" general se llene con notas de
+ * cada punto, y viceversa).
+ */
+export async function listObservaciones(projectId: string, puntoId: string | null = null): Promise<Observacion[]> {
+  let query = supabase
     .from('observaciones')
-    .select('id, project_id, usuario_id, texto, created_at, profiles(nombre, email)')
+    .select('id, project_id, punto_id, usuario_id, texto, created_at, profiles(nombre, email)')
     .eq('project_id', projectId)
     .order('created_at', { ascending: false })
+  query = puntoId ? query.eq('punto_id', puntoId) : query.is('punto_id', null)
+  const { data, error } = await query
   if (error) throw new Error(`observaciones.list: ${error.message}`)
   return (data as unknown as ObservacionJoinRow[]).map((r) => ({
-    id: r.id, projectId: r.project_id, usuarioId: r.usuario_id,
+    id: r.id, projectId: r.project_id, puntoId: r.punto_id, usuarioId: r.usuario_id,
     usuarioNombre: r.profiles?.nombre?.trim() || r.profiles?.email || null,
     texto: r.texto, createdAt: r.created_at,
   }))
 }
 
 /** `usuario_id` lo pone la BD (`default auth.uid()`) — no se manda desde el cliente. */
-export async function agregarObservacion(projectId: string, texto: string): Promise<void> {
-  const { error } = await supabase.from('observaciones').insert({ project_id: projectId, texto: texto.trim() })
+export async function agregarObservacion(projectId: string, texto: string, puntoId: string | null = null): Promise<void> {
+  const { error } = await supabase.from('observaciones').insert({ project_id: projectId, texto: texto.trim(), punto_id: puntoId })
   if (error) throw new Error(`observaciones.agregar: ${error.message}`)
 }
 

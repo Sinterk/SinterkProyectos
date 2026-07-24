@@ -88,7 +88,7 @@ export interface RegistrarMovimientoInput {
   projectId?: string
   puntoId?: string | null
   tecnicoUserId?: string
-  /** Solo se usa cuando no hay proyecto (salida preventiva/consumibles) — con proyecto, el área se deriva sola. */
+  /** Solo se usa cuando no hay proyecto (salida preventiva/insumos) — con proyecto, el área se deriva sola. */
   area?: 'ATT' | 'OyM'
 }
 
@@ -174,6 +174,8 @@ export interface ConteoLinea {
 export interface Observacion {
   id: string
   projectId: string
+  /** Solo Preventivos: si viene, es un comentario de ESE punto, no general del proyecto. */
+  puntoId: string | null
   usuarioId: string
   usuarioNombre: string | null
   texto: string

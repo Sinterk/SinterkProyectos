@@ -1,7 +1,7 @@
 // Panel de KPIs: proyectos (OTT/Preventivos/Incidencias) + consumo de
 // materiales, filtrable por periodo y área. Solo admin/jp/log — mismo
 // público que puede mover inventario (is_jp_or_admin en la BD, ver
-// supabase/migrations/0023_kpi_rpcs.sql).
+// supabase/migrations/0027_kpi_v2.sql).
 
 import { useEffect, useMemo, useState } from 'react'
 import { adminRepo } from '@/lib/adminRepo'
@@ -13,6 +13,7 @@ import { KpiMaterialesTable } from './KpiMaterialesTable'
 import { KpiProyectosPanel } from './KpiProyectosPanel'
 
 type AreaSel = 'ATT' | 'OyM' | 'inventario'
+type InventarioModo = 'bodega' | 'tecnico'
 
 function pad2(n: number): string {
   return String(n).padStart(2, '0')
@@ -48,10 +49,18 @@ export function KpiScreen() {
   const [desde, setDesde] = useState(meses[0]?.desde ?? toISODate(new Date()))
   const [hasta, setHasta] = useState(meses[0]?.hasta ?? toISODate(new Date()))
   const [area, setArea] = useState<AreaSel>('ATT')
+  // Físico/Digital son un saldo VIVO (no hay historial por fecha en `stock`)
+  // — solo tienen sentido cuando el periodo termina hoy, si no se estaría
+  // mostrando el saldo de hoy con la etiqueta de un mes pasado.
+  const hoy = useMemo(() => toISODate(new Date()), [])
+  const hastaEsHoy = hasta === hoy
 
   const [bodegas, setBodegas] = useState<Ubicacion[]>([])
   const [tecnicos, setTecnicos] = useState<Profile[]>([])
-  const [bodegaId, setBodegaId] = useState('')
+
+  const [invModo, setInvModo] = useState<InventarioModo>('bodega')
+  const [bodegaIds, setBodegaIds] = useState<string[]>([])
+  const [bodegaSel, setBodegaSel] = useState('')
   const [tecnicoIds, setTecnicoIds] = useState<string[]>([])
   const [tecnicoSel, setTecnicoSel] = useState('')
 
@@ -68,6 +77,14 @@ export function KpiScreen() {
     if (m) { setDesde(m.desde); setHasta(m.hasta) }
   }
 
+  function agregarBodega(id: string) {
+    if (!id || bodegaIds.includes(id)) return
+    setBodegaIds((prev) => [...prev, id])
+    setBodegaSel('')
+  }
+  function quitarBodega(id: string) {
+    setBodegaIds((prev) => prev.filter((x) => x !== id))
+  }
   function agregarTecnico(id: string) {
     if (!id || tecnicoIds.includes(id)) return
     setTecnicoIds((prev) => [...prev, id])
@@ -88,8 +105,15 @@ export function KpiScreen() {
 
   const bodegaC088 = bodegas.find((b) => b.nombre === 'C088')?.id ?? null
   const bodegaC132 = bodegas.find((b) => b.nombre === 'C132')?.id ?? null
+  const bodegaInsumos = bodegas.find((b) => b.nombre === 'Insumos')?.id ?? null
+  const excluirInsumos = bodegaInsumos ? [bodegaInsumos] : null
+
+  const bodegasDisponibles = bodegas.filter((b) => !bodegaIds.includes(b.id))
+  const bodegasElegidas = bodegas.filter((b) => bodegaIds.includes(b.id))
   const tecnicosDisponibles = tecnicos.filter((t) => !tecnicoIds.includes(t.id))
   const tecnicosElegidos = tecnicos.filter((t) => tecnicoIds.includes(t.id))
+  // "Todas" (nada elegido) también aplica a Físico/Digital: suma el saldo de todas las bodegas.
+  const bodegaIdsEfectivos = bodegaIds.length > 0 ? bodegaIds : bodegas.map((b) => b.id)
 
   return (
     <div className="space-y-4">
@@ -135,8 +159,13 @@ export function KpiScreen() {
       {area === 'ATT' && (
         <>
           <KpiProyectosPanel titulo="OTT" area="ATT" desde={desde} hasta={hasta} />
-          <KpiMaterialesTable titulo="Material por proyecto" area="ATT" desde={desde} hasta={hasta} />
-          <KpiMaterialesTable titulo="Inventario (C088)" area="ATT" desde={desde} hasta={hasta} ubicacionId={bodegaC088} />
+          <KpiMaterialesTable titulo="Material usado en proyectos" area="ATT" desde={desde} hasta={hasta}
+            excluirUbicacionIds={excluirInsumos} bodegaDefecto="C088"
+            stockUbicacionIds={hastaEsHoy && bodegaC088 ? [bodegaC088] : null} />
+          {bodegaInsumos && (
+            <KpiMaterialesTable titulo="Insumos" area="ATT" desde={desde} hasta={hasta}
+              ubicacionIds={[bodegaInsumos]} columnas="soloEntregado" />
+          )}
         </>
       )}
 
@@ -146,52 +175,103 @@ export function KpiScreen() {
             <KpiProyectosPanel titulo="Preventivos" area="OyM" subarea="preventivo" desde={desde} hasta={hasta} />
             <KpiProyectosPanel titulo="Incidencias" area="OyM" subarea="incidencia" desde={desde} hasta={hasta} />
           </div>
-          <KpiMaterialesTable titulo="Material por proyecto (Preventivos + Incidencias)" area="OyM" desde={desde} hasta={hasta} />
-          <KpiMaterialesTable titulo="Inventario (C132 + Consumibles)" area="OyM" desde={desde} hasta={hasta} ubicacionId={bodegaC132} />
+          <KpiMaterialesTable titulo="Todo OyM" area="OyM" desde={desde} hasta={hasta}
+            excluirUbicacionIds={excluirInsumos} bodegaDefecto="C132"
+            stockUbicacionIds={hastaEsHoy && bodegaC132 ? [bodegaC132] : null} />
+          <KpiMaterialesTable titulo="Preventivos" area="OyM" subarea="preventivo" desde={desde} hasta={hasta}
+            excluirUbicacionIds={excluirInsumos} />
+          <KpiMaterialesTable titulo="Incidencias" area="OyM" subarea="incidencia" desde={desde} hasta={hasta}
+            excluirUbicacionIds={excluirInsumos} />
+          {bodegaInsumos && (
+            <KpiMaterialesTable titulo="Insumos" area="OyM" desde={desde} hasta={hasta}
+              ubicacionIds={[bodegaInsumos]} columnas="soloEntregado" />
+          )}
         </>
       )}
 
       {area === 'inventario' && (
         <>
           <div className="bg-slate-800 rounded-2xl border border-slate-700 p-4 space-y-3">
-            <label className="space-y-1 block">
-              <span className="text-[11px] text-slate-400">Bodega</span>
-              <select value={bodegaId} onChange={(e) => setBodegaId(e.target.value)} className={`${inputCls} w-full`}>
-                <option value="">Todas</option>
-                {bodegas.map((b) => <option key={b.id} value={b.id}>{b.nombre}</option>)}
-              </select>
-            </label>
-            <div className="space-y-1.5">
-              <span className="text-[11px] text-slate-400">Técnicos</span>
-              {tecnicosElegidos.length > 0 && (
-                <div className="flex flex-wrap gap-1.5">
-                  {tecnicosElegidos.map((t) => (
-                    <span key={t.id} className="flex items-center gap-1 bg-slate-700/50 rounded-lg px-2 py-1 text-xs text-slate-200">
-                      {t.nombre?.trim() || t.email}
-                      <button type="button" onClick={() => quitarTecnico(t.id)} className="text-slate-500 hover:text-red-400">×</button>
-                    </span>
-                  ))}
-                </div>
-              )}
-              {tecnicosDisponibles.length > 0 && (
-                <div className="flex gap-2">
-                  <select value={tecnicoSel} onChange={(e) => setTecnicoSel(e.target.value)} className={`${inputCls} flex-1 min-w-0`}>
-                    <option value="">Elegir técnico o logística…</option>
-                    {tecnicosDisponibles.map((t) => <option key={t.id} value={t.id}>{t.nombre?.trim() || t.email}</option>)}
-                  </select>
-                  <button type="button" onClick={() => agregarTecnico(tecnicoSel)} disabled={!tecnicoSel}
-                    className="shrink-0 px-3 py-1.5 rounded-lg bg-brand-600 hover:bg-brand-700 disabled:opacity-40 text-white text-sm font-semibold">
-                    + Agregar
-                  </button>
-                </div>
-              )}
-              {tecnicosElegidos.length === 0 && (
-                <p className="text-[10px] text-slate-500">Sin técnicos elegidos: se muestran todos.</p>
-              )}
+            <div className="flex gap-2">
+              <button type="button" onClick={() => setInvModo('bodega')}
+                className={`flex-1 text-xs font-semibold py-1.5 rounded-lg ${invModo === 'bodega' ? 'bg-brand-600 text-white' : 'bg-slate-700 text-slate-300'}`}>
+                Por bodega
+              </button>
+              <button type="button" onClick={() => setInvModo('tecnico')}
+                className={`flex-1 text-xs font-semibold py-1.5 rounded-lg ${invModo === 'tecnico' ? 'bg-brand-600 text-white' : 'bg-slate-700 text-slate-300'}`}>
+                Por técnico
+              </button>
             </div>
+
+            {invModo === 'bodega' ? (
+              <div className="space-y-1.5">
+                <span className="text-[11px] text-slate-400">Bodegas</span>
+                {bodegasElegidas.length > 0 && (
+                  <div className="flex flex-wrap gap-1.5">
+                    {bodegasElegidas.map((b) => (
+                      <span key={b.id} className="flex items-center gap-1 bg-slate-700/50 rounded-lg px-2 py-1 text-xs text-slate-200">
+                        {b.nombre}
+                        <button type="button" onClick={() => quitarBodega(b.id)} className="text-slate-500 hover:text-red-400">×</button>
+                      </span>
+                    ))}
+                  </div>
+                )}
+                {bodegasDisponibles.length > 0 && (
+                  <div className="flex gap-2">
+                    <select value={bodegaSel} onChange={(e) => setBodegaSel(e.target.value)} className={`${inputCls} flex-1 min-w-0`}>
+                      <option value="">Elegir bodega…</option>
+                      {bodegasDisponibles.map((b) => <option key={b.id} value={b.id}>{b.nombre}</option>)}
+                    </select>
+                    <button type="button" onClick={() => agregarBodega(bodegaSel)} disabled={!bodegaSel}
+                      className="shrink-0 px-3 py-1.5 rounded-lg bg-brand-600 hover:bg-brand-700 disabled:opacity-40 text-white text-sm font-semibold">
+                      + Agregar
+                    </button>
+                  </div>
+                )}
+                {bodegasElegidas.length === 0 && (
+                  <p className="text-[10px] text-slate-500">Sin bodegas elegidas: se muestran todas.</p>
+                )}
+              </div>
+            ) : (
+              <div className="space-y-1.5">
+                <span className="text-[11px] text-slate-400">Técnicos</span>
+                {tecnicosElegidos.length > 0 && (
+                  <div className="flex flex-wrap gap-1.5">
+                    {tecnicosElegidos.map((t) => (
+                      <span key={t.id} className="flex items-center gap-1 bg-slate-700/50 rounded-lg px-2 py-1 text-xs text-slate-200">
+                        {t.nombre?.trim() || t.email}
+                        <button type="button" onClick={() => quitarTecnico(t.id)} className="text-slate-500 hover:text-red-400">×</button>
+                      </span>
+                    ))}
+                  </div>
+                )}
+                {tecnicosDisponibles.length > 0 && (
+                  <div className="flex gap-2">
+                    <select value={tecnicoSel} onChange={(e) => setTecnicoSel(e.target.value)} className={`${inputCls} flex-1 min-w-0`}>
+                      <option value="">Elegir técnico o logística…</option>
+                      {tecnicosDisponibles.map((t) => <option key={t.id} value={t.id}>{t.nombre?.trim() || t.email}</option>)}
+                    </select>
+                    <button type="button" onClick={() => agregarTecnico(tecnicoSel)} disabled={!tecnicoSel}
+                      className="shrink-0 px-3 py-1.5 rounded-lg bg-brand-600 hover:bg-brand-700 disabled:opacity-40 text-white text-sm font-semibold">
+                      + Agregar
+                    </button>
+                  </div>
+                )}
+                {tecnicosElegidos.length === 0 && (
+                  <p className="text-[10px] text-slate-500">Sin técnicos elegidos: se muestran todos.</p>
+                )}
+              </div>
+            )}
           </div>
-          <KpiMaterialesTable titulo="Inventario" area={null} desde={desde} hasta={hasta}
-            ubicacionId={bodegaId || null} tecnicoIds={tecnicoIds} />
+
+          {invModo === 'bodega' ? (
+            <KpiMaterialesTable titulo="Inventario" area={null} desde={desde} hasta={hasta}
+              ubicacionIds={bodegaIds.length > 0 ? bodegaIds : null}
+              stockUbicacionIds={hastaEsHoy ? bodegaIdsEfectivos : null} />
+          ) : (
+            <KpiMaterialesTable titulo="Inventario" area={null} desde={desde} hasta={hasta}
+              tecnicoIds={tecnicoIds} mostrarOrigenTecnico />
+          )}
         </>
       )}
     </div>

@@ -9,7 +9,17 @@ import type { Observacion } from '@/lib/inventario/types'
  * borrar cualquiera — log tiene los mismos privilegios que jp, ver
  * supabase/migrations/0016_observaciones.sql y 0018_log_como_jp.sql).
  */
-export function ObservacionesSection({ projectId }: { projectId: string }) {
+interface Props {
+  projectId: string
+  /** Si se pasa, filtra/agrega solo a comentarios de ESE punto (Preventivos) en vez de los generales del proyecto. */
+  puntoId?: string | null
+  /** Encabezado — "Comentarios" se lee mejor embebido en la tarjeta de un punto. */
+  titulo?: string
+  /** Embebido en la tarjeta de un punto: menos padding, mismo comportamiento. */
+  compact?: boolean
+}
+
+export function ObservacionesSection({ projectId, puntoId = null, titulo = 'Observaciones', compact = false }: Props) {
   const session = useAuth((s) => s.session)
   const rol = useAuth((s) => s.profile?.rol)
   const puedeBorrarTodo = rol === 'admin' || rol === 'jp' || rol === 'log'
@@ -21,9 +31,9 @@ export function ObservacionesSection({ projectId }: { projectId: string }) {
   const [deletingId, setDeletingId] = useState<string | null>(null)
 
   async function reload() {
-    try { setItems(await listObservaciones(projectId)) } catch (err) { setError(err instanceof Error ? err.message : String(err)) }
+    try { setItems(await listObservaciones(projectId, puntoId)) } catch (err) { setError(err instanceof Error ? err.message : String(err)) }
   }
-  useEffect(() => { reload() /* eslint-disable-next-line react-hooks/exhaustive-deps */ }, [projectId])
+  useEffect(() => { reload() /* eslint-disable-next-line react-hooks/exhaustive-deps */ }, [projectId, puntoId])
 
   async function agregar() {
     const t = texto.trim()
@@ -31,7 +41,7 @@ export function ObservacionesSection({ projectId }: { projectId: string }) {
     setBusy(true)
     setError(null)
     try {
-      await agregarObservacion(projectId, t)
+      await agregarObservacion(projectId, t, puntoId)
       setTexto('')
       await reload()
     } catch (err) {
@@ -55,16 +65,16 @@ export function ObservacionesSection({ projectId }: { projectId: string }) {
   }
 
   return (
-    <div className="bg-slate-800 rounded-2xl border border-slate-700 p-4 space-y-3">
-      <h2 className="text-xs font-semibold text-brand-400 uppercase tracking-wide">Observaciones</h2>
+    <div className={compact ? 'space-y-2' : 'bg-slate-800 rounded-2xl border border-slate-700 p-4 space-y-3'}>
+      <h2 className="text-xs font-semibold text-brand-400 uppercase tracking-wide">{titulo}</h2>
 
       <div className="space-y-2">
         <textarea value={texto} onChange={(e) => setTexto(e.target.value)} rows={2}
-          placeholder="Ej. Instalé 2 ODF que no aparecen como entregados en este proyecto…"
+          placeholder={puntoId ? 'Ej. No encontré la cruceta indicada, avisar a bodega…' : 'Ej. Instalé 2 ODF que no aparecen como entregados en este proyecto…'}
           className="w-full bg-slate-700 text-white text-sm rounded-lg px-3 py-2 border border-slate-600 focus:border-brand-500 focus:outline-none placeholder-slate-500" />
         <button type="button" disabled={busy || !texto.trim()} onClick={agregar}
           className="text-xs font-semibold px-3 py-1.5 rounded-lg bg-brand-600 hover:bg-brand-700 text-white disabled:opacity-40">
-          {busy ? 'Agregando…' : '➕ Agregar observación'}
+          {busy ? 'Agregando…' : '➕ Agregar comentario'}
         </button>
       </div>
 

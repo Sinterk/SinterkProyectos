@@ -65,6 +65,41 @@ const CAMPO_DB: Partial<Record<Campo, CampoCorregible>> = {
 }
 
 const NINGUN_PUNTO = ''
+const TODOS_LOS_PUNTOS = ''
+
+/**
+ * Colapsa las filas (una por material+lote+punto) a una por material+lote,
+ * sumando todo — incluido Instalado, que ahora se registra por punto (ver
+ * PuntoMaterialSection) pero se ve como total acá por defecto. `puntoId`
+ * queda null en el resultado: ya no representa un punto único.
+ */
+function agregarPorMaterial(rows: ResumenMaterialProyecto[]): ResumenMaterialProyecto[] {
+  const map = new Map<string, ResumenMaterialProyecto>()
+  for (const r of rows) {
+    const k = `${r.materialId}|${r.lote}`
+    let acc = map.get(k)
+    if (!acc) {
+      acc = {
+        materialId: r.materialId, materialSku: r.materialSku, materialDescripcion: r.materialDescripcion,
+        lote: r.lote, puntoId: null,
+        cantSolicitada: 0, cantEntregada: 0, cantInstalada: 0, cantDevuelta: 0, cantRezagada: 0, cantRebajada: 0,
+        cantMerma: 0, cantTransito: 0,
+      }
+      map.set(k, acc)
+    }
+    acc.cantSolicitada += r.cantSolicitada
+    acc.cantEntregada += r.cantEntregada
+    acc.cantInstalada += r.cantInstalada
+    acc.cantDevuelta += r.cantDevuelta
+    acc.cantRezagada += r.cantRezagada
+    acc.cantRebajada += r.cantRebajada
+    acc.cantMerma += r.cantMerma
+  }
+  for (const acc of map.values()) {
+    acc.cantTransito = acc.cantEntregada - acc.cantInstalada - acc.cantDevuelta - acc.cantRezagada - acc.cantMerma
+  }
+  return [...map.values()].sort((a, b) => a.materialSku.localeCompare(b.materialSku))
+}
 
 interface NuevaFila {
   localId: string
@@ -92,7 +127,24 @@ export function ResumenProyectoTable({ projectId, area, puntos, refreshKey = 0, 
   // sus propios proyectos, igual que otros candados de este estilo en la app
   // (ver "auto-democión" del admin en AdminScreen/UserRow).
   const editableCampos: Campo[] = rol === 'tecnico' ? ['cantInstalada', 'cantDevuelta', 'cantMerma'] : CAMPOS
+  // Preventivos: por defecto la tabla muestra el total (Instalado = suma de
+  // todos los puntos, ver agregarPorMaterial) — un punto específico filtra a
+  // solo sus filas, y ahí Instalado vuelve a ser editable (mismo resultado
+  // que agregar material desde la tarjeta del punto).
+  const [puntoFiltro, setPuntoFiltro] = useState(TODOS_LOS_PUNTOS)
+  const mostrandoTodosLosPuntos = !!puntos && puntoFiltro === TODOS_LOS_PUNTOS
   const [rows, setRows] = useState<ResumenMaterialProyecto[] | null>(null)
+  // Lo que la tabla realmente muestra/edita — agregado por defecto en
+  // Preventivos, filtrado a un punto si se eligió uno; sin `puntos` (ATT/
+  // Incidencias) es igual a `rows`. guardarCambios/guardarCorrecciones deben
+  // iterar ESTO, no `rows` crudo, porque una fila agregada (puntoId null)
+  // puede no existir tal cual en `rows` si todo lo entregado ya tiene punto.
+  const displayRows = rows === null ? [] : (
+    mostrandoTodosLosPuntos ? agregarPorMaterial(rows)
+      : puntos ? rows.filter((r) => r.puntoId === puntoFiltro)
+      : rows
+  )
+  const editableCamposVista: Campo[] = mostrandoTodosLosPuntos ? editableCampos.filter((c) => c !== 'cantInstalada') : editableCampos
   const [materiales, setMateriales] = useState<Material[]>([])
   const [members, setMembers] = useState<MemberProfile[]>([])
   const [bodegas, setBodegas] = useState<Ubicacion[]>([])
@@ -146,7 +198,6 @@ export function ResumenProyectoTable({ projectId, area, puntos, refreshKey = 0, 
   const defaultBodegaId = bodegas.find((b) => b.nombre === BODEGA_DEFECTO_POR_AREA[area])?.id ?? ''
   useEffect(() => { if (!bodegaEdicion && defaultBodegaId) setBodegaEdicion(defaultBodegaId) }, [defaultBodegaId, bodegaEdicion])
 
-  const puntoNombre = (id: string | null) => (id ? puntos?.find((p) => p.id === id)?.nombre ?? '—' : 'Sin punto específico')
   const rowKey = (r: ResumenMaterialProyecto) => `${r.materialId}|${r.lote}|${r.puntoId ?? ''}`
 
   function setDraft(key: string, campo: Campo, v: string) {
@@ -176,7 +227,7 @@ export function ResumenProyectoTable({ projectId, area, puntos, refreshKey = 0, 
   // Al elegir material para una fila nueva, la bodega parte en la bodega por
   // defecto del área (C088/C132) sin importar si el material realmente vive
   // ahí — si no tiene stock en esa bodega pero sí en otra (ej. un material
-  // de OyM elegido desde una OTT ATT, o de la bodega Consumibles), la fila
+  // de OyM elegido desde una OTT ATT, o de la bodega Insumos), la fila
   // saltaba una "salida" de una bodega donde el material nunca estuvo,
   // generando negativos falsos. Se corrige buscando dónde el material
   // realmente tiene stock y saltando la bodega de la fila para allá.
@@ -216,7 +267,7 @@ export function ResumenProyectoTable({ projectId, area, puntos, refreshKey = 0, 
     setError(null)
     const nextEdits: typeof edits = {}
     const nextErrors: Record<string, string> = {}
-    for (const row of rows) {
+    for (const row of displayRows) {
       const key = rowKey(row)
       const byCampo = edits[key]
       if (!byCampo) continue
@@ -308,15 +359,13 @@ export function ResumenProyectoTable({ projectId, area, puntos, refreshKey = 0, 
     setCorrections((prev) => ({ ...prev, [key]: { ...prev[key], [campo]: v } }))
   }
 
-  const correccionesPendientes = rows
-    ? rows.flatMap((row) => {
-        const key = rowKey(row)
-        const byCampo = corrections[key]
-        if (!byCampo) return []
-        return (Object.keys(byCampo) as Campo[])
-          .filter((campo) => byCampo[campo] !== undefined && byCampo[campo] !== '' && Number(byCampo[campo]) !== row[campo])
-      })
-    : []
+  const correccionesPendientes = displayRows.flatMap((row) => {
+    const key = rowKey(row)
+    const byCampo = corrections[key]
+    if (!byCampo) return []
+    return (Object.keys(byCampo) as Campo[])
+      .filter((campo) => byCampo[campo] !== undefined && byCampo[campo] !== '' && Number(byCampo[campo]) !== row[campo])
+  })
   const hayCorreccionesPendientes = correccionesPendientes.length > 0
 
   async function guardarCorrecciones() {
@@ -325,7 +374,7 @@ export function ResumenProyectoTable({ projectId, area, puntos, refreshKey = 0, 
     setError(null)
     const nextCorrections: typeof corrections = {}
     const nextErrors: Record<string, string> = {}
-    for (const row of rows) {
+    for (const row of displayRows) {
       const key = rowKey(row)
       const byCampo = corrections[key]
       if (!byCampo) continue
@@ -389,20 +438,31 @@ export function ResumenProyectoTable({ projectId, area, puntos, refreshKey = 0, 
   }
 
   const selectCls = 'bg-slate-700 text-white text-xs rounded-lg px-2 py-1 border border-slate-600 focus:border-brand-500 focus:outline-none'
-  const hayFilas = (rows !== null && rows.length > 0) || nuevasFilas.length > 0
+  const hayFilas = displayRows.length > 0 || nuevasFilas.length > 0
 
   return (
     <div className="bg-slate-800 rounded-2xl border border-slate-700 p-4 space-y-3">
-      <div className="flex items-center justify-between gap-2">
+      <div className="flex items-center justify-between gap-2 flex-wrap">
         <h2 className="text-xs font-semibold text-brand-400 uppercase tracking-wide">Material</h2>
         <div className="flex items-center gap-2">
+          {puntos && (
+            <select value={puntoFiltro}
+              onChange={(e) => {
+                setPuntoFiltro(e.target.value)
+                if (e.target.value === TODOS_LOS_PUNTOS) { setModoCorreccion(false); descartarCorrecciones() }
+              }}
+              className="text-[10px] bg-slate-700 text-white rounded-lg px-2 py-1 border border-slate-600 focus:border-brand-500 focus:outline-none">
+              <option value={TODOS_LOS_PUNTOS}>Punto: Todos (total)</option>
+              {puntos.map((p) => <option key={p.id} value={p.id}>Punto: {p.nombre || '—'}</option>)}
+            </select>
+          )}
           {puedeCorregir && (
             <button type="button" onClick={agregarFilaNueva}
               className="text-[10px] font-semibold px-2 py-1 rounded-lg text-brand-400 hover:bg-slate-700">
               ➕ Nuevo material
             </button>
           )}
-          {puedeCorregir && rows && rows.length > 0 && (
+          {puedeCorregir && rows && rows.length > 0 && !mostrandoTodosLosPuntos && (
             <button type="button"
               onClick={() => { setModoCorreccion((v) => !v); descartarCorrecciones() }}
               className={`text-[10px] font-semibold px-2 py-1 rounded-lg ${modoCorreccion ? 'bg-amber-600 text-white' : 'text-amber-400 hover:bg-slate-700'}`}>
@@ -508,7 +568,7 @@ export function ResumenProyectoTable({ projectId, area, puntos, refreshKey = 0, 
                     </tr>
                   )
                 })}
-                {rows.map((row) => {
+                {displayRows.map((row) => {
                   const key = rowKey(row)
                   const draft = edits[key] ?? {}
                   const correctionDraft = corrections[key] ?? {}
@@ -529,12 +589,11 @@ export function ResumenProyectoTable({ projectId, area, puntos, refreshKey = 0, 
                           checkAvailability={false} value={getRowLote(row)}
                           onChange={(lote) => setRowLote(key, lote)}
                           className="w-24 bg-slate-700 text-white text-xs rounded px-1.5 py-1 border border-slate-600 focus:border-brand-500 focus:outline-none" />
-                        {puntos && <p className="text-[10px] text-slate-500">{puntoNombre(row.puntoId)}</p>}
                       </td>
                       <td className="px-2 py-2 text-slate-600 whitespace-nowrap">—</td>
                       {CAMPOS.map((campo) => {
                         const valor = row[campo]
-                        const esCorregible = modoCorreccion && CAMPO_DB[campo] !== undefined
+                        const esCorregible = modoCorreccion && CAMPO_DB[campo] !== undefined && editableCamposVista.includes(campo)
                         if (esCorregible) {
                           const err = correctionErrors[`${key}|${campo}`]
                           return (
@@ -549,7 +608,7 @@ export function ResumenProyectoTable({ projectId, area, puntos, refreshKey = 0, 
                             </td>
                           )
                         }
-                        if (!editableCampos.includes(campo)) {
+                        if (!editableCamposVista.includes(campo)) {
                           return (
                             <td key={campo} className="px-2 py-2 text-center whitespace-nowrap align-top">
                               <span className="text-white font-medium">{valor}</span>

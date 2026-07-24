@@ -170,12 +170,25 @@ function recordToInformeRow(r: Preventivo, projectId: string) {
   }
 }
 
-/** Reemplaza los puntos del informe (delete + insert, con orden explícito). Solo persiste fotos ya subidas. */
+/**
+ * Sincroniza los puntos del informe con upsert por id (con orden explícito) —
+ * NO delete+insert-de-todos: eso le asignaba un id nuevo a cada punto en
+ * cada guardado (incluido cada autoguardado), huerfanando en silencio
+ * cualquier `movimientos.punto_id`/`observaciones.punto_id` ya asociado a un
+ * punto (`on delete set null`). Solo se borran los puntos que el usuario
+ * efectivamente quitó (id ya no presente en `puntos`); el resto se upsertea
+ * conservando su id, así el material/comentarios ya colgados de un punto
+ * sobreviven al siguiente guardado. Solo persiste fotos ya subidas.
+ */
 async function replacePuntos(informeId: string, puntos: Punto[]): Promise<void> {
-  const { error: delErr } = await supabase.from('puntos').delete().eq('informe_id', informeId)
+  const idsActuales = puntos.map((p) => p.id)
+  let delQuery = supabase.from('puntos').delete().eq('informe_id', informeId)
+  if (idsActuales.length > 0) delQuery = delQuery.not('id', 'in', `(${idsActuales.join(',')})`)
+  const { error: delErr } = await delQuery
   if (delErr) throw new Error(`puntos.delete: ${delErr.message}`)
   if (puntos.length === 0) return
   const rows = puntos.map((p, orden) => ({
+    id: p.id,
     informe_id: informeId,
     nombre: p.nombre || null,
     descripcion: p.descripcion || null,
@@ -188,8 +201,8 @@ async function replacePuntos(informeId: string, puntos: Punto[]): Promise<void> 
     foto_despues_path: p.fotoDespues?.storagePath ?? null,
     orden,
   }))
-  const { error } = await supabase.from('puntos').insert(rows)
-  if (error) throw new Error(`puntos.insert: ${error.message}`)
+  const { error } = await supabase.from('puntos').upsert(rows)
+  if (error) throw new Error(`puntos.upsert: ${error.message}`)
 }
 
 // ---------------------------------------------------------------------------

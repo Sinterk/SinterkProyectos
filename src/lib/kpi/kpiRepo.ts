@@ -1,21 +1,48 @@
 // Capa de datos del Panel de KPIs — wrappers tipados de las RPC de
-// agregación (kpi_proyectos / kpi_materiales, ver
-// supabase/migrations/0023_kpi_rpcs.sql). Toda la agregación vive en la BD;
+// agregación (kpi_proyectos_detalle / kpi_materiales, ver
+// supabase/migrations/0027_kpi_v2.sql). Toda la agregación vive en la BD;
 // acá solo se traduce input/output entre camelCase y snake_case.
 
 import { supabase } from '../supabaseClient'
 
-export interface KpiProyectosResumen {
-  abiertas: number
-  cerradas: number
-  pendientes: number
+export type KpiProyectoEstado = 'abierto' | 'cerrado' | 'pendiente'
+
+export interface KpiProyectoFila {
+  projectId: string
+  ott: string
+  estado: KpiProyectoEstado
+  fechaInicio: string
+}
+
+interface KpiProyectoRpcRow {
+  project_id: string
+  ott: string
+  estado: KpiProyectoEstado
+  fecha_inicio: string
+}
+
+export async function getKpiProyectosDetalle(input: {
+  area: 'ATT' | 'OyM'
+  subarea?: 'preventivo' | 'incidencia' | null
+  desde: string
+  hasta: string
+}): Promise<KpiProyectoFila[]> {
+  const { data, error } = await supabase.rpc('kpi_proyectos_detalle', {
+    p_area: input.area,
+    p_subarea: input.subarea ?? null,
+    p_desde: input.desde,
+    p_hasta: input.hasta,
+  })
+  if (error) throw new Error(`kpi_proyectos_detalle: ${error.message}`)
+  return (data as KpiProyectoRpcRow[] | null ?? []).map((r) => ({
+    projectId: r.project_id, ott: r.ott, estado: r.estado, fechaInicio: r.fecha_inicio,
+  }))
 }
 
 export interface KpiMaterialFila {
   materialId: string
   sku: string
   descripcion: string
-  esConsumible: boolean
   solicitado: number
   entregado: number
   instalado: number
@@ -23,36 +50,19 @@ export interface KpiMaterialFila {
   rebajado: number
   merma: number
   transito: number
-}
-
-interface KpiProyectosRpcRow {
-  abiertas: number
-  cerradas: number
-  pendientes: number
-}
-
-export async function getKpiProyectos(input: {
-  area: 'ATT' | 'OyM'
-  subarea?: 'preventivo' | 'incidencia' | null
-  desde: string
-  hasta: string
-}): Promise<KpiProyectosResumen> {
-  const { data, error } = await supabase.rpc('kpi_proyectos', {
-    p_area: input.area,
-    p_subarea: input.subarea ?? null,
-    p_desde: input.desde,
-    p_hasta: input.hasta,
-  })
-  if (error) throw new Error(`kpi_proyectos: ${error.message}`)
-  const row = (data as KpiProyectosRpcRow[] | null)?.[0]
-  return { abiertas: Number(row?.abiertas ?? 0), cerradas: Number(row?.cerradas ?? 0), pendientes: Number(row?.pendientes ?? 0) }
+  /** Bodegas de origen (fuera de `bodegaDefecto`, si se pasó) con movimientos en el periodo. null = ninguna. */
+  origenBodega: string | null
+  /** Técnicos con movimientos en el periodo. null = ninguno. */
+  origenTecnico: string | null
+  /** Saldo actual (no histórico) en `stockUbicacionIds` — null si no se pidió. */
+  fisico: number | null
+  digital: number | null
 }
 
 interface KpiMaterialRpcRow {
   material_id: string
   sku: string
   descripcion: string
-  es_consumible: boolean
   solicitado: number
   entregado: number
   instalado: number
@@ -60,6 +70,10 @@ interface KpiMaterialRpcRow {
   rebajado: number
   merma: number
   transito: number
+  origen_bodega: string | null
+  origen_tecnico: string | null
+  fisico: number | null
+  digital: number | null
 }
 
 export async function getKpiMateriales(input: {
@@ -68,23 +82,32 @@ export async function getKpiMateriales(input: {
   subarea?: 'preventivo' | 'incidencia' | null
   desde: string
   hasta: string
-  ubicacionId?: string | null
+  /** Filtro de inclusión (modo bodega de Inventario, multi-selección). null/vacío = todas. */
+  ubicacionIds?: string[] | null
+  /** Se excluyen de la consulta (ej. Insumos, que tiene su propia tabla). */
+  excluirUbicacionIds?: string[] | null
   tecnicoIds?: string[] | null
+  /** Bodega(s) cuyo Físico/Digital se calcula — solo pedir cuando `hasta` es hoy (ver KpiScreen). */
+  stockUbicacionIds?: string[] | null
+  /** Nombre de la bodega "esperada" de esta tabla (ej. 'C088') — se excluye de `origenBodega`. */
+  bodegaDefecto?: string | null
 }): Promise<KpiMaterialFila[]> {
   const { data, error } = await supabase.rpc('kpi_materiales', {
     p_area: input.area ?? null,
     p_subarea: input.subarea ?? null,
     p_desde: input.desde,
     p_hasta: input.hasta,
-    p_ubicacion_id: input.ubicacionId ?? null,
+    p_ubicacion_ids: input.ubicacionIds && input.ubicacionIds.length > 0 ? input.ubicacionIds : null,
+    p_excluir_ubicacion_ids: input.excluirUbicacionIds && input.excluirUbicacionIds.length > 0 ? input.excluirUbicacionIds : null,
     p_tecnico_ids: input.tecnicoIds && input.tecnicoIds.length > 0 ? input.tecnicoIds : null,
+    p_stock_ubicacion_ids: input.stockUbicacionIds && input.stockUbicacionIds.length > 0 ? input.stockUbicacionIds : null,
+    p_bodega_defecto: input.bodegaDefecto ?? null,
   })
   if (error) throw new Error(`kpi_materiales: ${error.message}`)
   return (data as KpiMaterialRpcRow[] | null ?? []).map((r) => ({
     materialId: r.material_id,
     sku: r.sku,
     descripcion: r.descripcion,
-    esConsumible: r.es_consumible,
     solicitado: Number(r.solicitado),
     entregado: Number(r.entregado),
     instalado: Number(r.instalado),
@@ -92,5 +115,9 @@ export async function getKpiMateriales(input: {
     rebajado: Number(r.rebajado),
     merma: Number(r.merma),
     transito: Number(r.transito),
+    origenBodega: r.origen_bodega,
+    origenTecnico: r.origen_tecnico,
+    fisico: r.fisico === null ? null : Number(r.fisico),
+    digital: r.digital === null ? null : Number(r.digital),
   }))
 }

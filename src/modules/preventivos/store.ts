@@ -325,7 +325,9 @@ export const usePreventivoStore = create<PreventivoState>()(
       }),
 
       addPunto: (id) => {
-        const puntoId = nanoid()
+        // uuid real (no nanoid): puntos.id es uuid en la BD y debe sobrevivir
+        // a replacePuntos (upsert por id) — ver preventivoRepo.ts.
+        const puntoId = crypto.randomUUID()
         set((s) => {
           const rec = s.records[id]
           if (!rec) return s

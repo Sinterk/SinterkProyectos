@@ -79,7 +79,7 @@ export function RegistrarMovimientoForm({ fixedProject, puntos, lockTipoUI, onRe
   const [projectSel, setProjectSel] = useState(fixedProject ? fixedProject.id : '')
   const [tecnicoUserId, setTecnicoUserId] = useState('')
   const [puntoId, setPuntoId] = useState(NINGUN_PUNTO)
-  // Solo se usa sin proyecto (salida preventiva / consumibles): con proyecto,
+  // Solo se usa sin proyecto (salida preventiva / insumos): con proyecto,
   // el área se deriva sola del proyecto — no se le pide al usuario que la repita.
   const [areaSel, setAreaSel] = useState<'ATT' | 'OyM'>('OyM')
 
@@ -123,7 +123,7 @@ export function RegistrarMovimientoForm({ fixedProject, puntos, lockTipoUI, onRe
   const requiereProyecto = !PROYECTO_OPCIONAL.includes(tipoUI)
   const proyectoIdEfectivo = fixedProject ? fixedProject.id : (projectSel === PREVENTIVA ? null : projectSel || null)
   const necesitaBodegaPorLinea = !esEntrada && NECESITA_BODEGA_POR_LINEA.includes(tipoUI)
-  // Sin proyecto (salida preventiva o consumibles): el área no se puede
+  // Sin proyecto (salida preventiva o insumos): el área no se puede
   // derivar de ningún lado (puede salir material de cualquier bodega), así
   // que se elige a mano.
   const necesitaArea = !esEntrada && !requiereProyecto && proyectoIdEfectivo === null
@@ -281,7 +281,7 @@ export function RegistrarMovimientoForm({ fixedProject, puntos, lockTipoUI, onRe
             )}
             {necesitaArea && (
               <label className="space-y-1 col-span-2">
-                <span className={labelCls}>Área (consumibles / salida preventiva)</span>
+                <span className={labelCls}>Área (insumos / salida preventiva)</span>
                 <select value={areaSel} onChange={(e) => setAreaSel(e.target.value as 'ATT' | 'OyM')} className={`${inputCls} w-full`}>
                   <option value="ATT">ATT</option>
                   <option value="OyM">OyM (Preventivos/Incidencias)</option>

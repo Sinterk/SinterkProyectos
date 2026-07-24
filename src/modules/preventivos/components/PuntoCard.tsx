@@ -1,7 +1,10 @@
 import { useState } from 'react'
 import { useSortable } from '@dnd-kit/sortable'
 import { CSS } from '@dnd-kit/utilities'
+import { ObservacionesSection } from '@/ui/ObservacionesSection'
+import { isUuid } from '../data/preventivoRepo'
 import { PhotoCapture } from './PhotoCapture'
+import { PuntoMaterialSection } from './PuntoMaterialSection'
 import { usePreventivoStore } from '../store'
 import type { Punto, FotoKey } from '../types'
 
@@ -243,6 +246,23 @@ export function PuntoCard({ preventivoId, punto, index, total, editable = true, 
               ))}
             </div>
           </div>
+
+          {/* Material/comentarios requieren que el punto exista de verdad en el
+              servidor (id real, no borrador local) — mismo guard que Incidencias. */}
+          {isUuid(preventivoId) ? (
+            <>
+              <div className="border-t border-slate-700 pt-3">
+                <PuntoMaterialSection projectId={preventivoId} puntoId={punto.id} />
+              </div>
+              <div className="border-t border-slate-700 pt-3">
+                <ObservacionesSection projectId={preventivoId} puntoId={punto.id} titulo="Comentarios del punto" compact />
+              </div>
+            </>
+          ) : (
+            <p className="text-[11px] text-slate-500 border-t border-slate-700 pt-3">
+              Guarda el cuadrante primero para poder anotar material y comentarios en este punto.
+            </p>
+          )}
         </div>
       )}
     </div>
