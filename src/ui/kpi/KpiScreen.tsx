@@ -161,7 +161,7 @@ export function KpiScreen() {
         <>
           <KpiProyectosPanel titulo="OTT" area="ATT" desde={desde} hasta={hasta} />
           <KpiMaterialesTable titulo="Material usado en proyectos" area="ATT" desde={desde} hasta={hasta}
-            excluirUbicacionIds={excluirInsumos} bodegaDefecto="C088"
+            excluirUbicacionIds={excluirInsumos}
             stockUbicacionIds={hoyEnPeriodo && bodegaC088 ? [bodegaC088] : null} />
           {bodegaInsumos && (
             <KpiMaterialesTable titulo="Insumos" area="ATT" desde={desde} hasta={hasta}
@@ -177,7 +177,7 @@ export function KpiScreen() {
             <KpiProyectosPanel titulo="Incidencias" area="OyM" subarea="incidencia" desde={desde} hasta={hasta} />
           </div>
           <KpiMaterialesTable titulo="Todo OyM" area="OyM" desde={desde} hasta={hasta}
-            excluirUbicacionIds={excluirInsumos} bodegaDefecto="C132"
+            excluirUbicacionIds={excluirInsumos}
             stockUbicacionIds={hoyEnPeriodo && bodegaC132 ? [bodegaC132] : null} />
           <KpiMaterialesTable titulo="Preventivos" area="OyM" subarea="preventivo" desde={desde} hasta={hasta}
             excluirUbicacionIds={excluirInsumos} />

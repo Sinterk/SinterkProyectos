@@ -50,7 +50,7 @@ export interface KpiMaterialFila {
   rebajado: number
   merma: number
   transito: number
-  /** Bodegas de origen (fuera de `bodegaDefecto`, si se pasó) con movimientos en el periodo. null = ninguna. */
+  /** Bodegas con movimientos en el periodo (todas, siempre). null = ninguna. */
   origenBodega: string | null
   /** Técnicos con movimientos en el periodo. null = ninguno. */
   origenTecnico: string | null
@@ -89,8 +89,6 @@ export async function getKpiMateriales(input: {
   tecnicoIds?: string[] | null
   /** Bodega(s) cuyo Físico/Digital se calcula — solo pedir cuando `hasta` es hoy (ver KpiScreen). */
   stockUbicacionIds?: string[] | null
-  /** Nombre de la bodega "esperada" de esta tabla (ej. 'C088') — se excluye de `origenBodega`. */
-  bodegaDefecto?: string | null
 }): Promise<KpiMaterialFila[]> {
   const { data, error } = await supabase.rpc('kpi_materiales', {
     p_area: input.area ?? null,
@@ -101,7 +99,6 @@ export async function getKpiMateriales(input: {
     p_excluir_ubicacion_ids: input.excluirUbicacionIds && input.excluirUbicacionIds.length > 0 ? input.excluirUbicacionIds : null,
     p_tecnico_ids: input.tecnicoIds && input.tecnicoIds.length > 0 ? input.tecnicoIds : null,
     p_stock_ubicacion_ids: input.stockUbicacionIds && input.stockUbicacionIds.length > 0 ? input.stockUbicacionIds : null,
-    p_bodega_defecto: input.bodegaDefecto ?? null,
   })
   if (error) throw new Error(`kpi_materiales: ${error.message}`)
   return (data as KpiMaterialRpcRow[] | null ?? []).map((r) => ({

@@ -20,7 +20,6 @@ interface Props {
   excluirUbicacionIds?: string[] | null
   tecnicoIds?: string[] | null
   stockUbicacionIds?: string[] | null
-  bodegaDefecto?: string | null
   /** true = la columna "Origen" muestra técnicos en vez de bodegas (vista "solo Inventario" por técnico). */
   mostrarOrigenTecnico?: boolean
   columnas?: 'completas' | 'soloEntregado'
@@ -38,7 +37,7 @@ const COLUMNAS_BASE: { key: keyof KpiMaterialFila; label: string }[] = [
 
 export function KpiMaterialesTable({
   titulo, area, subarea, desde, hasta, ubicacionIds, excluirUbicacionIds, tecnicoIds,
-  stockUbicacionIds, bodegaDefecto, mostrarOrigenTecnico = false, columnas = 'completas',
+  stockUbicacionIds, mostrarOrigenTecnico = false, columnas = 'completas',
 }: Props) {
   const [filas, setFilas] = useState<KpiMaterialFila[] | null>(null)
   const [error, setError] = useState<string | null>(null)
@@ -46,11 +45,11 @@ export function KpiMaterialesTable({
   useEffect(() => {
     setFilas(null)
     setError(null)
-    getKpiMateriales({ area, subarea, desde, hasta, ubicacionIds, excluirUbicacionIds, tecnicoIds, stockUbicacionIds, bodegaDefecto })
+    getKpiMateriales({ area, subarea, desde, hasta, ubicacionIds, excluirUbicacionIds, tecnicoIds, stockUbicacionIds })
       .then(setFilas)
       .catch((err) => setError(err instanceof Error ? err.message : String(err)))
   }, [
-    area, subarea, desde, hasta, bodegaDefecto,
+    area, subarea, desde, hasta,
     JSON.stringify(ubicacionIds ?? []), JSON.stringify(excluirUbicacionIds ?? []),
     JSON.stringify(tecnicoIds ?? []), JSON.stringify(stockUbicacionIds ?? []),
   ])
