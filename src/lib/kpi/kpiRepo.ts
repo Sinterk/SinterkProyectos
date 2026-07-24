@@ -57,6 +57,8 @@ export interface KpiMaterialFila {
   /** Saldo actual (no histórico) en `stockUbicacionIds` — null si no se pidió. */
   fisico: number | null
   digital: number | null
+  /** Bodega(s) de `stockUbicacionIds` con Físico/Digital ≠ 0 para este material — a qué bodega comparar el consumo. null si no se pidió stock, o si no tiene stock ahí. */
+  bodegaStock: string | null
 }
 
 interface KpiMaterialRpcRow {
@@ -74,6 +76,7 @@ interface KpiMaterialRpcRow {
   origen_tecnico: string | null
   fisico: number | null
   digital: number | null
+  bodega_stock: string | null
 }
 
 export async function getKpiMateriales(input: {
@@ -116,5 +119,6 @@ export async function getKpiMateriales(input: {
     origenTecnico: r.origen_tecnico,
     fisico: r.fisico === null ? null : Number(r.fisico),
     digital: r.digital === null ? null : Number(r.digital),
+    bodegaStock: r.bodega_stock,
   }))
 }

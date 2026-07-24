@@ -1,8 +1,13 @@
 // Tabla de consumo de materiales del Panel de KPIs. `columnas='completas'`
-// (default) muestra las 7 columnas estándar (Solicitado…Tránsito) + Origen
-// (bodega o técnico, según `mostrarOrigenTecnico`) + Físico/Digital cuando
-// el padre pidió `stockUbicacionIds` (solo tiene sentido si el periodo
-// termina hoy — ver KpiScreen). `columnas='soloEntregado'` es la versión
+// (default) muestra las 7 columnas estándar (Solicitado…Tránsito) + una
+// columna de contexto + Físico/Digital cuando el padre pidió
+// `stockUbicacionIds` (solo tiene sentido si el periodo termina hoy — ver
+// KpiScreen). Esa columna de contexto cambia de significado según haya
+// stock o no: sin stock es "Origen" (de qué bodega/técnico vino el
+// movimiento, según `mostrarOrigenTecnico`); con stock pasa a ser "Bodega"
+// (de qué bodega es ese Físico/Digital, siempre — aunque el material no se
+// haya movido este periodo, para poder comparar consumo vs. disponible y
+// decidir si conviene pedir más). `columnas='soloEntregado'` es la versión
 // reducida que usa la tabla de Insumos: solo SKU/Material/Entregado.
 //
 // Buscador + filtro/orden por columna tipo Google Sheets, mismo patrón que
@@ -35,6 +40,7 @@ type ColKey = 'sku' | 'material' | 'solicitado' | 'entregado' | 'instalado' | 'd
   | 'rebajado' | 'merma' | 'transito' | 'origen' | 'fisico' | 'digital'
 
 const SIN_ORIGEN = 'Sin origen'
+const SIN_BODEGA = 'Sin bodega'
 
 export function KpiMaterialesTable({
   titulo, area, subarea, desde, hasta, ubicacionIds, excluirUbicacionIds, tecnicoIds,
@@ -82,7 +88,12 @@ export function KpiMaterialesTable({
       { key: 'rebajado', label: 'Rebajado', numeric: true, align: 'right' },
       { key: 'merma', label: 'Merma', numeric: true, align: 'right' },
       { key: 'transito', label: 'Tránsito', numeric: true, align: 'right' },
-      { key: 'origen', label: 'Origen' },
+      // Con stock, esta columna deja de ser "de dónde vino el movimiento" y
+      // pasa a ser "de qué bodega es este Físico/Digital" — para comparar
+      // consumo del periodo contra la cantidad disponible y decidir si
+      // conviene pedir más, hace falta saber de qué bodega es esa cantidad
+      // aunque el material no se haya movido este periodo (ver colValue).
+      { key: 'origen', label: mostrarStock ? 'Bodega' : 'Origen' },
     )
     if (mostrarStock) {
       cols.push(
@@ -104,15 +115,18 @@ export function KpiMaterialesTable({
       case 'rebajado': return f.rebajado
       case 'merma': return f.merma
       case 'transito': return f.transito
-      case 'origen': return (mostrarOrigenTecnico ? f.origenTecnico : f.origenBodega) ?? ''
+      case 'origen': return (mostrarStock ? f.bodegaStock : (mostrarOrigenTecnico ? f.origenTecnico : f.origenBodega)) ?? ''
       case 'fisico': return f.fisico ?? 0
       case 'digital': return f.digital ?? 0
     }
   }
 
-  /** Texto para el checklist de filtro (los campos vacíos se ven como "Sin origen", no como cadena vacía). */
+  /** Texto para el checklist de filtro (los campos vacíos se ven como "Sin origen"/"Sin bodega", no como cadena vacía). */
   function colDisplayValue(f: KpiMaterialFila, key: ColKey): string {
-    if (key === 'origen') return (mostrarOrigenTecnico ? f.origenTecnico : f.origenBodega) || SIN_ORIGEN
+    if (key === 'origen') {
+      if (mostrarStock) return f.bodegaStock || SIN_BODEGA
+      return (mostrarOrigenTecnico ? f.origenTecnico : f.origenBodega) || SIN_ORIGEN
+    }
     return String(colValue(f, key))
   }
 
@@ -169,7 +183,8 @@ export function KpiMaterialesTable({
         <p className="text-xs text-slate-500">Sin movimientos en este periodo.</p>
       ) : (
         <>
-          <input value={search} onChange={(e) => setSearch(e.target.value)} placeholder="Buscar SKU, material u origen…"
+          <input value={search} onChange={(e) => setSearch(e.target.value)}
+            placeholder={mostrarStock ? 'Buscar SKU, material o bodega…' : 'Buscar SKU, material u origen…'}
             className="w-full bg-slate-700 text-white text-xs rounded-lg px-2 py-1.5 border border-slate-600 focus:border-brand-500 focus:outline-none" />
           <div className="overflow-x-auto rounded-xl border border-slate-700">
             <table className="w-full text-xs border-collapse">
@@ -217,7 +232,7 @@ export function KpiMaterialesTable({
                       if (col.key === 'material') return <td key={col.key} className="px-2 py-2 text-slate-300 whitespace-nowrap">{f.descripcion}</td>
                       if (col.key === 'origen') return (
                         <td key={col.key} className="px-2 py-2 text-slate-400 whitespace-nowrap">
-                          {(mostrarOrigenTecnico ? f.origenTecnico : f.origenBodega) ?? '—'}
+                          {(mostrarStock ? f.bodegaStock : (mostrarOrigenTecnico ? f.origenTecnico : f.origenBodega)) ?? '—'}
                         </td>
                       )
                       const valor = colValue(f, col.key)
