@@ -160,14 +160,18 @@ export function KpiMaterialesTable({
       if (!set) continue
       out = out.filter((f) => set.has(colDisplayValue(f, key)))
     }
-    if (!sort) return out
+    // Por defecto (sin columna elegida), SKU ordenado por valor numérico
+    // ascendente — el backend lo devuelve alfabético (`order by mat.sku`,
+    // texto), lo que dejaba "14265" antes que "7".
+    const dir = sort?.dir ?? 'asc'
+    const key = sort?.key ?? 'sku'
     const sorted = [...out]
     sorted.sort((a, b) => {
-      if (sort.key === 'sku') return compareSku(a.sku, b.sku, sort.dir)
-      const va = colValue(a, sort.key)
-      const vb = colValue(b, sort.key)
+      if (key === 'sku') return compareSku(a.sku, b.sku, dir)
+      const va = colValue(a, key)
+      const vb = colValue(b, key)
       const cmp = typeof va === 'number' && typeof vb === 'number' ? va - vb : String(va).localeCompare(String(vb))
-      return sort.dir === 'asc' ? cmp : -cmp
+      return dir === 'asc' ? cmp : -cmp
     })
     return sorted
     // eslint-disable-next-line react-hooks/exhaustive-deps
