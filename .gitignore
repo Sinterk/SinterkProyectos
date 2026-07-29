@@ -18,3 +18,6 @@ Trabajadores*
 # Excel real de precios LPU / facturación a Entel (ver scripts/importar-lpu.mjs)
 # — datos comerciales reales, nunca deben llegar al repo.
 *.xlsm
+
+# Archivos de bloqueo temporales de Word/Excel al tener un .docx/.xlsx abierto.
+~$*

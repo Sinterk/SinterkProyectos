@@ -21,15 +21,16 @@ import { UbicacionSelect } from './UbicacionSelect'
 const PREVENTIVA = '__preventiva__'
 const NINGUN_PUNTO = ''
 
-const SALIDA_TIPOS: MovimientoTipoUI[] = ['solicitud', 'entrega', 'instalado', 'devuelto', 'rebajado', 'merma']
+const SALIDA_TIPOS: MovimientoTipoUI[] = ['solicitud', 'entrega', 'instalado', 'devuelto', 'rebajado', 'merma', 'traslado_bodega']
 const TIPO_LABELS: Record<MovimientoTipoUI, string> = {
   entrada: 'Entrada', solicitud: 'Solicitud', entrega: 'Entrega',
   instalado: 'Instalado', devuelto: 'Devuelto', rebajado: 'Rebajado (SAP)', merma: 'Merma',
+  traslado_bodega: 'Traspaso entre bodegas',
 }
 /** Tipos de Salida que no exigen proyecto (permiten "Salida preventiva"). */
 const PROYECTO_OPCIONAL: MovimientoTipoUI[] = ['entrega', 'devuelto']
 /** Tipos de Salida cuya bodega de origen/destino se elige por línea de material. */
-const NECESITA_BODEGA_POR_LINEA: MovimientoTipoUI[] = ['entrega', 'devuelto', 'rebajado']
+const NECESITA_BODEGA_POR_LINEA: MovimientoTipoUI[] = ['entrega', 'devuelto', 'rebajado', 'traslado_bodega']
 
 interface MaterialLinea {
   localId: string
@@ -37,10 +38,12 @@ interface MaterialLinea {
   cantidad: string
   lote: string
   ubicacionBodegaId: string
+  /** Solo 'traslado_bodega': bodega de destino del traspaso. */
+  ubicacionBodegaDestinoId: string
 }
 
 function emptyLinea(ubicacionBodegaId = ''): MaterialLinea {
-  return { localId: nanoid(8), materialId: '', cantidad: '', lote: '', ubicacionBodegaId }
+  return { localId: nanoid(8), materialId: '', cantidad: '', lote: '', ubicacionBodegaId, ubicacionBodegaDestinoId: '' }
 }
 
 function todayISODate(): string {
@@ -120,13 +123,17 @@ export function RegistrarMovimientoForm({ fixedProject, puntos, lockTipoUI, onRe
   }, [defaultBodegaId])
 
   const esEntrada = !lockTipoUI && !fixedProject && datosTipo === 'entrada'
-  const requiereProyecto = !PROYECTO_OPCIONAL.includes(tipoUI)
+  // Traspaso entre bodegas: sin técnico ni proyecto — ambos extremos son bodegas.
+  const esTraslado = tipoUI === 'traslado_bodega'
+  const requiereProyecto = !PROYECTO_OPCIONAL.includes(tipoUI) && !esTraslado
   const proyectoIdEfectivo = fixedProject ? fixedProject.id : (projectSel === PREVENTIVA ? null : projectSel || null)
   const necesitaBodegaPorLinea = !esEntrada && NECESITA_BODEGA_POR_LINEA.includes(tipoUI)
+  const necesitaBodegaDestinoPorLinea = esTraslado
   // Sin proyecto (salida preventiva o insumos): el área no se puede
   // derivar de ningún lado (puede salir material de cualquier bodega), así
-  // que se elige a mano.
-  const necesitaArea = !esEntrada && !requiereProyecto && proyectoIdEfectivo === null
+  // que se elige a mano. No aplica a un traspaso entre bodegas (no reporta
+  // consumo de ningún área).
+  const necesitaArea = !esEntrada && !esTraslado && !requiereProyecto && proyectoIdEfectivo === null
   const tecnicoOptions = fixedProject
     ? members.map((m) => ({ id: m.id, label: m.nombre?.trim() || m.email || '' }))
     : tecnicos.map((t) => ({ id: t.id, label: t.nombre?.trim() || t.email }))
@@ -139,6 +146,7 @@ export function RegistrarMovimientoForm({ fixedProject, puntos, lockTipoUI, onRe
     if (esEntrada) return { ubicacionId: ubicacionEntradaId || null, naturaleza: 'fisico', checkAvailability: false }
     switch (tipoUI) {
       case 'entrega': return { ubicacionId: l.ubicacionBodegaId || null, naturaleza: 'fisico', checkAvailability: true }
+      case 'traslado_bodega': return { ubicacionId: l.ubicacionBodegaId || null, naturaleza: 'fisico', checkAvailability: true }
       case 'rebajado': return { ubicacionId: l.ubicacionBodegaId || null, naturaleza: 'digital', checkAvailability: true }
       case 'devuelto': return { ubicacionId: tecnicoUbicacionId, naturaleza: 'fisico', checkAvailability: true }
       case 'instalado': return { ubicacionId: tecnicoUbicacionId, naturaleza: 'fisico', checkAvailability: true }
@@ -159,7 +167,7 @@ export function RegistrarMovimientoForm({ fixedProject, puntos, lockTipoUI, onRe
 
   function validar(): string | null {
     if (esEntrada && !ubicacionEntradaId) return 'Falta la bodega de destino'
-    if (!esEntrada) {
+    if (!esEntrada && !esTraslado) {
       if (requiereProyecto && !proyectoIdEfectivo) return 'Este tipo de movimiento requiere un proyecto'
       if (!tecnicoUserId) return 'Falta elegir el técnico'
     }
@@ -168,6 +176,10 @@ export function RegistrarMovimientoForm({ fixedProject, puntos, lockTipoUI, onRe
       const n = Number(l.cantidad)
       if (!l.cantidad || !(n > 0)) return 'Cantidad inválida en alguna línea'
       if (necesitaBodegaPorLinea && !l.ubicacionBodegaId) return 'Falta la bodega en alguna línea'
+      if (necesitaBodegaDestinoPorLinea && !l.ubicacionBodegaDestinoId) return 'Falta la bodega de destino en alguna línea'
+      if (necesitaBodegaDestinoPorLinea && l.ubicacionBodegaId && l.ubicacionBodegaId === l.ubicacionBodegaDestinoId) {
+        return 'La bodega de origen y destino no pueden ser la misma'
+      }
     }
     return null
   }
@@ -195,11 +207,12 @@ export function RegistrarMovimientoForm({ fixedProject, puntos, lockTipoUI, onRe
           fecha: fechaISO,
           nota: notaEfectiva,
           ubicacionBodegaId: esEntrada ? ubicacionEntradaId : (necesitaBodegaPorLinea ? l.ubicacionBodegaId : undefined),
+          ubicacionBodegaDestinoId: necesitaBodegaDestinoPorLinea ? l.ubicacionBodegaDestinoId : undefined,
           proveedor: esEntrada ? (proveedor.trim() || undefined) : undefined,
           documento: esEntrada ? (documento.trim() || undefined) : undefined,
-          projectId: esEntrada ? undefined : (proyectoIdEfectivo ?? undefined),
+          projectId: (esEntrada || esTraslado) ? undefined : (proyectoIdEfectivo ?? undefined),
           puntoId: esEntrada ? undefined : (puntos ? (puntoId || null) : undefined),
-          tecnicoUserId: esEntrada ? undefined : tecnicoUserId,
+          tecnicoUserId: (esEntrada || esTraslado) ? undefined : tecnicoUserId,
           area: necesitaArea ? areaSel : undefined,
         })
         nuevos[l.localId] = { ok: true, texto: 'Registrado' }
@@ -265,7 +278,7 @@ export function RegistrarMovimientoForm({ fixedProject, puntos, lockTipoUI, onRe
                 </select>
               </label>
             )}
-            {!fixedProject && (
+            {!fixedProject && !esTraslado && (
               <label className="space-y-1 col-span-2">
                 <span className={labelCls}>Proyecto</span>
                 <select value={projectSel} onChange={(e) => setProjectSel(e.target.value)} className={`${inputCls} w-full`}>
@@ -288,6 +301,7 @@ export function RegistrarMovimientoForm({ fixedProject, puntos, lockTipoUI, onRe
                 </select>
               </label>
             )}
+            {!esTraslado && (
             <label className="space-y-1 col-span-2">
               <span className={labelCls}>Técnico</span>
               <select value={tecnicoUserId} onChange={(e) => setTecnicoUserId(e.target.value)} className={`${inputCls} w-full`}>
@@ -295,6 +309,7 @@ export function RegistrarMovimientoForm({ fixedProject, puntos, lockTipoUI, onRe
                 {tecnicoOptions.map((t) => <option key={t.id} value={t.id}>{t.label}</option>)}
               </select>
             </label>
+            )}
             {puntos && puntos.length > 0 && (
               <label className="space-y-1 col-span-2">
                 <span className={labelCls}>Punto</span>
@@ -338,6 +353,11 @@ export function RegistrarMovimientoForm({ fixedProject, puntos, lockTipoUI, onRe
               {necesitaBodegaPorLinea && (
                 <UbicacionSelect value={l.ubicacionBodegaId} onChange={(id) => updateLinea(l.localId, { ubicacionBodegaId: id, lote: '' })}
                   tipo="bodega" placeholder={`Bodega de ${tipoUI === 'devuelto' ? 'destino' : 'origen'}…`}
+                  className={`${inputCls} w-full`} />
+              )}
+              {necesitaBodegaDestinoPorLinea && (
+                <UbicacionSelect value={l.ubicacionBodegaDestinoId} onChange={(id) => updateLinea(l.localId, { ubicacionBodegaDestinoId: id })}
+                  tipo="bodega" placeholder="Bodega de destino…"
                   className={`${inputCls} w-full`} />
               )}
               {r && <p className={`text-xs ${r.ok ? 'text-green-400' : 'text-red-400'}`}>{r.texto}</p>}

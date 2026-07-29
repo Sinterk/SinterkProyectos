@@ -168,6 +168,7 @@ interface MovimientoJoinRow {
   id: string
   material_id: string
   ubicacion_id: string
+  ubicacion_destino_id: string | null
   lote: string
   naturaleza: 'fisico' | 'digital'
   tipo: string
@@ -182,7 +183,8 @@ interface MovimientoJoinRow {
   documento: string | null
   created_at: string
   materiales: { sku: string; descripcion: string } | null
-  ubicaciones: { nombre: string } | null
+  origen: { nombre: string } | null
+  destino: { nombre: string } | null
   profiles: { nombre: string | null; email: string | null } | null
   projects: { ott: string } | null
 }
@@ -194,7 +196,9 @@ function movimientoFromJoinRow(r: MovimientoJoinRow): Movimiento {
     materialSku: r.materiales?.sku ?? '',
     materialDescripcion: r.materiales?.descripcion ?? '',
     ubicacionId: r.ubicacion_id,
-    ubicacionNombre: r.ubicaciones?.nombre ?? '',
+    ubicacionNombre: r.origen?.nombre ?? '',
+    ubicacionDestinoId: r.ubicacion_destino_id,
+    ubicacionDestinoNombre: r.destino?.nombre ?? null,
     lote: r.lote,
     naturaleza: r.naturaleza,
     tipo: r.tipo,
@@ -227,7 +231,7 @@ export interface ListMovimientosFilters {
 export async function listMovimientos(filters?: ListMovimientosFilters): Promise<Movimiento[]> {
   let query = supabase
     .from('movimientos')
-    .select('*, materiales(sku,descripcion), ubicaciones(nombre), profiles(nombre,email), projects(ott)')
+    .select('*, materiales(sku,descripcion), origen:ubicaciones!ubicacion_id(nombre), destino:ubicaciones!ubicacion_destino_id(nombre), profiles(nombre,email), projects(ott)')
     .order('fecha', { ascending: false })
     .limit(filters?.limit ?? 200)
 
@@ -252,6 +256,7 @@ export interface MovimientoCreado {
   id: string
   materialId: string
   ubicacionId: string
+  ubicacionDestinoId: string | null
   lote: string
   naturaleza: 'fisico' | 'digital'
   tipo: string
@@ -266,7 +271,7 @@ export interface MovimientoCreado {
 }
 
 interface MovimientoRpcRow {
-  id: string; material_id: string; ubicacion_id: string; lote: string
+  id: string; material_id: string; ubicacion_id: string; ubicacion_destino_id: string | null; lote: string
   naturaleza: 'fisico' | 'digital'; tipo: string; cantidad: number
   project_id: string | null; area: 'ATT' | 'OyM' | null
   punto_id: string | null; usuario_id: string | null; fecha: string
@@ -289,11 +294,12 @@ export async function registrarMovimiento(input: RegistrarMovimientoInput): Prom
     p_punto_id: input.puntoId ?? null,
     p_tecnico_user_id: input.tecnicoUserId ?? null,
     p_area: input.area ?? null,
+    p_ubicacion_bodega_destino_id: input.ubicacionBodegaDestinoId ?? null,
   })
   if (error) throw new Error(`registrar_movimiento: ${error.message}`)
   const row = data as MovimientoRpcRow
   return {
-    id: row.id, materialId: row.material_id, ubicacionId: row.ubicacion_id, lote: row.lote,
+    id: row.id, materialId: row.material_id, ubicacionId: row.ubicacion_id, ubicacionDestinoId: row.ubicacion_destino_id, lote: row.lote,
     naturaleza: row.naturaleza, tipo: row.tipo, cantidad: Number(row.cantidad),
     projectId: row.project_id, area: row.area, puntoId: row.punto_id, usuarioId: row.usuario_id, fecha: row.fecha,
     requiereRevision: row.requiere_revision,

@@ -27,6 +27,7 @@ type MainTab = 'movimientos' | 'bodega' | 'proyecto' | 'tecnico' | 'conteo'
 const TIPO_LABELS_MOV: Record<string, string> = {
   entrada: 'Entrada', salida: 'Salida', traslado: 'Traslado/Devuelto',
   rebaja: 'Rebajado (SAP)', solicitud: 'Solicitud', instalado: 'Instalado', merma: 'Merma',
+  traslado_bodega: 'Traspaso entre bodegas',
 }
 
 const inputCls = 'bg-slate-800 text-white text-sm rounded-lg px-2 py-1.5 border border-slate-700 focus:border-brand-500 focus:outline-none'
@@ -119,7 +120,7 @@ function movColValue(m: Movimiento, key: MovColKey): string | number {
     case 'material': return m.materialDescripcion
     case 'lote': return m.lote
     case 'cantidad': return m.cantidad
-    case 'bodega': return m.ubicacionNombre
+    case 'bodega': return m.ubicacionDestinoNombre ? `${m.ubicacionNombre} → ${m.ubicacionDestinoNombre}` : m.ubicacionNombre
     case 'proyecto': return m.projectOtt ?? ''
     case 'area': return m.area ?? ''
     case 'tecnico': return m.usuarioNombre ?? ''
@@ -269,7 +270,9 @@ function MovimientosTab({ refreshKey }: { refreshKey: number }) {
                   <td className="px-2 py-2 max-w-[220px]"><p className="text-white truncate">{m.materialDescripcion}</p></td>
                   <td className="px-2 py-2 text-slate-300 whitespace-nowrap">{m.lote}</td>
                   <td className="px-2 py-2 text-right font-semibold text-white whitespace-nowrap">{m.cantidad}</td>
-                  <td className="px-2 py-2 text-slate-300 whitespace-nowrap">{m.ubicacionNombre}</td>
+                  <td className="px-2 py-2 text-slate-300 whitespace-nowrap">
+                    {m.ubicacionDestinoNombre ? `${m.ubicacionNombre} → ${m.ubicacionDestinoNombre}` : m.ubicacionNombre}
+                  </td>
                   <td className="px-2 py-2 text-slate-300 whitespace-nowrap">{m.projectOtt ?? '—'}</td>
                   <td className="px-2 py-2 text-slate-300 whitespace-nowrap">{m.area ?? '—'}</td>
                   <td className="px-2 py-2 text-slate-300 whitespace-nowrap">{m.usuarioNombre ?? '—'}</td>

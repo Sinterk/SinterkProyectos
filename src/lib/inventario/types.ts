@@ -45,12 +45,13 @@ export interface StockRow {
 
 /**
  * Tipo tal como lo elige el usuario en Entradas/Salidas. Se traduce a
- * `movimientos.tipo` (entrada/salida/traslado/rebaja/solicitud/instalado)
- * dentro de la función `registrar_movimiento` en la base de datos — ver
- * supabase/migrations/0005_registrar_movimiento.sql para la tabla completa
- * de qué toca cada uno.
+ * `movimientos.tipo` (entrada/salida/traslado/rebaja/solicitud/instalado/
+ * merma/traslado_bodega) dentro de la función `registrar_movimiento` en la
+ * base de datos — ver supabase/migrations/0005_registrar_movimiento.sql
+ * (tabla original) y 0037_traslado_bodega.sql (traspaso bodega↔bodega, sin
+ * técnico) para el detalle de qué toca cada uno.
  */
-export type MovimientoTipoUI = 'entrada' | 'solicitud' | 'entrega' | 'instalado' | 'devuelto' | 'rebajado' | 'merma'
+export type MovimientoTipoUI = 'entrada' | 'solicitud' | 'entrega' | 'instalado' | 'devuelto' | 'rebajado' | 'merma' | 'traslado_bodega'
 
 export interface Movimiento {
   id: string
@@ -59,6 +60,9 @@ export interface Movimiento {
   materialDescripcion: string
   ubicacionId: string
   ubicacionNombre: string
+  /** Solo 'traslado_bodega': la bodega de destino (la de origen es ubicacionId/ubicacionNombre). null en el resto de los tipos. */
+  ubicacionDestinoId: string | null
+  ubicacionDestinoNombre: string | null
   lote: string
   naturaleza: 'fisico' | 'digital'
   /** Valor guardado en BD (no el tipoUI): entrada/salida/ajuste/traslado/rebaja/solicitud/instalado. */
@@ -84,8 +88,10 @@ export interface RegistrarMovimientoInput {
   lote?: string
   fecha?: string
   nota?: string
-  /** Entrada: bodega destino. Entrega/Devuelto/Rebajado: bodega origen/destino. */
+  /** Entrada: bodega destino. Entrega/Devuelto/Rebajado: bodega origen/destino. Traslado_bodega: bodega de origen. */
   ubicacionBodegaId?: string
+  /** Solo traslado_bodega: bodega de destino. */
+  ubicacionBodegaDestinoId?: string
   proveedor?: string
   documento?: string
   /** Requerido en todo Salidas (solicitud/entrega/instalado/devuelto/rebajado). */
