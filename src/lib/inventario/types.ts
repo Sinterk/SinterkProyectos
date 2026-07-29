@@ -192,22 +192,81 @@ export interface Observacion {
   createdAt: string
 }
 
-export type ResolucionEvento = 'devolucion_pendiente' | 'reubicacion' | 'perdida'
+/**
+ * Cómo se resuelve (en todo o en parte) una diferencia de Conteo:
+ * - consumo: el material se dio de baja de verdad — 'perdida' sin más trámite,
+ *   o atribuido al consumo real de un proyecto (área + proyecto).
+ * - devolucion: apareció un sobrante — se indica de dónde vino (técnico o
+ *   bodega) para restárselo allá (acá ya quedó sumado al cerrar el conteo).
+ * - traspaso: falta material pero no se perdió — se indica dónde está ahora
+ *   (técnico o bodega) para sumárselo allá, sin tocar de nuevo esta bodega.
+ */
+export type ResolucionTipo = 'consumo' | 'devolucion' | 'traspaso' | 'reasignacion'
+export type ConsumoArea = 'ott' | 'inc' | 'preventivos' | 'perdida'
+
+/** El movimiento exacto que causó un evento de "instalación forzada" — null en eventos de Conteo (no nacen de un solo movimiento). */
+export interface EventoOrigenMovimiento {
+  cantidad: number
+  fecha: string
+  projectId: string | null
+  projectOtt: string | null
+  tecnicoUserId: string | null
+  tecnicoNombre: string | null
+}
+
+/** Una resolución parcial ya aplicada sobre un evento (puede haber varias por evento). */
+export interface EventoResolucion {
+  id: string
+  eventoId: string
+  tipo: ResolucionTipo
+  cantidad: number
+  area: ConsumoArea | null
+  projectId: string | null
+  projectOtt: string | null
+  tecnicoUserId: string | null
+  tecnicoNombre: string | null
+  /** Devolución: origen. Traspaso: destino. */
+  ubicacionId: string | null
+  ubicacionNombre: string | null
+  nota: string | null
+  resueltoPor: string | null
+  createdAt: string
+}
+
+export interface ResolverEventoInput {
+  tipo: ResolucionTipo
+  cantidad: number
+  area?: ConsumoArea
+  projectId?: string
+  tecnicoUserId?: string
+  ubicacionId?: string
+  nota?: string
+}
 
 export interface EventoInventario {
   id: string
   conteoLineaId: string | null
+  /** El conteo al que pertenece — null solo si la línea de conteo se borró (no debería pasar en la práctica). */
+  conteoId: string | null
   materialId: string
   materialSku: string
   materialDescripcion: string
   ubicacionId: string
   ubicacionNombre: string
+  /** 'tecnico' = viene de una instalación forzada (no de un conteo); 'bodega' = viene de un conteo. */
+  ubicacionTipo: 'bodega' | 'tecnico'
   lote: string
   diferencia: number
   estado: 'abierto' | 'resuelto'
-  resolucion: ResolucionEvento | null
+  /** Cuánto de abs(diferencia) ya se resolvió — el evento pasa a 'resuelto' cuando iguala abs(diferencia). */
+  cantidadResuelta: number
   nota: string | null
   resueltoPor: string | null
   fechaResolucion: string | null
   createdAt: string
+  /** El movimiento que causó el evento (solo eventos de técnico) — null en eventos de Conteo. */
+  movimientoId: string | null
+  origenMovimiento: EventoOrigenMovimiento | null
+  /** Historial de resoluciones parciales ya aplicadas, más recientes primero. */
+  resoluciones: EventoResolucion[]
 }

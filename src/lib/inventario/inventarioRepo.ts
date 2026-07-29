@@ -10,7 +10,7 @@ import type {
   Material, Ubicacion, UbicacionTipo, StockRow, Movimiento,
   RegistrarMovimientoInput, ReasignarTransitoInput,
   ResumenMaterialProyecto, TecnicoLedgerRow,
-  Conteo, ConteoLinea, EventoInventario, ResolucionEvento, Observacion,
+  Conteo, ConteoLinea, EventoInventario, ResolucionTipo, ConsumoArea, ResolverEventoInput, Observacion,
 } from './types'
 import type { FilaImportSap } from './importarSap'
 
@@ -582,6 +582,34 @@ export async function descartarConteo(conteoId: string): Promise<void> {
   if (error) throw new Error(`descartar_conteo: ${error.message}`)
 }
 
+const EVENTO_SELECT = `
+  id, conteo_linea_id, material_id, ubicacion_id, lote, diferencia, estado, cantidad_resuelta,
+  nota, resuelto_por, fecha_resolucion, created_at, movimiento_id,
+  materiales(sku,descripcion), ubicaciones(nombre,tipo),
+  movimientos(cantidad, fecha, project_id, usuario_id, projects(ott), profiles(nombre,email)),
+  eventos_inventario_resoluciones(
+    id, evento_id, tipo, cantidad, area, project_id, tecnico_user_id, ubicacion_id, nota, resuelto_por, created_at,
+    projects(ott), tecnico:profiles!tecnico_user_id(nombre,email), ubicaciones(nombre)
+  )
+`
+
+interface ResolucionJoinRow {
+  id: string
+  evento_id: string
+  tipo: ResolucionTipo
+  cantidad: number
+  area: ConsumoArea | null
+  project_id: string | null
+  tecnico_user_id: string | null
+  ubicacion_id: string | null
+  nota: string | null
+  resuelto_por: string | null
+  created_at: string
+  projects: { ott: string } | null
+  tecnico: { nombre: string | null; email: string | null } | null
+  ubicaciones: { nombre: string } | null
+}
+
 interface EventoJoinRow {
   id: string
   conteo_linea_id: string | null
@@ -590,37 +618,81 @@ interface EventoJoinRow {
   lote: string
   diferencia: number
   estado: 'abierto' | 'resuelto'
-  resolucion: ResolucionEvento | null
+  cantidad_resuelta: number
   nota: string | null
   resuelto_por: string | null
   fecha_resolucion: string | null
   created_at: string
+  movimiento_id: string | null
   materiales: { sku: string; descripcion: string } | null
-  ubicaciones: { nombre: string } | null
+  ubicaciones: { nombre: string; tipo: 'bodega' | 'tecnico' } | null
+  movimientos: {
+    cantidad: number; fecha: string; project_id: string | null; usuario_id: string | null
+    projects: { ott: string } | null; profiles: { nombre: string | null; email: string | null } | null
+  } | null
+  conteo_lineas: { conteo_id: string } | null
+  eventos_inventario_resoluciones: ResolucionJoinRow[]
+}
+
+function eventoFromJoinRow(r: EventoJoinRow): EventoInventario {
+  return {
+    id: r.id, conteoLineaId: r.conteo_linea_id, conteoId: r.conteo_lineas?.conteo_id ?? null, materialId: r.material_id,
+    materialSku: r.materiales?.sku ?? '', materialDescripcion: r.materiales?.descripcion ?? '',
+    ubicacionId: r.ubicacion_id, ubicacionNombre: r.ubicaciones?.nombre ?? '', ubicacionTipo: r.ubicaciones?.tipo ?? 'bodega', lote: r.lote,
+    diferencia: Number(r.diferencia), estado: r.estado, cantidadResuelta: Number(r.cantidad_resuelta), nota: r.nota,
+    resueltoPor: r.resuelto_por, fechaResolucion: r.fecha_resolucion, createdAt: r.created_at,
+    movimientoId: r.movimiento_id,
+    origenMovimiento: r.movimientos ? {
+      cantidad: Number(r.movimientos.cantidad), fecha: r.movimientos.fecha,
+      projectId: r.movimientos.project_id, projectOtt: r.movimientos.projects?.ott ?? null,
+      tecnicoUserId: r.movimientos.usuario_id,
+      tecnicoNombre: r.movimientos.profiles?.nombre?.trim() || r.movimientos.profiles?.email || null,
+    } : null,
+    resoluciones: (r.eventos_inventario_resoluciones ?? [])
+      .slice()
+      .sort((a, b) => b.created_at.localeCompare(a.created_at))
+      .map((res) => ({
+        id: res.id, eventoId: res.evento_id, tipo: res.tipo, cantidad: Number(res.cantidad), area: res.area,
+        projectId: res.project_id, projectOtt: res.projects?.ott ?? null,
+        tecnicoUserId: res.tecnico_user_id, tecnicoNombre: res.tecnico?.nombre?.trim() || res.tecnico?.email || null,
+        ubicacionId: res.ubicacion_id, ubicacionNombre: res.ubicaciones?.nombre ?? null,
+        nota: res.nota, resueltoPor: res.resuelto_por, createdAt: res.created_at,
+      })),
+  }
 }
 
 export async function listEventosInventario(opts?: { estado?: 'abierto' | 'resuelto' }): Promise<EventoInventario[]> {
-  let query = supabase
-    .from('eventos_inventario')
-    .select('id, conteo_linea_id, material_id, ubicacion_id, lote, diferencia, estado, resolucion, nota, resuelto_por, fecha_resolucion, created_at, materiales(sku,descripcion), ubicaciones(nombre)')
-    .order('created_at', { ascending: false })
+  let query = supabase.from('eventos_inventario').select(`${EVENTO_SELECT}, conteo_lineas(conteo_id)`).order('created_at', { ascending: false })
   if (opts?.estado) query = query.eq('estado', opts.estado)
   const { data, error } = await query
   if (error) throw new Error(`eventos_inventario.list: ${error.message}`)
-  return (data as unknown as EventoJoinRow[]).map((r) => ({
-    id: r.id, conteoLineaId: r.conteo_linea_id, materialId: r.material_id,
-    materialSku: r.materiales?.sku ?? '', materialDescripcion: r.materiales?.descripcion ?? '',
-    ubicacionId: r.ubicacion_id, ubicacionNombre: r.ubicaciones?.nombre ?? '', lote: r.lote,
-    diferencia: Number(r.diferencia), estado: r.estado, resolucion: r.resolucion, nota: r.nota,
-    resueltoPor: r.resuelto_por, fechaResolucion: r.fecha_resolucion, createdAt: r.created_at,
-  }))
+  return (data as unknown as EventoJoinRow[]).map(eventoFromJoinRow)
 }
 
-export async function resolverEventoInventario(eventoId: string, resolucion: ResolucionEvento, nota?: string): Promise<void> {
-  const { error } = await supabase.rpc('resolver_evento_inventario', {
-    p_evento_id: eventoId, p_resolucion: resolucion, p_nota: nota ?? null,
+/** Todos los eventos de UN conteo (abiertos y resueltos) — para mostrarlos al entrar a ese conteo. */
+export async function listEventosPorConteo(conteoId: string): Promise<EventoInventario[]> {
+  const { data, error } = await supabase
+    .from('eventos_inventario')
+    .select(`${EVENTO_SELECT}, conteo_lineas!inner(conteo_id)`)
+    .eq('conteo_lineas.conteo_id', conteoId)
+    .order('created_at', { ascending: false })
+  if (error) throw new Error(`eventos_inventario.listPorConteo: ${error.message}`)
+  return (data as unknown as EventoJoinRow[]).map(eventoFromJoinRow)
+}
+
+/** Resuelve una parte (o el total) de la diferencia de un evento — puede llamarse varias veces hasta completar. */
+export async function resolverEvento(eventoId: string, input: ResolverEventoInput): Promise<void> {
+  const { error } = await supabase.rpc('resolver_evento_parcial', {
+    p_evento_id: eventoId,
+    p_tipo: input.tipo,
+    p_cantidad: input.cantidad,
+    p_area: input.area ?? null,
+    p_project_id: input.projectId ?? null,
+    p_tecnico_user_id: input.tecnicoUserId ?? null,
+    p_ubicacion_id: input.ubicacionId ?? null,
+    p_nota: input.nota ?? null,
   })
-  if (error) throw new Error(`resolver_evento_inventario: ${error.message}`)
+  if (error) throw new Error(`resolver_evento_parcial: ${error.message}`)
 }
 
 // ---------------------------------------------------------------------------

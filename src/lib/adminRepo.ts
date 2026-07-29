@@ -13,6 +13,8 @@ export interface ProjectSummary {
   ott: string
   nombreProyecto: string | null
   area: 'ATT' | 'OyM'
+  /** Solo relevante dentro de OyM: distingue Preventivos de Incidencias (ambos comparten area='OyM'). */
+  subarea: 'preventivo' | 'incidencia' | null
   comuna: string | null
 }
 
@@ -56,13 +58,13 @@ export const adminRepo = {
   async listActiveProjects(): Promise<ProjectSummary[]> {
     const { data, error } = await supabase
       .from('projects')
-      .select('id, ott, nombre_proyecto, area, comuna')
+      .select('id, ott, nombre_proyecto, area, subarea, comuna')
       .eq('estado', 'activo')
       .order('area', { ascending: true })
       .order('ott', { ascending: true })
     if (error) throw new Error(`projects.listActive: ${error.message}`)
     return (data ?? []).map((p) => ({
-      id: p.id, ott: p.ott, nombreProyecto: p.nombre_proyecto, area: p.area, comuna: p.comuna,
+      id: p.id, ott: p.ott, nombreProyecto: p.nombre_proyecto, area: p.area, subarea: p.subarea, comuna: p.comuna,
     }))
   },
 

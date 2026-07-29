@@ -1,6 +1,6 @@
 import { useEffect, useMemo, useState, type ReactNode } from 'react'
 import { adminRepo } from '@/lib/adminRepo'
-import type { ProjectSummary } from '@/lib/adminRepo'
+import type { ProjectSummary, MemberProfile } from '@/lib/adminRepo'
 import type { Profile } from '@/lib/auth'
 import { RegistrarMovimientoForm } from '@/ui/RegistrarMovimientoForm'
 import { ResumenProyectoTable } from '@/ui/ResumenProyectoTable'
@@ -10,12 +10,12 @@ import {
   getStock, getTecnicoLedger, listMovimientos, listMateriales, listUbicaciones,
   updateMaterialStockMinimo, updateMaterialComentario,
   listConteos, getConteoLineas, abrirConteo, agregarLineaConteo, actualizarLineaConteo, cerrarConteo, descartarConteo,
-  listEventosInventario, resolverEventoInventario, importarFilasSapAConteo,
+  listEventosInventario, listEventosPorConteo, resolverEvento, importarFilasSapAConteo,
 } from '@/lib/inventario/inventarioRepo'
 import type { ListMovimientosFilters, ImportarSapResultado } from '@/lib/inventario/inventarioRepo'
 import type {
   Movimiento, StockRow, TecnicoLedgerRow, Ubicacion, Material,
-  Conteo, ConteoLinea, EventoInventario, ResolucionEvento,
+  Conteo, ConteoLinea, EventoInventario, EventoResolucion, ResolucionTipo, ConsumoArea,
 } from '@/lib/inventario/types'
 import { parseArchivoXlsx, parseTextoPegado } from '@/lib/inventario/importarSap'
 import type { FilaImportSap } from '@/lib/inventario/importarSap'
@@ -810,7 +810,7 @@ function ConteoLista({ onSelect, refreshKey }: { onSelect: (id: string) => void;
     <div className="space-y-3">
       {error && <p className="text-xs text-red-400">{error}</p>}
 
-      {eventos && eventos.length > 0 && <EventosAbiertosSection eventos={eventos} onResolved={reload} />}
+      {eventos && eventos.length > 0 && <EventosAbiertosSection eventos={eventos} onVerConteo={onSelect} onResolved={reload} />}
 
       <button type="button" onClick={() => setShowNuevo((v) => !v)}
         className="w-full text-sm font-semibold py-2 rounded-xl bg-brand-600 hover:bg-brand-700 text-white">
@@ -888,69 +888,25 @@ function NuevoConteoForm({ onCreated }: { onCreated: (id: string) => void }) {
   )
 }
 
-const RESOLUCION_LABELS: Record<ResolucionEvento, string> = {
-  devolucion_pendiente: 'Devolución pendiente',
-  reubicacion: 'Reubicación',
-  perdida: 'Pérdida',
+const AREA_LABELS: Record<ConsumoArea, string> = {
+  ott: 'ATT (OTT)', inc: 'Incidencia', preventivos: 'Preventivo', perdida: 'Pérdida',
+}
+const TIPO_RESOLUCION_LABELS: Record<ResolucionTipo, string> = {
+  consumo: 'Consumo', devolucion: 'Devolución', traspaso: 'Traspaso', reasignacion: 'Reasignar a técnico',
 }
 
-function EventosAbiertosSection({ eventos, onResolved }: { eventos: EventoInventario[]; onResolved: () => void }) {
-  const [resolvingId, setResolvingId] = useState<string | null>(null)
-  const [resolucion, setResolucion] = useState<ResolucionEvento>('reubicacion')
-  const [nota, setNota] = useState('')
-  const [busy, setBusy] = useState(false)
-  const [error, setError] = useState<string | null>(null)
-
-  async function confirmar(eventoId: string) {
-    setBusy(true)
-    setError(null)
-    try {
-      await resolverEventoInventario(eventoId, resolucion, nota.trim() || undefined)
-      setResolvingId(null)
-      setNota('')
-      onResolved()
-    } catch (err) {
-      setError(err instanceof Error ? err.message : String(err))
-    } finally {
-      setBusy(false)
-    }
-  }
-
+/** Solo lectura — resumen de eventos pendientes en el Home de Conteo. Cada uno tiene un botón directo a su conteo para resolverlo. */
+function EventosAbiertosSection({ eventos, onVerConteo, onResolved }: {
+  eventos: EventoInventario[]; onVerConteo: (conteoId: string) => void; onResolved: () => void
+}) {
   return (
-    <div className="bg-amber-950/40 border border-amber-700/50 rounded-2xl p-4 space-y-3">
+    <div className="bg-amber-950/40 border border-amber-700/50 rounded-2xl p-4 space-y-2">
       <p className="text-sm font-semibold text-amber-300">⚠️ {eventos.length} diferencia(s) por resolver</p>
-      <div className="space-y-2">
+      <div className="space-y-1.5">
         {eventos.map((e) => (
-          <div key={e.id} className="bg-slate-800/60 rounded-xl p-3 text-xs space-y-2">
-            <p className="text-white">{e.materialSku} — {e.materialDescripcion}</p>
-            <p className="text-slate-400">
-              {e.ubicacionNombre} · lote {e.lote} · diferencia{' '}
-              <span className={e.diferencia < 0 ? 'text-red-400' : 'text-amber-400'}>{e.diferencia > 0 ? '+' : ''}{e.diferencia}</span>
-            </p>
-            {resolvingId === e.id ? (
-              <div className="flex flex-wrap items-center gap-2">
-                <select value={resolucion} onChange={(ev) => setResolucion(ev.target.value as ResolucionEvento)}
-                  className="bg-slate-700 text-white text-xs rounded-lg px-2 py-1 border border-slate-600 focus:border-brand-500 focus:outline-none">
-                  {(Object.keys(RESOLUCION_LABELS) as ResolucionEvento[]).map((r) => <option key={r} value={r}>{RESOLUCION_LABELS[r]}</option>)}
-                </select>
-                <input value={nota} onChange={(ev) => setNota(ev.target.value)} placeholder="Nota (opcional)"
-                  className="bg-slate-700 text-white text-xs rounded-lg px-2 py-1 border border-slate-600 focus:border-brand-500 focus:outline-none flex-1 min-w-[120px]" />
-                <button type="button" disabled={busy} onClick={() => confirmar(e.id)}
-                  className="text-xs font-semibold px-2 py-1 rounded-lg bg-brand-600 hover:bg-brand-700 text-white disabled:opacity-40">
-                  Confirmar
-                </button>
-                <button type="button" onClick={() => setResolvingId(null)} className="text-xs text-slate-400">Cancelar</button>
-              </div>
-            ) : (
-              <button type="button" onClick={() => { setResolvingId(e.id); setResolucion('reubicacion'); setNota('') }}
-                className="text-xs text-amber-400 font-semibold">
-                Resolver →
-              </button>
-            )}
-          </div>
+          <EventoCard key={e.id} evento={e} onResolved={onResolved} onVerConteo={onVerConteo} mostrarUbicacion />
         ))}
       </div>
-      {error && <p className="text-xs text-red-400">{error}</p>}
     </div>
   )
 }
@@ -958,15 +914,17 @@ function EventosAbiertosSection({ eventos, onResolved }: { eventos: EventoInvent
 function ConteoDetail({ conteoId, onBack }: { conteoId: string; onBack: () => void }) {
   const [conteo, setConteo] = useState<Conteo | null>(null)
   const [lineas, setLineas] = useState<ConteoLinea[] | null>(null)
+  const [eventos, setEventos] = useState<EventoInventario[] | null>(null)
   const [error, setError] = useState<string | null>(null)
   const [closing, setClosing] = useState(false)
   const [discarding, setDiscarding] = useState(false)
 
   async function reload() {
     try {
-      const [cs, ls] = await Promise.all([listConteos(), getConteoLineas(conteoId)])
+      const [cs, ls, evs] = await Promise.all([listConteos(), getConteoLineas(conteoId), listEventosPorConteo(conteoId)])
       setConteo(cs.find((c) => c.id === conteoId) ?? null)
       setLineas(ls)
+      setEventos(evs)
     } catch (err) {
       setError(err instanceof Error ? err.message : String(err))
     }
@@ -1028,13 +986,10 @@ function ConteoDetail({ conteoId, onBack }: { conteoId: string; onBack: () => vo
             </p>
           </div>
 
-          <div className="space-y-1.5">
-            {lineas.length === 0 && <p className="text-xs text-slate-500">Sin líneas — el sistema no tenía stock en esta ubicación.</p>}
-            {lineas.map((l) => (
-              <ConteoLineaRow key={l.id} linea={l} editable={abierto} onSaved={reload}
-                onPendienteChange={(pendiente) => marcarPendiente(l.id, pendiente)} />
-            ))}
-          </div>
+          {eventos && eventos.length > 0 && <EventosDelConteoSection eventos={eventos} onResolved={reload} />}
+
+          <ConteoLineasTabla lineas={lineas} editable={abierto} onSaved={reload}
+            onPendienteChange={marcarPendiente} />
 
           {abierto && (
             <ImportarSapSection conteoId={conteoId} onImported={reload} onImportingChange={setImportando} />
@@ -1065,7 +1020,411 @@ function ConteoDetail({ conteoId, onBack }: { conteoId: string; onBack: () => vo
   )
 }
 
-function ConteoLineaRow({ linea, editable, onSaved, onPendienteChange }: {
+// ---------------------------------------------------------------------------
+// Eventos del conteo (abiertos y resueltos) — se muestran arriba de la tabla.
+// ---------------------------------------------------------------------------
+
+function EventosDelConteoSection({ eventos, onResolved }: { eventos: EventoInventario[]; onResolved: () => void }) {
+  return (
+    <div className="space-y-2">
+      <p className="text-sm font-semibold text-white">Eventos de este conteo</p>
+      {eventos.map((e) => <EventoCard key={e.id} evento={e} onResolved={onResolved} />)}
+    </div>
+  )
+}
+
+function EventoCard({ evento, onResolved, onVerConteo, mostrarUbicacion }: {
+  evento: EventoInventario; onResolved: () => void
+  /** Solo la tiene sentido en la lista general (varios conteos mezclados) — dentro de un conteo ya se sabe cuál es. */
+  onVerConteo?: (conteoId: string) => void
+  mostrarUbicacion?: boolean
+}) {
+  const [showForm, setShowForm] = useState(false)
+  const restante = Math.abs(evento.diferencia) - evento.cantidadResuelta
+  const resuelto = evento.estado === 'resuelto'
+
+  return (
+    <div className="bg-slate-800 rounded-xl border border-slate-700 p-3 text-xs space-y-2">
+      <div className="flex items-center justify-between gap-2">
+        <div className="min-w-0">
+          <p className="text-sm text-white truncate">{evento.materialSku} — {evento.materialDescripcion}</p>
+          <p className="text-slate-500">
+            {mostrarUbicacion && `${evento.ubicacionNombre} · `}
+            lote {evento.lote} · {new Date(evento.createdAt).toLocaleDateString('es-CL', { timeZone: 'UTC' })} ·{' '}
+            <span className={evento.diferencia < 0 ? 'text-red-400' : 'text-amber-400'}>
+              {evento.diferencia > 0 ? '+' : ''}{evento.diferencia}
+            </span>
+          </p>
+        </div>
+        <div className="flex items-center gap-2 shrink-0">
+          {onVerConteo && evento.conteoId && (
+            <button type="button" onClick={() => onVerConteo(evento.conteoId!)} className="text-xs text-amber-400 font-semibold hover:text-amber-300">
+              Ver conteo →
+            </button>
+          )}
+          <span className={`text-[10px] font-semibold px-2 py-1 rounded-full ${
+            resuelto ? 'bg-slate-700 text-slate-400' : evento.cantidadResuelta > 0 ? 'bg-blue-900/50 text-blue-300' : 'bg-amber-900/60 text-amber-300'
+          }`}>
+            {resuelto ? 'Resuelto' : evento.cantidadResuelta > 0 ? `Parcial (${evento.cantidadResuelta}/${Math.abs(evento.diferencia)})` : 'Pendiente'}
+          </span>
+        </div>
+      </div>
+
+      {!evento.conteoId && (
+        <p className="text-[10px] text-slate-500 italic">
+          Instalación forzada sin stock suficiente — a nombre de {evento.ubicacionNombre}.
+          {evento.origenMovimiento && (
+            <> Consumo simultáneo: {evento.origenMovimiento.cantidad} unidad(es) el {new Date(evento.origenMovimiento.fecha).toLocaleString('es-CL', { timeZone: 'UTC' })}
+              {evento.origenMovimiento.projectOtt && ` · proyecto ${evento.origenMovimiento.projectOtt}`}
+              {evento.origenMovimiento.tecnicoNombre && ` · ${evento.origenMovimiento.tecnicoNombre}`}.</>
+          )}
+        </p>
+      )}
+
+      {evento.resoluciones.length > 0 && (
+        <div className="border-t border-slate-700 pt-2 space-y-1">
+          {evento.resoluciones.map((r) => <ResolucionRow key={r.id} r={r} />)}
+        </div>
+      )}
+
+      {!resuelto && (
+        showForm ? (
+          <ResolverEventoForm evento={evento} restante={restante}
+            onDone={() => { setShowForm(false); onResolved() }} onCancel={() => setShowForm(false)} />
+        ) : (
+          <button type="button" onClick={() => setShowForm(true)} className="text-xs text-amber-400 font-semibold">
+            Resolver{evento.cantidadResuelta > 0 ? ` (quedan ${restante})` : ''} →
+          </button>
+        )
+      )}
+    </div>
+  )
+}
+
+function ResolucionRow({ r }: { r: EventoResolucion }) {
+  const detalle = r.tipo === 'consumo'
+    ? (r.area === 'perdida' ? 'Pérdida' : `${AREA_LABELS[r.area ?? 'perdida']} · ${r.projectOtt ?? '—'}${r.tecnicoNombre ? ` · ${r.tecnicoNombre}` : ''}`)
+    : (r.tecnicoNombre ? `Técnico: ${r.tecnicoNombre}` : `Bodega: ${r.ubicacionNombre}`)
+  return (
+    <p className="text-[11px] text-slate-400">
+      <span className="text-slate-300 font-medium">{TIPO_RESOLUCION_LABELS[r.tipo]}</span> · {r.cantidad} · {detalle}
+      {r.nota && <span className="italic"> — {r.nota}</span>}
+    </p>
+  )
+}
+
+function ResolverEventoForm({ evento, restante, onDone, onCancel }: {
+  evento: EventoInventario; restante: number; onDone: () => void; onCancel: () => void
+}) {
+  // De técnico (instalación forzada): Consumo/Devolución/Reasignación, nunca
+  // Traspaso (el material ya se instaló, no está "por encontrar" en otro lado).
+  // De bodega (conteo): igual que siempre, según el signo de la diferencia.
+  const tiposDisponibles: ResolucionTipo[] = evento.ubicacionTipo === 'tecnico'
+    ? ['consumo', 'devolucion', 'reasignacion']
+    : (evento.diferencia < 0 ? ['consumo', 'traspaso'] : ['devolucion'])
+  const [tipo, setTipo] = useState<ResolucionTipo>(tiposDisponibles[0])
+  const [cantidad, setCantidad] = useState(String(restante))
+  const [nota, setNota] = useState('')
+  const [busy, setBusy] = useState(false)
+  const [error, setError] = useState<string | null>(null)
+
+  // Consumo — si el evento ya tiene un movimiento real asociado (instalación
+  // forzada), ese proyecto ya quedó acreditado: solo cabe "Pérdida" acá, para
+  // no duplicar el instalado en Logística/KPI.
+  const soloPerdida = evento.movimientoId !== null
+  const [area, setArea] = useState<ConsumoArea>('perdida')
+  const [projectId, setProjectId] = useState('')
+  const [proyectos, setProyectos] = useState<ProjectSummary[]>([])
+  // Devolución/Traspaso: origen o destino. Consumo: técnico opcional (quién lo usó, si se sabe).
+  const [modo, setModo] = useState<'tecnico' | 'bodega'>('tecnico')
+  const [tecnicoId, setTecnicoId] = useState('')
+  const [ubicacionId, setUbicacionId] = useState('')
+  const [tecnicos, setTecnicos] = useState<Profile[]>([])
+  const [bodegas, setBodegas] = useState<Ubicacion[]>([])
+  // Reasignación: solo técnicos del mismo proyecto que causó la instalación.
+  const [miembrosProyecto, setMiembrosProyecto] = useState<MemberProfile[]>([])
+  const [tecnicoReasignarId, setTecnicoReasignarId] = useState('')
+
+  useEffect(() => {
+    adminRepo.listActiveProjects().then(setProyectos).catch(() => {})
+    adminRepo.listProfiles().then((all) => setTecnicos(all.filter((p) => p.activo && (p.rol === 'tecnico' || p.rol === 'log')))).catch(() => {})
+    listUbicaciones({ tipo: 'bodega' }).then(setBodegas).catch(() => {})
+    if (evento.origenMovimiento?.projectId) {
+      adminRepo.listMembers(evento.origenMovimiento.projectId).then(setMiembrosProyecto).catch(() => {})
+    }
+  }, [evento.origenMovimiento?.projectId])
+
+  const proyectosFiltrados = useMemo(() => {
+    if (area === 'ott') return proyectos.filter((p) => p.area === 'ATT')
+    if (area === 'inc') return proyectos.filter((p) => p.area === 'OyM' && p.subarea === 'incidencia')
+    if (area === 'preventivos') return proyectos.filter((p) => p.area === 'OyM' && p.subarea === 'preventivo')
+    return []
+  }, [area, proyectos])
+
+  const bodegasFiltradas = useMemo(() => bodegas.filter((b) => b.id !== evento.ubicacionId), [bodegas, evento.ubicacionId])
+  // Nunca ofrecer al mismo técnico que ya tiene el evento como origen/destino/reasignación.
+  const tecnicosFiltrados = useMemo(() => tecnicos.filter((t) => t.id !== evento.origenMovimiento?.tecnicoUserId), [tecnicos, evento.origenMovimiento])
+  const miembrosFiltrados = useMemo(() => miembrosProyecto.filter((m) => m.id !== evento.origenMovimiento?.tecnicoUserId), [miembrosProyecto, evento.origenMovimiento])
+
+  async function submit() {
+    const n = Number(cantidad)
+    if (!cantidad || !(n > 0) || n > restante) { setError(`Cantidad inválida (máximo ${restante})`); return }
+    if (tipo === 'consumo' && !soloPerdida && area !== 'perdida' && !projectId) { setError('Falta elegir el proyecto'); return }
+    if ((tipo === 'devolucion' || tipo === 'traspaso') && modo === 'tecnico' && !tecnicoId) { setError('Falta elegir el técnico'); return }
+    if ((tipo === 'devolucion' || tipo === 'traspaso') && modo === 'bodega' && !ubicacionId) { setError('Falta elegir la bodega'); return }
+    if (tipo === 'reasignacion' && !tecnicoReasignarId) { setError('Falta elegir el técnico correcto'); return }
+
+    setBusy(true)
+    setError(null)
+    try {
+      await resolverEvento(evento.id, {
+        tipo, cantidad: n, nota: nota.trim() || undefined,
+        area: tipo === 'consumo' ? (soloPerdida ? 'perdida' : area) : undefined,
+        projectId: tipo === 'consumo' && !soloPerdida && area !== 'perdida' ? projectId : undefined,
+        tecnicoUserId: tipo === 'consumo' ? (tecnicoId || undefined)
+          : tipo === 'reasignacion' ? tecnicoReasignarId
+          : modo === 'tecnico' ? tecnicoId : undefined,
+        ubicacionId: (tipo === 'devolucion' || tipo === 'traspaso') && modo === 'bodega' ? ubicacionId : undefined,
+      })
+      onDone()
+    } catch (err) {
+      setError(err instanceof Error ? err.message : String(err))
+    } finally {
+      setBusy(false)
+    }
+  }
+
+  const selectCls = 'w-full bg-slate-700 text-white text-sm rounded-lg px-2 py-1.5 border border-slate-600 focus:border-brand-500 focus:outline-none'
+
+  return (
+    <div className="bg-slate-700/50 rounded-xl p-3 space-y-2">
+      <div className="flex gap-1.5">
+        {tiposDisponibles.map((t) => (
+          <button key={t} type="button" onClick={() => setTipo(t)}
+            className={`flex-1 text-xs font-semibold py-1.5 rounded-lg ${tipo === t ? 'bg-brand-600 text-white' : 'bg-slate-700 text-slate-300'}`}>
+            {TIPO_RESOLUCION_LABELS[t]}
+          </button>
+        ))}
+      </div>
+
+      <label className="block space-y-1">
+        <span className="text-[11px] text-slate-400">Cantidad (máx. {restante})</span>
+        <input type="number" min="0" max={restante} step="any" value={cantidad} onChange={(e) => setCantidad(e.target.value)}
+          className={selectCls} />
+      </label>
+
+      {tipo === 'consumo' && (
+        soloPerdida ? (
+          <p className="text-[11px] text-slate-400 italic">
+            Solo Pérdida — el proyecto de esta instalación ya quedó acreditado como instalado, no se puede elegir otro sin duplicarlo.
+          </p>
+        ) : (
+          <>
+            <label className="block space-y-1">
+              <span className="text-[11px] text-slate-400">Área</span>
+              <select value={area} onChange={(e) => { setArea(e.target.value as ConsumoArea); setProjectId('') }} className={selectCls}>
+                <option value="perdida">Pérdida</option>
+                <option value="ott">ATT (OTT)</option>
+                <option value="inc">Incidencia</option>
+                <option value="preventivos">Preventivo</option>
+              </select>
+            </label>
+            {area !== 'perdida' && (
+              <>
+                <label className="block space-y-1">
+                  <span className="text-[11px] text-slate-400">Proyecto</span>
+                  <select value={projectId} onChange={(e) => setProjectId(e.target.value)} className={selectCls}>
+                    <option value="">Elegir proyecto…</option>
+                    {proyectosFiltrados.map((p) => (
+                      <option key={p.id} value={p.id}>{p.ott || 'Sin código'}{p.nombreProyecto ? ` — ${p.nombreProyecto}` : ''}</option>
+                    ))}
+                  </select>
+                </label>
+                <label className="block space-y-1">
+                  <span className="text-[11px] text-slate-400">Técnico (opcional)</span>
+                  <select value={tecnicoId} onChange={(e) => setTecnicoId(e.target.value)} className={selectCls}>
+                    <option value="">Sin especificar…</option>
+                    {tecnicosFiltrados.map((t) => <option key={t.id} value={t.id}>{t.nombre?.trim() || t.email}</option>)}
+                  </select>
+                </label>
+              </>
+            )}
+          </>
+        )
+      )}
+
+      {(tipo === 'devolucion' || tipo === 'traspaso') && (
+        <>
+          <div className="flex gap-2">
+            <button type="button" onClick={() => setModo('tecnico')}
+              className={`flex-1 text-xs font-semibold py-1.5 rounded-lg ${modo === 'tecnico' ? 'bg-brand-600 text-white' : 'bg-slate-700 text-slate-300'}`}>
+              Técnico
+            </button>
+            <button type="button" onClick={() => setModo('bodega')}
+              className={`flex-1 text-xs font-semibold py-1.5 rounded-lg ${modo === 'bodega' ? 'bg-brand-600 text-white' : 'bg-slate-700 text-slate-300'}`}>
+              Bodega
+            </button>
+          </div>
+          {modo === 'tecnico' ? (
+            <select value={tecnicoId} onChange={(e) => setTecnicoId(e.target.value)} className={selectCls}>
+              <option value="">Elegir técnico…</option>
+              {tecnicosFiltrados.map((t) => <option key={t.id} value={t.id}>{t.nombre?.trim() || t.email}</option>)}
+            </select>
+          ) : (
+            <select value={ubicacionId} onChange={(e) => setUbicacionId(e.target.value)} className={selectCls}>
+              <option value="">Elegir bodega…</option>
+              {bodegasFiltradas.map((b) => <option key={b.id} value={b.id}>{b.nombre}</option>)}
+            </select>
+          )}
+        </>
+      )}
+
+      {tipo === 'reasignacion' && (
+        <label className="block space-y-1">
+          <span className="text-[11px] text-slate-400">Técnico correcto (debe ser parte del proyecto y tener stock suficiente)</span>
+          <select value={tecnicoReasignarId} onChange={(e) => setTecnicoReasignarId(e.target.value)} className={selectCls}>
+            <option value="">Elegir técnico…</option>
+            {miembrosFiltrados.map((m) => <option key={m.id} value={m.id}>{m.nombre?.trim() || m.email}</option>)}
+          </select>
+          {miembrosFiltrados.length === 0 && (
+            <p className="text-[11px] text-amber-400">
+              No hay otro técnico asignado a este proyecto — si falta agregar al correcto, hazlo primero en Logística → Técnicos asignados.
+            </p>
+          )}
+        </label>
+      )}
+
+      <input value={nota} onChange={(e) => setNota(e.target.value)} placeholder="Nota (opcional)" className={selectCls} />
+
+      {error && <p className="text-xs text-red-400">{error}</p>}
+      <div className="flex gap-2">
+        <button type="button" onClick={submit} disabled={busy}
+          className="flex-1 text-xs font-semibold py-1.5 rounded-lg bg-brand-600 hover:bg-brand-700 disabled:opacity-40 text-white">
+          {busy ? 'Guardando…' : 'Confirmar'}
+        </button>
+        <button type="button" onClick={onCancel} className="text-xs text-slate-400 px-2">Cancelar</button>
+      </div>
+    </div>
+  )
+}
+
+// ---------------------------------------------------------------------------
+// Tabla de líneas del conteo (solo en el detalle de un conteo — mismo patrón
+// ColumnHeader que Bodega/KPI) con "Contado" editable mientras esté abierto.
+// ---------------------------------------------------------------------------
+
+type ConteoColKey = 'sku' | 'material' | 'lote' | 'sistema' | 'contado' | 'diferencia'
+
+const CONTEO_COLUMNS: { key: ConteoColKey; label: string; numeric?: boolean; align?: 'right' }[] = [
+  { key: 'sku', label: 'SKU', numeric: true },
+  { key: 'material', label: 'Material' },
+  { key: 'lote', label: 'Lote' },
+  { key: 'sistema', label: 'Sistema', numeric: true, align: 'right' },
+  { key: 'contado', label: 'Contado', numeric: true, align: 'right' },
+  { key: 'diferencia', label: 'Diferencia', numeric: true, align: 'right' },
+]
+
+function conteoColValue(l: ConteoLinea, key: ConteoColKey): string | number {
+  switch (key) {
+    case 'sku': return l.materialSku
+    case 'material': return l.materialDescripcion
+    case 'lote': return l.lote
+    case 'sistema': return l.cantidadSistema
+    case 'contado': return l.cantidadContada
+    case 'diferencia': return l.primeraVez ? 0 : l.cantidadContada - l.cantidadSistema
+  }
+}
+
+function sortConteoColumnValues(key: ConteoColKey, values: string[]): string[] {
+  if (key === 'sku') return [...values].sort((a, b) => compareSku(a, b, 'asc'))
+  if (key === 'sistema' || key === 'contado' || key === 'diferencia') return [...values].sort((a, b) => Number(a) - Number(b))
+  return [...values].sort((a, b) => a.localeCompare(b))
+}
+
+function ConteoLineasTabla({ lineas, editable, onSaved, onPendienteChange }: {
+  lineas: ConteoLinea[] | null; editable: boolean; onSaved: () => void; onPendienteChange: (lineaId: string, pendiente: boolean) => void
+}) {
+  const [sort, setSort] = useState<{ key: ConteoColKey; dir: 'asc' | 'desc' } | null>(null)
+  const [colSelected, setColSelected] = useState<Partial<Record<ConteoColKey, Set<string>>>>({})
+  const [openMenu, setOpenMenu] = useState<ConteoColKey | null>(null)
+
+  const valuesByColumn = useMemo(() => {
+    const result = {} as Record<ConteoColKey, string[]>
+    for (const col of CONTEO_COLUMNS) {
+      result[col.key] = sortConteoColumnValues(col.key, [...new Set((lineas ?? []).map((l) => String(conteoColValue(l, col.key))))])
+    }
+    return result
+  }, [lineas])
+
+  const displayLineas = useMemo(() => {
+    if (!lineas) return null
+    let out = lineas
+    for (const key of Object.keys(colSelected) as ConteoColKey[]) {
+      const set = colSelected[key]
+      if (!set) continue
+      out = out.filter((l) => set.has(String(conteoColValue(l, key))))
+    }
+    const sorted = [...out]
+    if (sort) {
+      sorted.sort((a, b) => {
+        if (sort.key === 'sku') return compareSku(a.materialSku, b.materialSku, sort.dir)
+        const va = conteoColValue(a, sort.key)
+        const vb = conteoColValue(b, sort.key)
+        const cmp = typeof va === 'number' && typeof vb === 'number' ? va - vb : String(va).localeCompare(String(vb))
+        return sort.dir === 'asc' ? cmp : -cmp
+      })
+    } else {
+      sorted.sort((a, b) => compareSku(a.materialSku, b.materialSku, 'asc') || a.lote.localeCompare(b.lote))
+    }
+    return sorted
+  }, [lineas, colSelected, sort])
+
+  if (!lineas) return <p className="text-xs text-slate-500">Cargando…</p>
+  if (lineas.length === 0) return <p className="text-xs text-slate-500">Sin líneas — el sistema no tenía stock en esta ubicación.</p>
+
+  return (
+    <div className="overflow-x-auto rounded-xl border border-slate-700">
+      <table className="w-full text-xs border-collapse">
+        <thead>
+          <tr className="bg-slate-800 text-slate-400 text-left divide-x divide-slate-700">
+            {CONTEO_COLUMNS.map((col) => (
+              <ColumnHeader key={col.key} col={col}
+                sort={sort} onSort={(dir) => { setSort(dir ? { key: col.key, dir } : null); setOpenMenu(null) }}
+                checklist={{
+                  values: valuesByColumn[col.key],
+                  selected: colSelected[col.key] ?? null,
+                  onToggleValue: (v) => setColSelected((prev) => {
+                    const current = new Set(prev[col.key] ?? valuesByColumn[col.key])
+                    if (current.has(v)) current.delete(v); else current.add(v)
+                    const next = { ...prev }
+                    if (current.size === valuesByColumn[col.key].length) delete next[col.key]
+                    else next[col.key] = current
+                    return next
+                  }),
+                  onSelectAll: () => setColSelected((prev) => { const next = { ...prev }; delete next[col.key]; return next }),
+                  onSelectNone: () => setColSelected((prev) => ({ ...prev, [col.key]: new Set() })),
+                }}
+                open={openMenu === col.key} onToggle={() => setOpenMenu((k) => (k === col.key ? null : col.key))} />
+            ))}
+          </tr>
+        </thead>
+        <tbody>
+          {displayLineas?.length === 0 && (
+            <tr><td colSpan={CONTEO_COLUMNS.length} className="px-2 py-3 text-center text-slate-500">
+              Ningún resultado con los filtros de columna actuales.
+            </td></tr>
+          )}
+          {displayLineas?.map((l) => (
+            <ConteoLineaFila key={l.id} linea={l} editable={editable} onSaved={onSaved}
+              onPendienteChange={(pendiente) => onPendienteChange(l.id, pendiente)} />
+          ))}
+        </tbody>
+      </table>
+    </div>
+  )
+}
+
+function ConteoLineaFila({ linea, editable, onSaved, onPendienteChange }: {
   linea: ConteoLinea; editable: boolean; onSaved: () => void; onPendienteChange: (pendiente: boolean) => void
 }) {
   const [draft, setDraft] = useState(String(linea.cantidadContada))
@@ -1092,14 +1451,16 @@ function ConteoLineaRow({ linea, editable, onSaved, onPendienteChange }: {
   }
 
   return (
-    <div className="bg-slate-800 rounded-xl border border-slate-700 p-3 text-xs flex items-center justify-between gap-2">
-      <div className="min-w-0">
-        <p className="text-sm text-white truncate">{linea.materialSku} — {linea.materialDescripcion}</p>
-        <p className="text-slate-500">lote {linea.lote} · {linea.primeraVez ? 'primer conteo aquí' : `sistema: ${linea.cantidadSistema}`}</p>
-      </div>
-      <div className="flex items-center gap-2 shrink-0">
+    <tr className="border-t border-slate-700 divide-x divide-slate-700 bg-slate-800/60">
+      <td className="px-2 py-2 text-slate-300 whitespace-nowrap">{linea.materialSku}</td>
+      <td className="px-2 py-2 max-w-[220px]"><p className="text-white truncate">{linea.materialDescripcion}</p></td>
+      <td className="px-2 py-2 text-slate-300 whitespace-nowrap">{linea.lote}</td>
+      <td className="px-2 py-2 text-right text-slate-300 whitespace-nowrap">
+        {linea.primeraVez ? <span className="text-[10px] text-slate-500">primer conteo</span> : linea.cantidadSistema}
+      </td>
+      <td className="px-2 py-2 text-right whitespace-nowrap">
         {editable ? (
-          <>
+          <div className="flex items-center justify-end gap-1.5">
             <input type="number" step="any" value={draft} onChange={(e) => setDraft(e.target.value)} onBlur={save}
               onKeyDown={(e) => { if (e.key === 'Enter') (e.target as HTMLInputElement).blur() }} disabled={saving}
               className={`w-20 bg-slate-700 text-white text-sm rounded-lg px-2 py-1 border text-right focus:outline-none ${
@@ -1111,20 +1472,22 @@ function ConteoLineaRow({ linea, editable, onSaved, onPendienteChange }: {
                 se guardaba. */}
             <button type="button" onClick={save} disabled={!dirty || saving}
               title="Guardar" aria-label="Guardar"
-              className="text-sm w-7 h-7 rounded-lg bg-slate-700 border border-slate-600 disabled:opacity-30 text-green-400 hover:bg-slate-600 disabled:hover:bg-slate-700">
+              className="text-sm w-7 h-7 rounded-lg bg-slate-700 border border-slate-600 disabled:opacity-30 text-green-400 hover:bg-slate-600 disabled:hover:bg-slate-700 shrink-0">
               {saving ? '⏳' : '✓'}
             </button>
-          </>
+          </div>
         ) : (
           <span className="text-white font-semibold">{linea.cantidadContada}</span>
         )}
+      </td>
+      <td className="px-2 py-2 text-right whitespace-nowrap">
         {!linea.primeraVez && diferencia !== 0 && (
           <span className={`text-[10px] font-semibold ${diferencia < 0 ? 'text-red-400' : 'text-amber-400'}`}>
             {diferencia > 0 ? '+' : ''}{diferencia}
           </span>
         )}
-      </div>
-    </div>
+      </td>
+    </tr>
   )
 }
 
