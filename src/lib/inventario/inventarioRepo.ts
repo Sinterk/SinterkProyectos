@@ -36,6 +36,8 @@ interface MaterialRow {
   activo: boolean
   stock_minimo: number | null
   comentario: string | null
+  tipo_tendido: string | null
+  capacidad: number | null
 }
 
 function materialFromRow(m: MaterialRow): Material {
@@ -45,6 +47,8 @@ function materialFromRow(m: MaterialRow): Material {
     controlaLoteFisico: m.controla_lote_fisico, activo: m.activo,
     stockMinimo: m.stock_minimo === null ? null : Number(m.stock_minimo),
     comentario: m.comentario,
+    tipoTendido: m.tipo_tendido,
+    capacidad: m.capacidad === null ? null : Number(m.capacidad),
   }
 }
 
@@ -66,6 +70,13 @@ export async function updateMaterialComentario(materialId: string, comentario: s
   const valor = comentario?.trim() || null
   const { error } = await supabase.from('materiales').update({ comentario: valor }).eq('id', materialId)
   if (error) throw new Error(`materiales.updateComentario: ${error.message}`)
+}
+
+/** Tipo de tendido + capacidad — solo tiene sentido para SKUs de cable, usado por el Estado de Pago. */
+export async function updateMaterialTendido(materialId: string, valores: { tipoTendido: string | null; capacidad: number | null }): Promise<void> {
+  const { error } = await supabase.from('materiales')
+    .update({ tipo_tendido: valores.tipoTendido, capacidad: valores.capacidad }).eq('id', materialId)
+  if (error) throw new Error(`materiales.updateTendido: ${error.message}`)
 }
 
 // ---------------------------------------------------------------------------

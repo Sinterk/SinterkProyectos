@@ -11,6 +11,10 @@ export interface Material {
   stockMinimo: number | null
   /** Observación libre sobre el material (ej. "viene sin marcar de fábrica"). null = sin comentario. */
   comentario: string | null
+  /** Solo SKUs de cable: tipo de tendido por defecto para el Estado de Pago (Subterráneo/Aéreo/...). null = no aplica/no configurado. */
+  tipoTendido: string | null
+  /** Solo SKUs de cable: capacidad (ej. n° de hilos) para elegir el código LPU de tendido. null = no aplica/no configurado. */
+  capacidad: number | null
 }
 
 export type UbicacionTipo = 'bodega' | 'tecnico'
