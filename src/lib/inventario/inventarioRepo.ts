@@ -586,7 +586,7 @@ const EVENTO_SELECT = `
   id, conteo_linea_id, material_id, ubicacion_id, lote, diferencia, estado, cantidad_resuelta,
   nota, resuelto_por, fecha_resolucion, created_at, movimiento_id,
   materiales(sku,descripcion), ubicaciones(nombre,tipo),
-  movimientos(cantidad, fecha, project_id, usuario_id, projects(ott), profiles(nombre,email)),
+  movimientos(cantidad, fecha, project_id, usuario_id, projects(ott,area,subarea), profiles(nombre,email)),
   eventos_inventario_resoluciones(
     id, evento_id, tipo, cantidad, area, project_id, tecnico_user_id, ubicacion_id, nota, resuelto_por, created_at,
     projects(ott), tecnico:profiles!tecnico_user_id(nombre,email), ubicaciones(nombre)
@@ -628,7 +628,8 @@ interface EventoJoinRow {
   ubicaciones: { nombre: string; tipo: 'bodega' | 'tecnico' } | null
   movimientos: {
     cantidad: number; fecha: string; project_id: string | null; usuario_id: string | null
-    projects: { ott: string } | null; profiles: { nombre: string | null; email: string | null } | null
+    projects: { ott: string; area: 'ATT' | 'OyM'; subarea: 'preventivo' | 'incidencia' | null } | null
+    profiles: { nombre: string | null; email: string | null } | null
   } | null
   conteo_lineas: { conteo_id: string } | null
   eventos_inventario_resoluciones: ResolucionJoinRow[]
@@ -645,6 +646,7 @@ function eventoFromJoinRow(r: EventoJoinRow): EventoInventario {
     origenMovimiento: r.movimientos ? {
       cantidad: Number(r.movimientos.cantidad), fecha: r.movimientos.fecha,
       projectId: r.movimientos.project_id, projectOtt: r.movimientos.projects?.ott ?? null,
+      projectArea: r.movimientos.projects?.area ?? null, projectSubarea: r.movimientos.projects?.subarea ?? null,
       tecnicoUserId: r.movimientos.usuario_id,
       tecnicoNombre: r.movimientos.profiles?.nombre?.trim() || r.movimientos.profiles?.email || null,
     } : null,

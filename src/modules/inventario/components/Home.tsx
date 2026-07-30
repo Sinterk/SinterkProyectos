@@ -1,4 +1,5 @@
 import { useEffect, useMemo, useState, type ReactNode } from 'react'
+import { useNavigate } from 'react-router-dom'
 import { adminRepo } from '@/lib/adminRepo'
 import type { ProjectSummary, MemberProfile } from '@/lib/adminRepo'
 import type { Profile } from '@/lib/auth'
@@ -1033,12 +1034,19 @@ function EventosDelConteoSection({ eventos, onResolved }: { eventos: EventoInven
   )
 }
 
+/** /att/:id, /preventivos/:id o /incidencias/:id según el área/subárea real del proyecto. */
+function rutaProyecto(area: 'ATT' | 'OyM', subarea: 'preventivo' | 'incidencia' | null, projectId: string): string {
+  if (area === 'ATT') return `/att/${projectId}`
+  return subarea === 'incidencia' ? `/incidencias/${projectId}` : `/preventivos/${projectId}`
+}
+
 function EventoCard({ evento, onResolved, onVerConteo, mostrarUbicacion }: {
   evento: EventoInventario; onResolved: () => void
   /** Solo la tiene sentido en la lista general (varios conteos mezclados) — dentro de un conteo ya se sabe cuál es. */
   onVerConteo?: (conteoId: string) => void
   mostrarUbicacion?: boolean
 }) {
+  const navigate = useNavigate()
   const [showForm, setShowForm] = useState(false)
   const restante = Math.abs(evento.diferencia) - evento.cantidadResuelta
   const resuelto = evento.estado === 'resuelto'
@@ -1060,6 +1068,13 @@ function EventoCard({ evento, onResolved, onVerConteo, mostrarUbicacion }: {
           {onVerConteo && evento.conteoId && (
             <button type="button" onClick={() => onVerConteo(evento.conteoId!)} className="text-xs text-amber-400 font-semibold hover:text-amber-300">
               Ver conteo →
+            </button>
+          )}
+          {evento.origenMovimiento?.projectId && evento.origenMovimiento.projectArea && (
+            <button type="button"
+              onClick={() => navigate(rutaProyecto(evento.origenMovimiento!.projectArea!, evento.origenMovimiento!.projectSubarea, evento.origenMovimiento!.projectId!))}
+              className="text-xs text-amber-400 font-semibold hover:text-amber-300">
+              Ver proyecto →
             </button>
           )}
           <span className={`text-[10px] font-semibold px-2 py-1 rounded-full ${

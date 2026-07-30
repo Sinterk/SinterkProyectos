@@ -210,6 +210,9 @@ export interface EventoOrigenMovimiento {
   fecha: string
   projectId: string | null
   projectOtt: string | null
+  /** Para armar el link "Ver proyecto" (/att/:id, /preventivos/:id o /incidencias/:id). */
+  projectArea: 'ATT' | 'OyM' | null
+  projectSubarea: 'preventivo' | 'incidencia' | null
   tecnicoUserId: string | null
   tecnicoNombre: string | null
 }
