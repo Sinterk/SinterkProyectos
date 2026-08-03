@@ -68,6 +68,29 @@ export const adminRepo = {
     }))
   },
 
+  /**
+   * Crea un proyecto "base" (solo `ott`+`area`, sin informe/tramos/etc.) para
+   * alta rápida desde el selector de Proyecto de Registrar Movimiento, cuando
+   * se escribe un código que todavía no existe. Queda como borrador mínimo —
+   * el JP lo completa después abriendo el editor real de ATT/Preventivos, que
+   * hace `update` sobre este mismo `id` sin problema (mismo camino que
+   * cualquier proyecto ya existente). RLS de `projects` solo permite insert a
+   * admin/jp (`is_jp_or_admin`) — un usuario `log` no podrá crear, solo elegir
+   * entre los que ya existen.
+   */
+  async crearProyectoBase(ott: string, area: 'ATT' | 'OyM'): Promise<ProjectSummary> {
+    const { data, error } = await supabase
+      .from('projects')
+      .insert({ ott: ott.trim(), area })
+      .select('id, ott, nombre_proyecto, area, subarea, comuna')
+      .single()
+    if (error) throw new Error(`projects.crearBase: ${error.message}`)
+    return {
+      id: data.id, ott: data.ott, nombreProyecto: data.nombre_proyecto,
+      area: data.area, subarea: data.subarea, comuna: data.comuna,
+    }
+  },
+
   /** Miembros (técnicos asignados) de un proyecto. */
   async listMembers(projectId: string): Promise<MemberProfile[]> {
     const { data, error } = await supabase

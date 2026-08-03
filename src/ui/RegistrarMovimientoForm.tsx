@@ -10,12 +10,14 @@ import { useEffect, useRef, useState } from 'react'
 import { nanoid } from '@/core/utils/nanoid'
 import { adminRepo } from '@/lib/adminRepo'
 import type { MemberProfile, ProjectSummary } from '@/lib/adminRepo'
+import { useAuth } from '@/lib/auth'
 import type { Profile } from '@/lib/auth'
 import { BODEGA_DEFECTO_POR_AREA } from '@/lib/inventario/defaults'
 import { listMateriales, listUbicaciones, registrarMovimiento } from '@/lib/inventario/inventarioRepo'
 import type { Material, MovimientoTipoUI, Ubicacion } from '@/lib/inventario/types'
 import { LoteSelect } from './LoteSelect'
 import { MaterialSelect } from './MaterialSelect'
+import { ProyectoSelect } from './ProyectoSelect'
 import { UbicacionSelect } from './UbicacionSelect'
 
 const PREVENTIVA = '__preventiva__'
@@ -62,6 +64,8 @@ interface Props {
 }
 
 export function RegistrarMovimientoForm({ fixedProject, puntos, lockTipoUI, onRegistered }: Props) {
+  const rol = useAuth((s) => s.profile?.rol)
+  const puedeCrearProyecto = rol === 'admin' || rol === 'jp'
   const [datosTipo, setDatosTipo] = useState<'entrada' | 'salida'>('salida')
   const [tipoUI, setTipoUI] = useState<MovimientoTipoUI>(lockTipoUI ?? 'entrega')
 
@@ -109,24 +113,12 @@ export function RegistrarMovimientoForm({ fixedProject, puntos, lockTipoUI, onRe
     }
   }, [fixedProject])
 
-  // Bodega de origen/destino por defecto según el área del proyecto — se
-  // aplica una sola vez, apenas se resuelve el id real de la bodega, y solo
-  // a líneas que el usuario no haya tocado todavía.
-  const defaultBodegaNombre = fixedProject ? BODEGA_DEFECTO_POR_AREA[fixedProject.area] : null
-  const defaultBodegaId = defaultBodegaNombre ? bodegas.find((b) => b.nombre === defaultBodegaNombre)?.id ?? '' : ''
-  const appliedDefaultBodega = useRef(false)
-  useEffect(() => {
-    if (!appliedDefaultBodega.current && defaultBodegaId) {
-      appliedDefaultBodega.current = true
-      setLineas((prev) => prev.map((l) => (l.ubicacionBodegaId ? l : { ...l, ubicacionBodegaId: defaultBodegaId })))
-    }
-  }, [defaultBodegaId])
-
   const esEntrada = !lockTipoUI && !fixedProject && datosTipo === 'entrada'
   // Traspaso entre bodegas: sin técnico ni proyecto — ambos extremos son bodegas.
   const esTraslado = tipoUI === 'traslado_bodega'
   const requiereProyecto = !PROYECTO_OPCIONAL.includes(tipoUI) && !esTraslado
   const proyectoIdEfectivo = fixedProject ? fixedProject.id : (projectSel === PREVENTIVA ? null : projectSel || null)
+  const proyectoSeleccionado = proyectos.find((p) => p.id === proyectoIdEfectivo) ?? null
   const necesitaBodegaPorLinea = !esEntrada && NECESITA_BODEGA_POR_LINEA.includes(tipoUI)
   const necesitaBodegaDestinoPorLinea = esTraslado
   // Sin proyecto (salida preventiva o insumos): el área no se puede
@@ -134,6 +126,35 @@ export function RegistrarMovimientoForm({ fixedProject, puntos, lockTipoUI, onRe
   // que se elige a mano. No aplica a un traspaso entre bodegas (no reporta
   // consumo de ningún área).
   const necesitaArea = !esEntrada && !esTraslado && !requiereProyecto && proyectoIdEfectivo === null
+
+  // Bodega de origen/destino por defecto según el área — antes solo se
+  // aplicaba con `fixedProject` (pestaña Logística de ATT/Preventivo); acá
+  // (Inventario → Registro, sin fixedProject) el área recién se conoce
+  // cuando el usuario elige un proyecto o, sin proyecto, el selector de
+  // Área — por eso se recalcula en cada render y se rellenan solo las
+  // líneas que sigan vacías (nunca pisa una bodega ya elegida a mano).
+  const areaEfectiva: 'ATT' | 'OyM' | null = fixedProject?.area ?? proyectoSeleccionado?.area ?? (necesitaArea ? areaSel : null)
+  const defaultBodegaNombre = areaEfectiva ? BODEGA_DEFECTO_POR_AREA[areaEfectiva] : null
+  const defaultBodegaId = defaultBodegaNombre ? bodegas.find((b) => b.nombre === defaultBodegaNombre)?.id ?? '' : ''
+  // Con `fixedProject` el área nunca cambia, pero acá sí (el usuario recién
+  // elige proyecto/área después de que ya se aplicó un primer default para
+  // "sin proyecto") — no alcanza con "rellenar solo lo vacío": si no se
+  // distingue "esto quedó así por el default anterior" de "el usuario lo
+  // eligió a mano", el default viejo se queda pegado y el nuevo nunca entra
+  // (confirmado en el navegador: creaba el proyecto ATT y la bodega seguía
+  // en C132 porque ya se había rellenado con el default de OyM antes de
+  // elegir proyecto). Se guarda cuál fue el último default aplicado y solo
+  // se pisan las líneas que sigan vacías o que tengan exactamente ese valor.
+  const lastDefaultApplied = useRef('')
+  useEffect(() => {
+    const prevDefault = lastDefaultApplied.current
+    if (defaultBodegaId && defaultBodegaId !== prevDefault) {
+      setLineas((prev) => prev.map((l) =>
+        (!l.ubicacionBodegaId || l.ubicacionBodegaId === prevDefault) ? { ...l, ubicacionBodegaId: defaultBodegaId } : l,
+      ))
+      lastDefaultApplied.current = defaultBodegaId
+    }
+  }, [defaultBodegaId])
   const tecnicoOptions = fixedProject
     ? members.map((m) => ({ id: m.id, label: m.nombre?.trim() || m.email || '' }))
     : tecnicos.map((t) => ({ id: t.id, label: t.nombre?.trim() || t.email }))
@@ -281,15 +302,18 @@ export function RegistrarMovimientoForm({ fixedProject, puntos, lockTipoUI, onRe
             {!fixedProject && !esTraslado && (
               <label className="space-y-1 col-span-2">
                 <span className={labelCls}>Proyecto</span>
-                <select value={projectSel} onChange={(e) => setProjectSel(e.target.value)} className={`${inputCls} w-full`}>
-                  <option value="">Elegir proyecto…</option>
-                  {!requiereProyecto && <option value={PREVENTIVA}>🅿️ Salida preventiva (sin proyecto)</option>}
-                  {proyectos.map((p) => (
-                    <option key={p.id} value={p.id}>
-                      [{p.area === 'ATT' ? 'ATT' : 'Preventivo'}] {p.ott || 'Sin código'}
-                    </option>
-                  ))}
-                </select>
+                {!requiereProyecto && (
+                  <button type="button" onClick={() => setProjectSel(projectSel === PREVENTIVA ? '' : PREVENTIVA)}
+                    className={`w-full text-left text-xs px-2 py-1.5 rounded-lg border mb-1 ${projectSel === PREVENTIVA ? 'bg-brand-900/40 border-brand-500 text-brand-300' : 'bg-slate-700 border-slate-600 text-slate-300'}`}>
+                    🅿️ Salida preventiva (sin proyecto)
+                  </button>
+                )}
+                {projectSel !== PREVENTIVA && (
+                  <ProyectoSelect proyectos={proyectos} value={projectSel} onChange={setProjectSel}
+                    puedeCrear={puedeCrearProyecto}
+                    onCreated={(nuevo) => setProyectos((prev) => [...prev, nuevo])}
+                    className="w-full" />
+                )}
               </label>
             )}
             {necesitaArea && (
