@@ -3,7 +3,6 @@ import { useAuth, ROL_LABELS } from '@/lib/auth'
 import type { Rol, Profile } from '@/lib/auth'
 import { adminRepo } from '@/lib/adminRepo'
 import type { ProjectSummary, MemberProfile } from '@/lib/adminRepo'
-import { LpuMapeoSection } from '@/ui/admin/LpuMapeoSection'
 
 const ROLES: Rol[] = ['admin', 'jp', 'tecnico', 'log']
 const AREAS = ['ATT', 'OyM'] as const
@@ -28,7 +27,6 @@ export function AdminScreen() {
       </div>
       <UsersSection />
       <TeamsSection />
-      <LpuMapeoSection />
     </div>
   )
 }

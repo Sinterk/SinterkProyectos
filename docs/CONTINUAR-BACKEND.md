@@ -460,6 +460,9 @@ npm run dev   # sin certs mkcert corre en http://localhost:5173
   2. **Mecánica del cutover**: `main` y `backend-supabase` están totalmente divergidos (`main` sigue siendo la app cliente-only pre-Supabase, commits "v0.52" etc.) — no es un merge normal. Andrés eligió reemplazar `main` directamente (`git push origin backend-supabase:main`), no abrir PR — dispara el deploy automático a GitHub Pages en cuanto se sube.
   - **Verificado**: `tsc --noEmit` limpio; grep de `GUEST_TECNICO`/`guestTecnico`/`signInAsGuestTecnico` en todo `src/` sin resultados tras el cambio.
 
+- **Mapeo LPU movido a Catálogo (01-08-2026, v1.21)**: pedido de Andrés a mitad del cutover — "mueve material lpu y tendido lpu de administración a catálogo". `src/ui/admin/LpuMapeoSection.tsx` (las dos secciones "Material → Código LPU" y "Tendido → Código LPU") se borró; su contenido pasó a `src/modules/inventario/components/Home.tsx` como `LpuMaterialMapEditor`/`LpuTendidoMapEditor`, montadas dentro de `CatalogoTab` debajo de la tabla de SKU. Mismo motivo que el resto del Catálogo (Home.tsx ya es inalcanzable para técnico, no hace falta gateo aparte) y mismo patrón de migración que se usó para `CatalogoMaterialesSection` el 31-07-2026. `AdminScreen.tsx` quedó solo con Usuarios/Equipo.
+  - **Verificado en el navegador con la cuenta jp**: ambas secciones ("Material → Código LPU"/"Tendido → Código LPU") aparecen dentro de Inventario → Catálogo, con el buscador de material funcionando; `/admin` sigue bloqueada para jp (sin cambios, ya lo estaba). `tsc --noEmit` limpio.
+
 ## Verificar conexión (PowerShell)
 ```powershell
 $h = @{ apikey = "sb_publishable_x01p7hsYvNKlWklAQ11H-Q_KPenq-XW" }
