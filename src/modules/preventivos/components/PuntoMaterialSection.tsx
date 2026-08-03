@@ -18,6 +18,10 @@ interface Props {
 
 export function PuntoMaterialSection({ projectId, puntoId }: Props) {
   const session = useAuth((s) => s.session)
+  // El aviso de "sin stock, se registró en negativo" es para que oficina lo
+  // resuelva (ver eventos_inventario) — desde terreno solo se registra lo
+  // instalado, sin mostrar ese manejo.
+  const isTecnico = useAuth((s) => s.profile?.rol === 'tecnico')
   const [materiales, setMateriales] = useState<Material[]>([])
   const [members, setMembers] = useState<MemberProfile[]>([])
   const [filas, setFilas] = useState<ResumenMaterialProyecto[] | null>(null)
@@ -55,7 +59,7 @@ export function PuntoMaterialSection({ projectId, puntoId }: Props) {
       const r = await registrarMovimiento({
         tipoUI: 'instalado', materialId, cantidad: n, projectId, puntoId, tecnicoUserId,
       })
-      if (r.requiereRevision) {
+      if (r.requiereRevision && !isTecnico) {
         setAviso('⚠️ Sin stock suficiente del material en el proyecto ni en el equipo asignado — se registró igual y queda para revisión.')
       }
       setMaterialId('')
