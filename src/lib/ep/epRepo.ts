@@ -26,7 +26,18 @@ export async function getOrCrearEpInforme(projectId: string): Promise<EpInforme>
 
   const { data: creado, error: errCrear } = await supabase.from('ep_informes')
     .insert({ project_id: projectId, zona: 'RM-CENTRO' }).select('*').single()
-  if (errCrear) throw new Error(`ep_informes.crear: ${errCrear.message}`)
+  if (errCrear) {
+    // select-then-insert no es atómico: si esta función se llama dos veces casi
+    // a la vez (ej. doble efecto de React en desarrollo), ambas pueden no
+    // encontrar fila y ambas intentar crearla — la segunda choca contra el
+    // unique(project_id). En vez de fallar, se trae la fila que la otra ya creó.
+    if (errCrear.code === '23505') {
+      const { data: existente, error: errGet2 } = await supabase.from('ep_informes').select('*').eq('project_id', projectId).single()
+      if (errGet2) throw new Error(`ep_informes.crear (tras choque de duplicado): ${errGet2.message}`)
+      return epInformeFromRow(existente as EpInformeRow)
+    }
+    throw new Error(`ep_informes.crear: ${errCrear.message}`)
+  }
   return epInformeFromRow(creado as EpInformeRow)
 }
 
