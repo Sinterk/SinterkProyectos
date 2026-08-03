@@ -4,9 +4,11 @@ export interface MaterialTipo {
   nombre: string
 }
 
-/** Proveedores válidos hoy (lista fija, sin "+" para agregar más — a diferencia de MaterialTipo). */
-export const PROVEEDORES_MATERIAL = ['Entel', 'Everything', 'CLEH'] as const
-export type ProveedorMaterial = typeof PROVEEDORES_MATERIAL[number]
+/** Proveedor — lista abierta (ver proveedores/material_proveedores), mismo patrón que MaterialTipo pero N a N. */
+export interface Proveedor {
+  id: string
+  nombre: string
+}
 
 export interface Material {
   id: string
@@ -28,8 +30,8 @@ export interface Material {
   /** Clasificación del Catálogo de materiales (ferretería/cable ADSS/.../vacío). null = vacío. */
   tipoId: string | null
   tipo: MaterialTipo | null
-  /** Selección múltiple entre PROVEEDORES_MATERIAL. Array vacío = sin proveedor asignado. */
-  proveedores: ProveedorMaterial[]
+  /** Proveedores asignados (N a N vía material_proveedores). Array vacío = sin proveedor asignado. */
+  proveedores: Proveedor[]
 }
 
 export type UbicacionTipo = 'bodega' | 'tecnico'

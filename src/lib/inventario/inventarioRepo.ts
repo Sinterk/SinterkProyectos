@@ -7,7 +7,7 @@
 
 import { supabase } from '../supabaseClient'
 import type {
-  Material, MaterialTipo, ProveedorMaterial, Ubicacion, UbicacionTipo, StockRow, Movimiento,
+  Material, MaterialTipo, Proveedor, Ubicacion, UbicacionTipo, StockRow, Movimiento,
   RegistrarMovimientoInput, ReasignarTransitoInput,
   ResumenMaterialProyecto, TecnicoLedgerRow,
   Conteo, ConteoLinea, EventoInventario, ResolucionTipo, ConsumoArea, ResolverEventoInput, Observacion,
@@ -39,8 +39,10 @@ interface MaterialRow {
   tipo_tendido: string | null
   capacidad: number | null
   tipo_id: string | null
-  proveedores: string[]
   material_tipos: { id: string; nombre: string } | null
+  // Embed a través de la tabla de unión material_proveedores (N a N) —
+  // vuelve como un array de wrappers, uno por fila de la unión.
+  material_proveedores: { proveedores: { id: string; nombre: string } | null }[]
 }
 
 function materialFromRow(m: MaterialRow): Material {
@@ -54,13 +56,15 @@ function materialFromRow(m: MaterialRow): Material {
     capacidad: m.capacidad === null ? null : Number(m.capacidad),
     tipoId: m.tipo_id,
     tipo: m.material_tipos,
-    proveedores: (m.proveedores ?? []) as ProveedorMaterial[],
+    proveedores: (m.material_proveedores ?? []).map((mp) => mp.proveedores).filter((p): p is Proveedor => p !== null),
   }
 }
 
 /** Todos los materiales activos. El filtrado por texto (SKU/descripción/apodo) se hace en el cliente. */
 export async function listMateriales(): Promise<Material[]> {
-  const { data, error } = await supabase.from('materiales').select('*, material_tipos(id, nombre)').eq('activo', true).order('sku')
+  const { data, error } = await supabase.from('materiales')
+    .select('*, material_tipos(id, nombre), material_proveedores(proveedores(id, nombre))')
+    .eq('activo', true).order('sku')
   if (error) throw new Error(`materiales.list: ${error.message}`)
   return (data as MaterialRow[]).map(materialFromRow)
 }
@@ -98,10 +102,20 @@ export async function updateMaterialTipo(materialId: string, tipoId: string | nu
   if (error) throw new Error(`materiales.updateTipo: ${error.message}`)
 }
 
-/** Selección múltiple de proveedores (Entel/Everything/CLEH). */
-export async function updateMaterialProveedores(materialId: string, proveedores: ProveedorMaterial[]): Promise<void> {
-  const { error } = await supabase.from('materiales').update({ proveedores }).eq('id', materialId)
-  if (error) throw new Error(`materiales.updateProveedores: ${error.message}`)
+/**
+ * Reemplaza TODOS los proveedores asignados al material por el set dado
+ * (borra + inserta) — se llama una sola vez al cerrar el selector en la UI,
+ * no por cada clic (ver ProveedoresSelect en Home.tsx: un `UPDATE` por
+ * checkbox marcado dejaba dos escrituras en carrera sobre la misma fila).
+ */
+export async function updateMaterialProveedores(materialId: string, proveedorIds: string[]): Promise<void> {
+  const { error: errDel } = await supabase.from('material_proveedores').delete().eq('material_id', materialId)
+  if (errDel) throw new Error(`material_proveedores.reemplazar (borrar previos): ${errDel.message}`)
+  if (proveedorIds.length > 0) {
+    const { error: errIns } = await supabase.from('material_proveedores')
+      .insert(proveedorIds.map((proveedorId) => ({ material_id: materialId, proveedor_id: proveedorId })))
+    if (errIns) throw new Error(`material_proveedores.reemplazar (insertar): ${errIns.message}`)
+  }
 }
 
 // ---------------------------------------------------------------------------
@@ -118,6 +132,22 @@ export async function crearMaterialTipo(nombre: string): Promise<MaterialTipo> {
   const { data, error } = await supabase.from('material_tipos').insert({ nombre: nombre.trim() }).select('id, nombre').single()
   if (error) throw new Error(`material_tipos.crear: ${error.message}`)
   return data as MaterialTipo
+}
+
+// ---------------------------------------------------------------------------
+// Proveedores (Catálogo) — lista abierta, N a N vía material_proveedores
+// ---------------------------------------------------------------------------
+
+export async function listProveedores(): Promise<Proveedor[]> {
+  const { data, error } = await supabase.from('proveedores').select('id, nombre').order('nombre')
+  if (error) throw new Error(`proveedores.list: ${error.message}`)
+  return data as Proveedor[]
+}
+
+export async function crearProveedor(nombre: string): Promise<Proveedor> {
+  const { data, error } = await supabase.from('proveedores').insert({ nombre: nombre.trim() }).select('id, nombre').single()
+  if (error) throw new Error(`proveedores.crear: ${error.message}`)
+  return data as Proveedor
 }
 
 // ---------------------------------------------------------------------------

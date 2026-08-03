@@ -11,16 +11,16 @@ import { useFileDrop } from '@/ui/useFileDrop'
 import {
   getStock, getTecnicoLedger, listMovimientos, listMateriales, listUbicaciones,
   updateMaterialStockMinimo, updateMaterialComentario,
-  listMaterialTipos, crearMaterialTipo, updateMaterialApodo, updateMaterialTipo, updateMaterialProveedores,
+  listMaterialTipos, crearMaterialTipo, updateMaterialApodo, updateMaterialTipo,
+  listProveedores, crearProveedor, updateMaterialProveedores,
   listConteos, getConteoLineas, abrirConteo, agregarLineaConteo, actualizarLineaConteo, cerrarConteo, descartarConteo,
   listEventosInventario, listEventosPorConteo, resolverEvento, importarFilasSapAConteo,
 } from '@/lib/inventario/inventarioRepo'
 import type { ListMovimientosFilters, ImportarSapResultado } from '@/lib/inventario/inventarioRepo'
 import type {
-  Movimiento, StockRow, TecnicoLedgerRow, Ubicacion, Material, MaterialTipo, ProveedorMaterial,
+  Movimiento, StockRow, TecnicoLedgerRow, Ubicacion, Material, MaterialTipo, Proveedor,
   Conteo, ConteoLinea, EventoInventario, EventoResolucion, ResolucionTipo, ConsumoArea,
 } from '@/lib/inventario/types'
-import { PROVEEDORES_MATERIAL } from '@/lib/inventario/types'
 import { parseArchivoXlsx, parseTextoPegado } from '@/lib/inventario/importarSap'
 import type { FilaImportSap } from '@/lib/inventario/importarSap'
 import { compareSku } from '@/lib/inventario/sku'
@@ -1742,14 +1742,16 @@ const NUEVO_TIPO = '__nuevo__'
 function CatalogoTab() {
   const [materiales, setMateriales] = useState<Material[] | null>(null)
   const [tipos, setTipos] = useState<MaterialTipo[]>([])
+  const [proveedoresCatalogo, setProveedoresCatalogo] = useState<Proveedor[]>([])
   const [error, setError] = useState<string | null>(null)
   const [q, setQ] = useState('')
 
   async function reload() {
     try {
-      const [ms, ts] = await Promise.all([listMateriales(), listMaterialTipos()])
+      const [ms, ts, ps] = await Promise.all([listMateriales(), listMaterialTipos(), listProveedores()])
       setMateriales(ms)
       setTipos(ts)
+      setProveedoresCatalogo(ps)
     } catch (err) {
       setError(err instanceof Error ? err.message : String(err))
     }
@@ -1781,10 +1783,16 @@ function CatalogoTab() {
     }
   }
 
+  async function crearProveedorCatalogo(nombre: string): Promise<Proveedor> {
+    const nuevo = await crearProveedor(nombre)
+    setProveedoresCatalogo((prev) => [...prev, nuevo].sort((a, b) => a.nombre.localeCompare(b.nombre)))
+    return nuevo
+  }
+
   return (
     <div className="space-y-3">
       <p className="text-[11px] text-slate-500 leading-relaxed">
-        Todos los SKU: nombre alternativo (como se conoce en terreno), tipo (los de cable se consideran para el Estado de Pago) y proveedores.
+        Todos los SKU: nombre alternativo (como se conoce en terreno), tipo (los de cable se consideran para el Estado de Pago), mínimo (alerta de stock bajo en Bodega) y proveedores.
       </p>
 
       <input value={q} onChange={(e) => setQ(e.target.value)} placeholder="Buscar por SKU, descripción o nombre alternativo…"
@@ -1803,24 +1811,27 @@ function CatalogoTab() {
                 <th className="px-2 py-1.5">Descripción</th>
                 <th className="px-2 py-1.5">Nombre alternativo</th>
                 <th className="px-2 py-1.5">Tipo</th>
+                <th className="px-2 py-1.5">Mínimo</th>
                 <th className="px-2 py-1.5">Proveedores</th>
               </tr>
             </thead>
             <tbody>
               {filtrados.length === 0 && (
-                <tr><td colSpan={5} className="px-2 py-3 text-center text-slate-500">Sin coincidencias.</td></tr>
+                <tr><td colSpan={6} className="px-2 py-3 text-center text-slate-500">Sin coincidencias.</td></tr>
               )}
               {filtrados.map((m) => (
-                <FilaCatalogoMaterial key={m.id} material={m} tipos={tipos}
+                <FilaCatalogoMaterial key={m.id} material={m} tipos={tipos} proveedoresCatalogo={proveedoresCatalogo}
                   onApodoChange={(apodo) => actualizarLocal(m.id, { apodo })}
+                  onMinimoSaved={reload}
                   onTipoChange={async (tipoId) => {
                     if (tipoId === NUEVO_TIPO) return
                     await updateMaterialTipo(m.id, tipoId || null)
                     actualizarLocal(m.id, { tipoId: tipoId || null, tipo: tipos.find((t) => t.id === tipoId) ?? null })
                   }}
                   onNuevoTipo={(nombre) => crearYAsignarTipo(m.id, nombre)}
+                  onNuevoProveedor={crearProveedorCatalogo}
                   onProveedoresChange={async (proveedores) => {
-                    await updateMaterialProveedores(m.id, proveedores)
+                    await updateMaterialProveedores(m.id, proveedores.map((p) => p.id))
                     actualizarLocal(m.id, { proveedores })
                   }}
                 />
@@ -1833,13 +1844,16 @@ function CatalogoTab() {
   )
 }
 
-function FilaCatalogoMaterial({ material, tipos, onApodoChange, onTipoChange, onNuevoTipo, onProveedoresChange }: {
+function FilaCatalogoMaterial({ material, tipos, proveedoresCatalogo, onApodoChange, onMinimoSaved, onTipoChange, onNuevoTipo, onNuevoProveedor, onProveedoresChange }: {
   material: Material
   tipos: MaterialTipo[]
+  proveedoresCatalogo: Proveedor[]
   onApodoChange: (apodo: string | null) => void
+  onMinimoSaved: () => void
   onTipoChange: (tipoId: string) => void
   onNuevoTipo: (nombre: string) => void
-  onProveedoresChange: (proveedores: ProveedorMaterial[]) => void
+  onNuevoProveedor: (nombre: string) => Promise<Proveedor>
+  onProveedoresChange: (proveedores: Proveedor[]) => void
 }) {
   const [apodo, setApodo] = useState(material.apodo ?? '')
   const [creandoTipo, setCreandoTipo] = useState(false)
@@ -1896,14 +1910,25 @@ function FilaCatalogoMaterial({ material, tipos, onApodoChange, onTipoChange, on
           </select>
         )}
       </td>
+      <td className="px-2 py-1.5 whitespace-nowrap">
+        {/* Mismo umbral que Bodega (stock_minimo) — editarlo acá alimenta la
+            misma alerta roja/ámbar de esa pestaña, no es un campo aparte. */}
+        <UmbralEditor materialId={material.id} value={material.stockMinimo} onSaved={onMinimoSaved} />
+      </td>
       <td className="px-2 py-1.5">
-        <ProveedoresSelect value={material.proveedores} onChange={onProveedoresChange} />
+        <ProveedoresSelect value={material.proveedores} catalogo={proveedoresCatalogo}
+          onChange={onProveedoresChange} onNuevoProveedor={onNuevoProveedor} />
       </td>
     </tr>
   )
 }
 
-function ProveedoresSelect({ value, onChange }: { value: ProveedorMaterial[]; onChange: (v: ProveedorMaterial[]) => void }) {
+function ProveedoresSelect({ value, catalogo, onChange, onNuevoProveedor }: {
+  value: Proveedor[]
+  catalogo: Proveedor[]
+  onChange: (proveedores: Proveedor[]) => void
+  onNuevoProveedor: (nombre: string) => Promise<Proveedor>
+}) {
   const [open, setOpen] = useState(false)
   const [pos, setPos] = useState<{ top: number; left: number } | null>(null)
   // Los toggles se acumulan en estado local MIENTRAS el popover está abierto
@@ -1915,11 +1940,13 @@ function ProveedoresSelect({ value, onChange }: { value: ProveedorMaterial[]; on
   // guardado uno, en distinto orden cada vez). Una sola escritura al cerrar
   // elimina la carrera de raíz en vez de solo evitar el closure viejo.
   const [local, setLocal] = useState(value)
+  const [creando, setCreando] = useState(false)
+  const [nombreNuevo, setNombreNuevo] = useState('')
 
   function abrir(e: React.MouseEvent<HTMLButtonElement>) {
     if (!open) {
       const r = e.currentTarget.getBoundingClientRect()
-      setPos({ top: r.bottom + 4, left: Math.min(r.left, window.innerWidth - 200) })
+      setPos({ top: r.bottom + 4, left: Math.min(r.left, window.innerWidth - 220) })
       setLocal(value)
     }
     setOpen((v) => !v)
@@ -1927,30 +1954,56 @@ function ProveedoresSelect({ value, onChange }: { value: ProveedorMaterial[]; on
 
   function cerrarYGuardar() {
     setOpen(false)
-    if (local.length !== value.length || local.some((p) => !value.includes(p))) onChange(local)
+    setCreando(false)
+    const cambio = local.length !== value.length || local.some((p) => !value.some((v) => v.id === p.id))
+    if (cambio) onChange(local)
   }
 
-  function toggleProveedor(p: ProveedorMaterial) {
-    setLocal((prev) => (prev.includes(p) ? prev.filter((v) => v !== p) : [...prev, p]))
+  function toggleProveedor(p: Proveedor) {
+    setLocal((prev) => (prev.some((v) => v.id === p.id) ? prev.filter((v) => v.id !== p.id) : [...prev, p]))
+  }
+
+  async function confirmarNuevo() {
+    const nombre = nombreNuevo.trim()
+    if (!nombre) return
+    const nuevo = await onNuevoProveedor(nombre)
+    setLocal((prev) => [...prev, nuevo])
+    setNombreNuevo('')
+    setCreando(false)
   }
 
   return (
     <div>
       <button type="button" onClick={abrir}
         className="w-full text-left bg-slate-700 text-white rounded px-1.5 py-1 border border-slate-600 focus:border-brand-500 focus:outline-none truncate">
-        {value.length > 0 ? value.join(', ') : <span className="text-slate-500">—</span>}
+        {value.length > 0 ? value.map((p) => p.nombre).join(', ') : <span className="text-slate-500">—</span>}
       </button>
       {open && pos && createPortal(
         <>
           <div className="fixed inset-0 z-40" onClick={cerrarYGuardar} />
           <div style={{ top: pos.top, left: pos.left }}
-            className="fixed z-50 w-44 bg-slate-800 border border-slate-600 rounded-lg shadow-lg p-2 space-y-1">
-            {PROVEEDORES_MATERIAL.map((p) => (
-              <label key={p} className="flex items-center gap-2 text-xs text-slate-200 px-1 py-1 rounded hover:bg-slate-700 cursor-pointer">
-                <input type="checkbox" checked={local.includes(p)} onChange={() => toggleProveedor(p)} />
-                {p}
+            className="fixed z-50 w-48 bg-slate-800 border border-slate-600 rounded-lg shadow-lg p-2 space-y-1">
+            {catalogo.map((p) => (
+              <label key={p.id} className="flex items-center gap-2 text-xs text-slate-200 px-1 py-1 rounded hover:bg-slate-700 cursor-pointer">
+                <input type="checkbox" checked={local.some((v) => v.id === p.id)} onChange={() => toggleProveedor(p)} />
+                {p.nombre}
               </label>
             ))}
+            <div className="border-t border-slate-700 pt-1 mt-1">
+              {creando ? (
+                <div className="flex gap-1">
+                  <input autoFocus value={nombreNuevo} onChange={(e) => setNombreNuevo(e.target.value)}
+                    onKeyDown={(e) => { if (e.key === 'Enter') confirmarNuevo(); if (e.key === 'Escape') setCreando(false) }}
+                    placeholder="Nombre del proveedor…" className="w-32 bg-slate-700 text-white text-xs rounded px-1.5 py-1 border border-slate-600 focus:border-brand-500 focus:outline-none" />
+                  <button type="button" onClick={confirmarNuevo} className="text-brand-400 hover:text-brand-300 text-xs">✓</button>
+                  <button type="button" onClick={() => setCreando(false)} className="text-slate-500 hover:text-slate-300 text-xs">✕</button>
+                </div>
+              ) : (
+                <button type="button" onClick={() => setCreando(true)} className="text-xs text-brand-400 hover:text-brand-300">
+                  + Nuevo proveedor…
+                </button>
+              )}
+            </div>
           </div>
         </>,
         document.body,
