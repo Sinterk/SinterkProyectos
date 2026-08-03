@@ -142,10 +142,16 @@ export async function calcularAvanceEp(
     }
   }
 
-  // (b) metros tendidos — solo si el proyecto instaló exactamente un material de cable
+  // (b) metros tendidos — solo si el proyecto instaló exactamente un material
+  // de cable. "Es cable" se decide por el Tipo del Catálogo de materiales
+  // (cualquier tipo cuyo nombre empiece con "Cable " — ver
+  // supabase/migrations/0044_catalogo_materiales.sql), no por tipo_tendido:
+  // ese campo sigue siendo la clave de búsqueda en lpu_tendido_map (se
+  // configura aparte, en Administración → Mapeo LPU → Tendido → Código LPU),
+  // pero ya no es el proxy para "esto es cable".
   const materialesCable = [...new Set(instalados.map((r) => r.materialId))]
     .map((id) => materialPorId.get(id))
-    .filter((m): m is NonNullable<typeof m> => !!m && m.tipoTendido !== null)
+    .filter((m): m is NonNullable<typeof m> => !!m && !!m.tipo && m.tipo.nombre.toLowerCase().startsWith('cable '))
   if (materialesCable.length === 1) {
     const cable = materialesCable[0]
     const tendidos = (await listLpuTendidoMap()).filter((t) =>

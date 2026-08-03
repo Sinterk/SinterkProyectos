@@ -4,6 +4,7 @@ import type { Rol, Profile } from '@/lib/auth'
 import { adminRepo } from '@/lib/adminRepo'
 import type { ProjectSummary, MemberProfile } from '@/lib/adminRepo'
 import { LpuMapeoSection } from '@/ui/admin/LpuMapeoSection'
+import { CatalogoMaterialesSection } from '@/ui/admin/CatalogoMaterialesSection'
 
 const ROLES: Rol[] = ['admin', 'jp', 'tecnico', 'log']
 const AREAS = ['ATT', 'OyM'] as const
@@ -28,6 +29,7 @@ export function AdminScreen() {
       </div>
       <UsersSection />
       <TeamsSection />
+      <CatalogoMaterialesSection />
       <LpuMapeoSection />
     </div>
   )

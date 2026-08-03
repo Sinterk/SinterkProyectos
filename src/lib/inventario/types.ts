@@ -1,3 +1,13 @@
+/** Tipo de material — lista abierta (ver material_tipos), el admin agrega nuevos desde el Catálogo. */
+export interface MaterialTipo {
+  id: string
+  nombre: string
+}
+
+/** Proveedores válidos hoy (lista fija, sin "+" para agregar más — a diferencia de MaterialTipo). */
+export const PROVEEDORES_MATERIAL = ['Entel', 'Everything', 'CLEH'] as const
+export type ProveedorMaterial = typeof PROVEEDORES_MATERIAL[number]
+
 export interface Material {
   id: string
   sku: string
@@ -15,6 +25,11 @@ export interface Material {
   tipoTendido: string | null
   /** Solo SKUs de cable: capacidad (ej. n° de hilos) para elegir el código LPU de tendido. null = no aplica/no configurado. */
   capacidad: number | null
+  /** Clasificación del Catálogo de materiales (ferretería/cable ADSS/.../vacío). null = vacío. */
+  tipoId: string | null
+  tipo: MaterialTipo | null
+  /** Selección múltiple entre PROVEEDORES_MATERIAL. Array vacío = sin proveedor asignado. */
+  proveedores: ProveedorMaterial[]
 }
 
 export type UbicacionTipo = 'bodega' | 'tecnico'

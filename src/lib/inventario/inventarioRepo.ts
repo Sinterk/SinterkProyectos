@@ -7,7 +7,7 @@
 
 import { supabase } from '../supabaseClient'
 import type {
-  Material, Ubicacion, UbicacionTipo, StockRow, Movimiento,
+  Material, MaterialTipo, ProveedorMaterial, Ubicacion, UbicacionTipo, StockRow, Movimiento,
   RegistrarMovimientoInput, ReasignarTransitoInput,
   ResumenMaterialProyecto, TecnicoLedgerRow,
   Conteo, ConteoLinea, EventoInventario, ResolucionTipo, ConsumoArea, ResolverEventoInput, Observacion,
@@ -38,6 +38,9 @@ interface MaterialRow {
   comentario: string | null
   tipo_tendido: string | null
   capacidad: number | null
+  tipo_id: string | null
+  proveedores: string[]
+  material_tipos: { id: string; nombre: string } | null
 }
 
 function materialFromRow(m: MaterialRow): Material {
@@ -49,12 +52,15 @@ function materialFromRow(m: MaterialRow): Material {
     comentario: m.comentario,
     tipoTendido: m.tipo_tendido,
     capacidad: m.capacidad === null ? null : Number(m.capacidad),
+    tipoId: m.tipo_id,
+    tipo: m.material_tipos,
+    proveedores: (m.proveedores ?? []) as ProveedorMaterial[],
   }
 }
 
 /** Todos los materiales activos. El filtrado por texto (SKU/descripción/apodo) se hace en el cliente. */
 export async function listMateriales(): Promise<Material[]> {
-  const { data, error } = await supabase.from('materiales').select('*').eq('activo', true).order('sku')
+  const { data, error } = await supabase.from('materiales').select('*, material_tipos(id, nombre)').eq('activo', true).order('sku')
   if (error) throw new Error(`materiales.list: ${error.message}`)
   return (data as MaterialRow[]).map(materialFromRow)
 }
@@ -77,6 +83,41 @@ export async function updateMaterialTendido(materialId: string, valores: { tipoT
   const { error } = await supabase.from('materiales')
     .update({ tipo_tendido: valores.tipoTendido, capacidad: valores.capacidad }).eq('id', materialId)
   if (error) throw new Error(`materiales.updateTendido: ${error.message}`)
+}
+
+/** Nombre alternativo ("apodo") — el nombre con el que se conoce el material en terreno (ej. "CMIC" = ODF 12 fibras). Cadena vacía o null para quitarlo. */
+export async function updateMaterialApodo(materialId: string, apodo: string | null): Promise<void> {
+  const valor = apodo?.trim() || null
+  const { error } = await supabase.from('materiales').update({ apodo: valor }).eq('id', materialId)
+  if (error) throw new Error(`materiales.updateApodo: ${error.message}`)
+}
+
+/** Clasificación del Catálogo de materiales — null = "vacío". */
+export async function updateMaterialTipo(materialId: string, tipoId: string | null): Promise<void> {
+  const { error } = await supabase.from('materiales').update({ tipo_id: tipoId }).eq('id', materialId)
+  if (error) throw new Error(`materiales.updateTipo: ${error.message}`)
+}
+
+/** Selección múltiple de proveedores (Entel/Everything/CLEH). */
+export async function updateMaterialProveedores(materialId: string, proveedores: ProveedorMaterial[]): Promise<void> {
+  const { error } = await supabase.from('materiales').update({ proveedores }).eq('id', materialId)
+  if (error) throw new Error(`materiales.updateProveedores: ${error.message}`)
+}
+
+// ---------------------------------------------------------------------------
+// Tipos de material (Catálogo) — lista abierta, ver material_tipos
+// ---------------------------------------------------------------------------
+
+export async function listMaterialTipos(): Promise<MaterialTipo[]> {
+  const { data, error } = await supabase.from('material_tipos').select('id, nombre').order('nombre')
+  if (error) throw new Error(`material_tipos.list: ${error.message}`)
+  return data as MaterialTipo[]
+}
+
+export async function crearMaterialTipo(nombre: string): Promise<MaterialTipo> {
+  const { data, error } = await supabase.from('material_tipos').insert({ nombre: nombre.trim() }).select('id, nombre').single()
+  if (error) throw new Error(`material_tipos.crear: ${error.message}`)
+  return data as MaterialTipo
 }
 
 // ---------------------------------------------------------------------------
