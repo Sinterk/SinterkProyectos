@@ -93,7 +93,7 @@ export async function buildClosedAttZip(
     }
 
     folder.file('datos.json', JSON.stringify({
-      version: 1, app: 'TelecomCatalog', exportedAt: new Date().toISOString(),
+      version: 1, app: 'SinterkProyectos', exportedAt: new Date().toISOString(),
       informe: {
         id: hydrated.id, ott: hydrated.ott, nombreProyecto: hydrated.nombreProyecto,
         tipoProyecto: hydrated.tipoProyecto, comuna: hydrated.comuna, region: hydrated.region,

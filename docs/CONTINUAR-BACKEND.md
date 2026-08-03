@@ -3,8 +3,8 @@
 > Documento de retomada. Estado al pausar: rama `backend-supabase`, **sin desplegar**.
 
 ## Contexto del proyecto
-- **TelecomCatalog**: PWA React 18 + Vite + TS + Tailwind + Zustand + idb.
-- Repo `github.com/Sinterk/TelecomCatalog`. Deploy: push a `main` → `.github/workflows/deploy.yml` → GitHub Pages (`https://sinterk.github.io/TelecomCatalog/`). Versión visible `vX.YY` en el header (`APP_VERSION` en `vite.config.ts`).
+- **SinterkProyectos** (nombre oficial desde v1.11 — antes "TelecomCatalog", placeholder): PWA React 18 + Vite + TS + Tailwind + Zustand + idb.
+- Repo `github.com/Sinterk/TelecomCatalog` — **pendiente de renombrar a `SinterkProyectos`** en GitHub (Settings → Repository name; el código ya usa el nombre nuevo en título/manifest/login/header, solo falta el repo). Deploy: push a `main` → `.github/workflows/deploy.yml` → GitHub Pages (URL cambia a `https://sinterk.github.io/SinterkProyectos/` una vez renombrado). Versión visible `vX.YY` en el header (`APP_VERSION` en `vite.config.ts`).
 - Módulos (registry pattern): `att` (informes OTT/ATT) y `preventivos`. Generadores de informe: `src/modules/att/utils/generarInformeAtt.ts` (DOCX) y `generarPdfAtt.ts` (PDF con jsPDF lazy-loaded).
 
 ## Objetivo: pasar de cliente-only a backend Supabase

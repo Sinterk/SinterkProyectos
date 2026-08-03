@@ -62,7 +62,7 @@ export function ImportZip({ onImported }: Props) {
     if ('showOpenFilePicker' in window) {
       try {
         const [handle] = await (window as any).showOpenFilePicker({
-          types: [{ description: 'ZIP de TelecomCatalog', accept: { 'application/zip': ['.zip'] } }],
+          types: [{ description: 'ZIP de SinterkProyectos', accept: { 'application/zip': ['.zip'] } }],
           startIn: 'downloads',
           multiple: false,
         })

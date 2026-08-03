@@ -65,7 +65,7 @@ export function LoginScreen() {
         {/* Logo / branding */}
         <div className="text-center mb-8">
           <div className="text-6xl mb-4">📡</div>
-          <h1 className="text-2xl font-bold text-white tracking-tight">TelecomCatalog</h1>
+          <h1 className="text-2xl font-bold text-white tracking-tight">SinterkProyectos</h1>
           <p className="text-slate-400 text-sm mt-2">Gestión de proyectos de telecomunicaciones</p>
         </div>
 

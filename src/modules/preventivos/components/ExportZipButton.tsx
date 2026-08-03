@@ -27,7 +27,7 @@ async function buildZip(preventivo: Preventivo): Promise<{ blob: Blob; fileName:
   }
 
   zip.file('telecom_v1.json', JSON.stringify({
-    version: 1, app: 'TelecomCatalog', exportedAt: new Date().toISOString(),
+    version: 1, app: 'SinterkProyectos', exportedAt: new Date().toISOString(),
     levantamiento: {
       id: preventivo.id, createdAt: preventivo.createdAt, updatedAt: preventivo.updatedAt,
       cuadrante: {

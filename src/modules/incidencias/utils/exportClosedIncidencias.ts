@@ -59,7 +59,7 @@ export async function buildClosedIncidenciasZip(
     await addFotosToZip(folder.folder('fotos')!, hydrated)
 
     folder.file('datos.json', JSON.stringify({
-      version: 1, app: 'TelecomCatalog', exportedAt: new Date().toISOString(),
+      version: 1, app: 'SinterkProyectos', exportedAt: new Date().toISOString(),
       incidencia: {
         id: hydrated.id, codigo: hydrated.codigo, ingeniero: hydrated.ingeniero,
         direccion: hydrated.direccion, fechaCierre: hydrated.fechaCierre,

@@ -100,7 +100,7 @@ export async function buildClosedPreventivosZip(
     }
 
     folder.file('datos.json', JSON.stringify({
-      version: 1, app: 'TelecomCatalog', exportedAt: new Date().toISOString(),
+      version: 1, app: 'SinterkProyectos', exportedAt: new Date().toISOString(),
       levantamiento: {
         id: hydrated.id, createdAt: hydrated.createdAt, fechaCierre: hydrated.fechaCierre,
         cuadrante: { ...hydrated.cuadrante, fotoPlano: undefined },

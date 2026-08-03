@@ -17,7 +17,7 @@ const https = loadCerts()
 
 // Versión visible en la UI. Súbela en cada deploy para verificar (junto al
 // timestamp de build) que el service worker realmente cargó el bundle nuevo.
-const APP_VERSION = 'v1.10'
+const APP_VERSION = 'v1.11'
 
 export default defineConfig({
   base: './',
@@ -32,8 +32,8 @@ export default defineConfig({
       injectRegister: 'auto',
       includeAssets: ['icons/icon-192.png', 'icons/icon-512.png'],
       manifest: {
-        name: 'TelecomCatalog',
-        short_name: 'TelecomCat',
+        name: 'SinterkProyectos',
+        short_name: 'SinterkProy',
         description: 'Catálogo fotográfico de proyectos de telecomunicaciones',
         theme_color: '#0f172a',
         background_color: '#0f172a',
