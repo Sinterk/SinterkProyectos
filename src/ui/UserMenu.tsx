@@ -1,9 +1,9 @@
 import { useEffect, useRef, useState } from 'react'
 import { Link } from 'react-router-dom'
-import { useAuth, guestPassword, ROL_LABELS } from '@/lib/auth'
+import { useAuth, guestPassword, guestTecnicoPassword, ROL_LABELS } from '@/lib/auth'
 
 export function UserMenu() {
-  const { session, profile, isGuest, changePassword, signOut } = useAuth()
+  const { session, profile, isGuest, guestKind, changePassword, signOut } = useAuth()
   const [open, setOpen] = useState(false)
   const ref = useRef<HTMLDivElement>(null)
 
@@ -21,7 +21,7 @@ export function UserMenu() {
 
   const email = profile?.email ?? session.user.email ?? '—'
   const rolLabel = profile ? ROL_LABELS[profile.rol] : '—'
-  const guestLabel = 'Invitado'
+  const guestLabel = guestKind === 'tecnico' ? 'Invitado técnico' : 'Invitado'
   const nombre = profile?.nombre?.trim() || (isGuest ? guestLabel : email)
 
   return (
@@ -67,7 +67,7 @@ export function UserMenu() {
           </Link>
 
           {isGuest ? (
-            <GuestPasswordRow password={guestPassword} />
+            <GuestPasswordRow password={guestKind === 'tecnico' ? guestTecnicoPassword : guestPassword} />
           ) : (
             <ChangePasswordRow changePassword={changePassword} />
           )}

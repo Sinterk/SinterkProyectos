@@ -135,19 +135,6 @@ delete from public.materiales  where id in (select id from _t_materiales);
 delete from public.ubicaciones where id in (select id from _t_ubicaciones);
 
 -- ----------------------------------------------------------------------
--- 11. Datos de prueba de features agregadas DESPUÉS de que se escribió este
---     script (Sugerencias, Catálogo de materiales) — agregado 01-08-2026.
--- ----------------------------------------------------------------------
--- Sugerencia de prueba enviada al verificar la función (el cuerpo lo dice
--- explícitamente: "se puede borrar").
-delete from public.sugerencias
-where cuerpo ilike '%verificación de la función de sugerencias%';
-
--- Proveedor de prueba creado al verificar "+ Nuevo proveedor…" en Catálogo
--- (cascada sola hacia material_proveedores vía on delete cascade).
-delete from public.proveedores where nombre = 'PruebaProveedorBorrar';
-
--- ----------------------------------------------------------------------
 -- 0-bis. Verificación posterior — debería dar 0 en todo
 -- ----------------------------------------------------------------------
 select 'quedan proyectos de prueba' as detalle, count(*) from public.projects
@@ -156,10 +143,6 @@ select 'quedan materiales de prueba' as detalle, count(*) from public.materiales
   where sku in ('999901','999902','999903','999904','999905');
 select 'queda la bodega de prueba' as detalle, count(*) from public.ubicaciones
   where nombre ilike 'TEST-IMPORT-VELOCIDAD';
-select 'queda la sugerencia de prueba' as detalle, count(*) from public.sugerencias
-  where cuerpo ilike '%verificación de la función de sugerencias%';
-select 'queda el proveedor de prueba' as detalle, count(*) from public.proveedores
-  where nombre = 'PruebaProveedorBorrar';
 
 commit;
 -- Si algo se ve mal en la verificación posterior, correr "rollback;" en vez
@@ -188,14 +171,12 @@ commit;
 --   where user_id = (select id from public.profiles where email = 'iperez@sinterk.cl');
 
 -- ============================================================================
--- 12. Pasos finales que NO son SQL:
---   a) ✅ HECHO (01-08-2026, antes del cutover): se sacó el flujo de invitado
---      técnico del código — GUEST_TECNICO_*/botón/GuestKind en
---      src/lib/auth.ts, src/ui/LoginScreen.tsx, src/ui/UserMenu.tsx, y las
---      vars correspondientes en .env local. El botón "Continuar como
---      invitado (técnico)" ya no existe.
---   b) Pendiente: Dashboard de Supabase → Authentication → Users → borrar
---      iperez@sinterk.cl (cascada sola hacia public.profiles). No bloqueaba
---      el cutover — el código ya no ofrece esa forma de entrar aunque la
---      cuenta siga existiendo en Supabase.
+-- 12. Pasos finales que NO son SQL (hacer en este orden, después de lo anterior):
+--   a) Dashboard de Supabase → Authentication → Users → borrar
+--      iperez@sinterk.cl (esto cascada solo hacia public.profiles).
+--   b) En el repo: sacar el flujo de invitado técnico —
+--      GUEST_TECNICO_* / botón / GuestKind en src/lib/auth.ts,
+--      src/ui/LoginScreen.tsx, src/ui/UserMenu.tsx — y las variables
+--      correspondientes en .env.
+--   c) Recién después de (a) y (b): cutover a `main`.
 -- ============================================================================
