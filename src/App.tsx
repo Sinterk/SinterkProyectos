@@ -8,6 +8,7 @@ import { InventarioTecnicoScreen } from '@/ui/InventarioTecnicoScreen'
 import { LoginScreen } from '@/ui/LoginScreen'
 import { AdminScreen } from '@/ui/AdminScreen'
 import { KpiScreen } from '@/ui/kpi/KpiScreen'
+import { SugerenciasScreen } from '@/ui/SugerenciasScreen'
 import { useAuth } from '@/lib/auth'
 
 import '@/modules/preventivos'
@@ -62,6 +63,7 @@ export function App() {
         <Route path="/" element={<Home />} />
         <Route path="/admin" element={<AdminScreen />} />
         <Route path="/kpi" element={<KpiScreen />} />
+        <Route path="/sugerencias" element={<SugerenciasScreen />} />
         {isTecnico && <Route path="/mi-inventario" element={<InventarioTecnicoScreen />} />}
         {moduleRoutes.map((route) => {
           const Component = route.component

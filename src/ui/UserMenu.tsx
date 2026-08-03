@@ -61,6 +61,11 @@ export function UserMenu() {
             </Link>
           )}
 
+          <Link to="/sugerencias" onClick={() => setOpen(false)}
+            className="block px-4 py-3 text-sm text-brand-400 hover:bg-slate-700/60 border-b border-slate-700 transition-colors">
+            💡 Sugerencias de mejora
+          </Link>
+
           {isGuest ? (
             <GuestPasswordRow password={guestKind === 'tecnico' ? guestTecnicoPassword : guestPassword} />
           ) : (
