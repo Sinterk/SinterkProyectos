@@ -41,35 +41,24 @@ export const guestEnabled = !!GUEST_EMAIL && !!GUEST_PASSWORD
  */
 export const guestPassword = GUEST_PASSWORD
 
-// Segunda cuenta compartida, rol técnico — SOLO para probar el flujo con ese rol
-// mientras no existen técnicos reales. TEMPORAL: eliminar (código + credenciales
-// + cuenta en Supabase) junto con el resto de datos de prueba antes del cutover.
-const GUEST_TECNICO_EMAIL = (import.meta.env.VITE_GUEST_TECNICO_EMAIL ?? '').trim()
-const GUEST_TECNICO_PASSWORD = import.meta.env.VITE_GUEST_TECNICO_PASSWORD ?? ''
-
-export const guestTecnicoEnabled = !!GUEST_TECNICO_EMAIL && !!GUEST_TECNICO_PASSWORD
-export const guestTecnicoPassword = GUEST_TECNICO_PASSWORD
-
-export type GuestKind = 'jp' | 'tecnico' | null
+export type GuestKind = 'jp' | null
 
 function computeGuestKind(session: Session | null): GuestKind {
   const email = session?.user.email?.toLowerCase()
   if (!email) return null
   if (GUEST_EMAIL && email === GUEST_EMAIL.toLowerCase()) return 'jp'
-  if (GUEST_TECNICO_EMAIL && email === GUEST_TECNICO_EMAIL.toLowerCase()) return 'tecnico'
   return null
 }
 
 interface AuthState {
   session: Session | null
   profile: Profile | null
-  isGuest: boolean          // sesión abierta con alguna cuenta compartida de invitado (jp o técnico)
-  guestKind: GuestKind      // cuál de las dos cuentas de invitado, si aplica
+  isGuest: boolean          // sesión abierta con la cuenta compartida de invitado (jp)
+  guestKind: GuestKind
   loading: boolean          // true mientras se resuelve la sesión inicial
   init: () => void
   signIn: (email: string, password: string) => Promise<{ error?: string }>
   signInAsGuest: () => Promise<{ error?: string }>
-  signInAsGuestTecnico: () => Promise<{ error?: string }>
   changePassword: (current: string, next: string) => Promise<{ error?: string }>
   signOut: () => Promise<void>
 }
@@ -127,15 +116,6 @@ export const useAuth = create<AuthState>((set, get) => ({
     const { error } = await supabase.auth.signInWithPassword({
       email: GUEST_EMAIL,
       password: GUEST_PASSWORD,
-    })
-    return { error: error?.message }
-  },
-
-  signInAsGuestTecnico: async () => {
-    if (!guestTecnicoEnabled) return { error: 'El modo invitado técnico no está configurado.' }
-    const { error } = await supabase.auth.signInWithPassword({
-      email: GUEST_TECNICO_EMAIL,
-      password: GUEST_TECNICO_PASSWORD,
     })
     return { error: error?.message }
   },

@@ -1,16 +1,14 @@
 import { useState } from 'react'
-import { useAuth, guestEnabled, guestTecnicoEnabled } from '@/lib/auth'
+import { useAuth, guestEnabled } from '@/lib/auth'
 
 export function LoginScreen() {
   const signIn = useAuth((s) => s.signIn)
   const signInAsGuest = useAuth((s) => s.signInAsGuest)
-  const signInAsGuestTecnico = useAuth((s) => s.signInAsGuestTecnico)
   const [email, setEmail] = useState('')
   const [password, setPassword] = useState('')
   const [error, setError] = useState<string | null>(null)
   const [busy, setBusy] = useState(false)
   const [guestBusy, setGuestBusy] = useState(false)
-  const [guestTecnicoBusy, setGuestTecnicoBusy] = useState(false)
 
   async function handleSubmit(e: React.FormEvent) {
     e.preventDefault()
@@ -41,21 +39,6 @@ export function LoginScreen() {
           : error,
       )
       setGuestBusy(false)
-    }
-  }
-
-  async function handleGuestTecnico() {
-    if (guestTecnicoBusy) return
-    setError(null)
-    setGuestTecnicoBusy(true)
-    const { error } = await signInAsGuestTecnico()
-    if (error) {
-      setError(
-        error.toLowerCase().includes('invalid')
-          ? 'La cuenta de invitado técnico no está disponible. Avisa al administrador.'
-          : error,
-      )
-      setGuestTecnicoBusy(false)
     }
   }
 
@@ -101,42 +84,30 @@ export function LoginScreen() {
 
           <button
             type="submit"
-            disabled={busy || guestBusy || guestTecnicoBusy || !email || !password}
+            disabled={busy || guestBusy || !email || !password}
             className="w-full py-2.5 rounded-xl bg-brand-600 hover:bg-brand-700 text-white font-semibold text-sm transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
           >
             {busy ? 'Ingresando…' : 'Ingresar'}
           </button>
         </form>
 
-        {(guestEnabled || guestTecnicoEnabled) && (
+        {guestEnabled && (
           <div className="mt-4">
             <div className="flex items-center gap-3 text-[11px] text-slate-600">
               <span className="h-px flex-1 bg-slate-700" />
               o
               <span className="h-px flex-1 bg-slate-700" />
             </div>
-            {guestEnabled && (
-              <button
-                type="button"
-                onClick={handleGuest}
-                disabled={busy || guestBusy || guestTecnicoBusy}
-                className="mt-4 w-full py-2.5 rounded-xl border border-slate-600 hover:border-slate-500 hover:bg-slate-800 text-slate-200 font-medium text-sm transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
-              >
-                {guestBusy ? 'Entrando…' : 'Continuar como invitado'}
-              </button>
-            )}
-            {guestTecnicoEnabled && (
-              <button
-                type="button"
-                onClick={handleGuestTecnico}
-                disabled={busy || guestBusy || guestTecnicoBusy}
-                className="mt-2 w-full py-2.5 rounded-xl border border-slate-600 hover:border-slate-500 hover:bg-slate-800 text-slate-200 font-medium text-sm transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
-              >
-                {guestTecnicoBusy ? 'Entrando…' : 'Continuar como invitado (técnico)'}
-              </button>
-            )}
+            <button
+              type="button"
+              onClick={handleGuest}
+              disabled={busy || guestBusy}
+              className="mt-4 w-full py-2.5 rounded-xl border border-slate-600 hover:border-slate-500 hover:bg-slate-800 text-slate-200 font-medium text-sm transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
+            >
+              {guestBusy ? 'Entrando…' : 'Continuar como invitado'}
+            </button>
             <p className="text-center text-[11px] text-slate-600 mt-2">
-              Cuentas compartidas temporales para trabajar sin usuario propio.
+              Cuenta compartida temporal para trabajar sin usuario propio.
             </p>
           </div>
         )}
