@@ -1,11 +1,21 @@
 # Continuar — Migración a backend Supabase
 
-> Documento de retomada. Estado al pausar: rama `backend-supabase`, **sin desplegar**.
+> Documento de retomada — LEER ESTO PRIMERO si se retoma en otra máquina o
+> sesión nueva. Última actualización: 01-08-2026.
+
+## ⚡ Estado ahora mismo (01-08-2026)
+- **Ya en producción.** `main` fue reemplazado por completo (`git push origin backend-supabase:main --force-with-lease`) — ya NO es la app vieja cliente-only, es esta reescritura con Supabase. Deploy automático vía `.github/workflows/deploy.yml` a GitHub Pages en cada push a `main`, confirmado exitoso (run #75).
+- **Ramas**: `main` = `backend-supabase` (mismo commit, `4904358` al momento de escribir esto) — limpias, SIN el invitado técnico. `prueba` (commit `f01abed`) es una rama aparte, creada solo para tener el botón "Continuar como invitado (técnico)" disponible al probar — **nunca mergear `prueba` a `main`/`backend-supabase` sin volver a sacar ese revert**, o el invitado técnico volvería a producción.
+- **Migraciones**: todas las de `supabase/migrations/` hasta `0046_projects_client_local_id.sql` están CORRIDAS y verificadas (Andrés confirmó cada una). No hay ninguna pendiente de correr a esta fecha.
+- **Pendiente, explícitamente pospuesto por Andrés** ("ignoremos por ahora datos de prueba"): correr `scripts/limpieza-datos-prueba.sql` contra Supabase — sigue con datos de prueba en producción (proyectos `_verify_*`/`TEST-*`, materiales `999901-905`, etc.). No bloquea nada, es cuando él decida.
+- **Pendiente, no bloqueante**: borrar la cuenta `iperez@sinterk.cl` en el dashboard de Supabase (Authentication → Users) — se dejó a propósito viva porque la rama `prueba` la sigue usando para pruebas.
+- **`.env` local NO se versiona (gitignored)** — en esta máquina tiene las 4 vars (`VITE_SUPABASE_URL`, `VITE_SUPABASE_ANON_KEY`, `VITE_GUEST_EMAIL`/`PASSWORD`, `VITE_GUEST_TECNICO_EMAIL`/`PASSWORD`). **En otra máquina hay que recrear este archivo a mano** — los nombres de variable están en `src/lib/auth.ts`; los valores (contraseñas de las cuentas invitado) NO están en ningún archivo de este repo a propósito (el repo es público) — hay que traerlos aparte (Andrés los tiene). Sin `.env`, la app corre igual pero sin botones de invitado (`guestEnabled`/`guestTecnicoEnabled` quedan en `false`).
+- **Para clonar en otra PC**: `git clone` (o `git fetch` + `git checkout main` si ya estaba clonado — ojo, si el `main` local es viejo hay que `git branch -f main origin/main` para que apunte a lo nuevo, exactamente el problema que se encontró y corrigió hoy en esta máquina), `npm install`, crear `.env` como arriba, `npm run dev`.
 
 ## Contexto del proyecto
 - **SinterkProyectos** (nombre oficial desde v1.11 — antes "TelecomCatalog", placeholder): PWA React 18 + Vite + TS + Tailwind + Zustand + idb.
-- Repo `github.com/Sinterk/TelecomCatalog` — **pendiente de renombrar a `SinterkProyectos`** en GitHub (Settings → Repository name; el código ya usa el nombre nuevo en título/manifest/login/header, solo falta el repo). Deploy: push a `main` → `.github/workflows/deploy.yml` → GitHub Pages (URL cambia a `https://sinterk.github.io/SinterkProyectos/` una vez renombrado). Versión visible `vX.YY` en el header (`APP_VERSION` en `vite.config.ts`).
-- Módulos (registry pattern): `att` (informes OTT/ATT) y `preventivos`. Generadores de informe: `src/modules/att/utils/generarInformeAtt.ts` (DOCX) y `generarPdfAtt.ts` (PDF con jsPDF lazy-loaded).
+- Repo `github.com/Sinterk/SinterkProyectos` (renombrado el 30-07-2026, ver log más abajo). Deploy: push a `main` → `.github/workflows/deploy.yml` → GitHub Pages. Versión visible `vX.YY` en el header (`APP_VERSION` en `vite.config.ts`).
+- Módulos (registry pattern): `att` (informes OTT/ATT), `preventivos`, `incidencias`, `inventario`. Generadores de informe: `src/modules/att/utils/generarInformeAtt.ts` (DOCX) y `generarPdfAtt.ts` (PDF con jsPDF lazy-loaded).
 
 ## Objetivo: pasar de cliente-only a backend Supabase
 Tres metas: (1) data online (técnicos suben directo), (2) usuarios con roles, (3) inventario por proyecto (stock físico/digital + movimientos).
