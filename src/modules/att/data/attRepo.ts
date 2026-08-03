@@ -44,6 +44,41 @@ async function currentUserId(): Promise<string | null> {
   return data.user?.id ?? null
 }
 
+/**
+ * Inserta un `projects` nuevo de forma segura de reintentar. El primer
+ * guardado de un borrador local (id = nanoid) no tenía ninguna clave
+ * estable — si la conexión se cortaba justo después de que el insert ya se
+ * aplicó en el servidor pero antes de que el cliente viera la respuesta
+ * (típico al quedar offline a mitad de un guardado), el reintento repetía
+ * el mismo insert y creaba una fila duplicada (mismo bug reportado por
+ * Andrés en Preventivos — esta parte del código es idéntica ahí).
+ * `clientLocalId` (el nanoid de creación) se manda como columna; antes de
+ * insertar se busca si ya existe una fila con ese valor — si sí, es un
+ * reintento tras respuesta perdida y se usa esa fila en vez de insertar otra.
+ */
+async function insertProjectIdempotente(clientLocalId: string, patch: Record<string, unknown>): Promise<string> {
+  const { data: existente, error: errBuscar } = await supabase
+    .from('projects').select('id').eq('client_local_id', clientLocalId).maybeSingle()
+  if (errBuscar) throw new Error(`projects.buscarPorClientLocalId: ${errBuscar.message}`)
+  if (existente) return existente.id
+
+  const userId = await currentUserId()
+  const { data, error } = await supabase
+    .from('projects')
+    .insert({ ...patch, created_by: userId, client_local_id: clientLocalId })
+    .select('id')
+    .single()
+  if (!error) return data.id
+
+  if (error.code === '23505') {
+    const { data: existente2, error: errBuscar2 } = await supabase
+      .from('projects').select('id').eq('client_local_id', clientLocalId).single()
+    if (errBuscar2) throw new Error(`projects.insert (tras choque de duplicado): ${errBuscar2.message}`)
+    return existente2.id
+  }
+  throw new Error(`projects.insert: ${error.message}`)
+}
+
 // ---------------------------------------------------------------------------
 // Formas de fila (parcial; solo lo que tocamos)
 // ---------------------------------------------------------------------------
@@ -355,14 +390,7 @@ export const attRepo = {
       if (error) throw new Error(`projects.update: ${error.message}`)
       projectId = data.id
     } else {
-      const userId = await currentUserId()
-      const { data, error } = await supabase
-        .from('projects')
-        .insert({ ...projectPatch, area: 'ATT', created_by: userId })
-        .select('id')
-        .single()
-      if (error) throw new Error(`projects.insert: ${error.message}`)
-      projectId = data.id
+      projectId = await insertProjectIdempotente(record.id, { ...projectPatch, area: 'ATT' })
     }
 
     // 2. informe (find-or-create por project_id — relación 1:1)
