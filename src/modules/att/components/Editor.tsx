@@ -15,6 +15,7 @@ import { SeccionInfra } from './SeccionInfra'
 import { SeccionFotos } from './SeccionFotos'
 import { LogisticaTab } from '@/ui/LogisticaTab'
 import { EstadoProyectoBadge } from '@/ui/EstadoProyectoBadge'
+import { EstadoPagoTab } from './EstadoPagoTab'
 import { useAuth } from '@/lib/auth'
 
 type GenStatus = 'idle' | 'generating' | 'error'
@@ -35,7 +36,7 @@ export function Editor() {
   )
   const [genStatus, setGenStatus] = useState<GenStatus>('idle')
   const [pdfStatus, setPdfStatus] = useState<GenStatus>('idle')
-  const [tab, setTab] = useState<'info' | 'logistica'>('info')
+  const [tab, setTab] = useState<'info' | 'logistica' | 'ep'>('info')
 
   // El primer guardado de un borrador local "rekea" su id (nanoid → uuid del
   // servidor) en el store; ese instante deja momentáneamente sin record al id
@@ -107,6 +108,13 @@ export function Editor() {
           className={`flex-1 text-xs font-semibold py-1.5 rounded-lg ${tab === 'logistica' ? 'bg-brand-600 text-white' : 'bg-slate-800 text-slate-400'}`}>
           Logística
         </button>
+        {/* RLS de ep_informes/ep_lineas es admin/jp/log únicamente — no tiene sentido mostrarle la pestaña a un técnico. */}
+        {!isTecnico && (
+          <button type="button" onClick={() => setTab('ep')}
+            className={`flex-1 text-xs font-semibold py-1.5 rounded-lg ${tab === 'ep' ? 'bg-brand-600 text-white' : 'bg-slate-800 text-slate-400'}`}>
+            Estado de Pago
+          </button>
+        )}
       </div>
 
       {tab === 'info' ? (
@@ -123,10 +131,16 @@ export function Editor() {
             <SeccionFotos recordId={id} processPhoto={processPhoto} />
           </>
         )
+      ) : tab === 'logistica' ? (
+        isUuid(id) ? (
+          <LogisticaTab projectId={id} area="ATT" />
+        ) : (
+          <p className="text-xs text-slate-500 text-center py-8">Guarda el informe primero para gestionar logística.</p>
+        )
       ) : isUuid(id) ? (
-        <LogisticaTab projectId={id} area="ATT" />
+        <EstadoPagoTab projectId={id} tramos={record.tramos} />
       ) : (
-        <p className="text-xs text-slate-500 text-center py-8">Guarda el informe primero para gestionar logística.</p>
+        <p className="text-xs text-slate-500 text-center py-8">Guarda el informe primero para armar el Estado de Pago.</p>
       )}
 
       {/* Barra inferior fija */}

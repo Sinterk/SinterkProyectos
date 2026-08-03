@@ -125,3 +125,32 @@ export async function borrarLpuTendidoMap(id: string): Promise<void> {
   const { error } = await supabase.from('lpu_tendido_map').delete().eq('id', id)
   if (error) throw new Error(`lpu_tendido_map.borrar: ${error.message}`)
 }
+
+// ---------------------------------------------------------------------------
+// Estado de Pago (EP) — lecturas de apoyo: zonas y precios
+// ---------------------------------------------------------------------------
+
+/** Nombres de zona tal cual existen en `lpu_precios_zona` (sin lista fija en código — sale de la data real importada). */
+export async function listZonasLpu(): Promise<string[]> {
+  const { data, error } = await supabase.from('lpu_precios_zona').select('zona').order('zona')
+  if (error) throw new Error(`lpu_precios_zona.listZonas: ${error.message}`)
+  return [...new Set((data as { zona: string }[]).map((r) => r.zona))]
+}
+
+/** Precio unitario por lpu_codigo_id para UNA zona — para armar las líneas del EP. */
+export async function listPreciosPorZona(zona: string): Promise<Map<string, number>> {
+  const { data, error } = await supabase.from('lpu_precios_zona').select('lpu_codigo_id, precio').eq('zona', zona)
+  if (error) throw new Error(`lpu_precios_zona.listPorZona: ${error.message}`)
+  const out = new Map<string, number>()
+  for (const r of data as { lpu_codigo_id: string; precio: number | null }[]) out.set(r.lpu_codigo_id, Number(r.precio ?? 0))
+  return out
+}
+
+/** Mapeos activos de VARIOS materiales a la vez (para armar el avance del EP sin una consulta por material). */
+export async function listLpuMaterialMapPorMateriales(materialIds: string[]): Promise<LpuMaterialMap[]> {
+  if (materialIds.length === 0) return []
+  const { data, error } = await supabase.from('lpu_material_map')
+    .select('*, lpu_codigos(*)').in('material_id', materialIds).eq('activo', true)
+  if (error) throw new Error(`lpu_material_map.listPorMateriales: ${error.message}`)
+  return (data as LpuMaterialMapRow[]).map(materialMapFromRow)
+}
