@@ -200,8 +200,10 @@ export interface Observacion {
  *   bodega) para restárselo allá (acá ya quedó sumado al cerrar el conteo).
  * - traspaso: falta material pero no se perdió — se indica dónde está ahora
  *   (técnico o bodega) para sumárselo allá, sin tocar de nuevo esta bodega.
+ * - agregar: solo eventos de técnico — se le suma directo al técnico, sin
+ *   restarle a nadie (ya lo tenía físicamente, no estaba contabilizado).
  */
-export type ResolucionTipo = 'consumo' | 'devolucion' | 'traspaso' | 'reasignacion'
+export type ResolucionTipo = 'consumo' | 'devolucion' | 'traspaso' | 'reasignacion' | 'agregar'
 export type ConsumoArea = 'ott' | 'inc' | 'preventivos' | 'perdida'
 
 /** El movimiento exacto que causó un evento de "instalación forzada" — null en eventos de Conteo (no nacen de un solo movimiento). */

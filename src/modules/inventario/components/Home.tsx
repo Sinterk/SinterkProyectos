@@ -894,6 +894,7 @@ const AREA_LABELS: Record<ConsumoArea, string> = {
 }
 const TIPO_RESOLUCION_LABELS: Record<ResolucionTipo, string> = {
   consumo: 'Consumo', devolucion: 'Devolución', traspaso: 'Traspaso', reasignacion: 'Reasignar a técnico',
+  agregar: 'Agregar',
 }
 
 /** Solo lectura — resumen de eventos pendientes en el Home de Conteo. Cada uno tiene un botón directo a su conteo para resolverlo. */
@@ -1119,6 +1120,8 @@ function EventoCard({ evento, onResolved, onVerConteo, mostrarUbicacion }: {
 function ResolucionRow({ r }: { r: EventoResolucion }) {
   const detalle = r.tipo === 'consumo'
     ? (r.area === 'perdida' ? 'Pérdida' : `${AREA_LABELS[r.area ?? 'perdida']} · ${r.projectOtt ?? '—'}${r.tecnicoNombre ? ` · ${r.tecnicoNombre}` : ''}`)
+    : r.tipo === 'agregar'
+    ? 'Sumado directo (sin origen) — ya lo tenía sin contabilizar'
     : (r.tecnicoNombre ? `Técnico: ${r.tecnicoNombre}` : `Bodega: ${r.ubicacionNombre}`)
   return (
     <p className="text-[11px] text-slate-400">
@@ -1131,11 +1134,12 @@ function ResolucionRow({ r }: { r: EventoResolucion }) {
 function ResolverEventoForm({ evento, restante, onDone, onCancel }: {
   evento: EventoInventario; restante: number; onDone: () => void; onCancel: () => void
 }) {
-  // De técnico (instalación forzada): Consumo/Devolución/Reasignación, nunca
-  // Traspaso (el material ya se instaló, no está "por encontrar" en otro lado).
-  // De bodega (conteo): igual que siempre, según el signo de la diferencia.
+  // De técnico (instalación forzada): Consumo/Devolución/Reasignación/Agregar,
+  // nunca Traspaso (el material ya se instaló, no está "por encontrar" en
+  // otro lado). De bodega (conteo): igual que siempre, según el signo de la
+  // diferencia (Agregar no aplica ahí — ver 0042_agregar_stock_tecnico.sql).
   const tiposDisponibles: ResolucionTipo[] = evento.ubicacionTipo === 'tecnico'
-    ? ['consumo', 'devolucion', 'reasignacion']
+    ? ['consumo', 'devolucion', 'reasignacion', 'agregar']
     : (evento.diferencia < 0 ? ['consumo', 'traspaso'] : ['devolucion'])
   const [tipo, setTipo] = useState<ResolucionTipo>(tiposDisponibles[0])
   const [cantidad, setCantidad] = useState(String(restante))
@@ -1198,6 +1202,7 @@ function ResolverEventoForm({ evento, restante, onDone, onCancel }: {
         projectId: tipo === 'consumo' && !soloPerdida && area !== 'perdida' ? projectId : undefined,
         tecnicoUserId: tipo === 'consumo' ? (tecnicoId || undefined)
           : tipo === 'reasignacion' ? tecnicoReasignarId
+          : tipo === 'agregar' ? undefined
           : modo === 'tecnico' ? tecnicoId : undefined,
         ubicacionId: (tipo === 'devolucion' || tipo === 'traspaso') && modo === 'bodega' ? ubicacionId : undefined,
       })
@@ -1307,6 +1312,12 @@ function ResolverEventoForm({ evento, restante, onDone, onCancel }: {
             </p>
           )}
         </label>
+      )}
+
+      {tipo === 'agregar' && (
+        <p className="text-[11px] text-slate-400 italic">
+          Se le suma directo al técnico — no se resta de ninguna bodega ni de otro técnico. Usar solo si ya tenía este material físicamente antes, sin contabilizar.
+        </p>
       )}
 
       <input value={nota} onChange={(e) => setNota(e.target.value)} placeholder="Nota (opcional)" className={selectCls} />
