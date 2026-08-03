@@ -644,6 +644,20 @@ function TecnicoTab() {
   const [userId, setUserId] = useState('')
   const [rows, setRows] = useState<TecnicoLedgerRow[] | null>(null)
   const [error, setError] = useState<string | null>(null)
+  // Eventos de instalación forzada (stock negativo) de CUALQUIER técnico —
+  // no depende de cuál esté elegido en el selector de abajo. Separados de
+  // los de Conteo (origen bodega), que se resuelven en esa otra pestaña.
+  const [eventos, setEventos] = useState<EventoInventario[] | null>(null)
+
+  async function reloadEventos() {
+    try {
+      const evs = await listEventosInventario({ estado: 'abierto' })
+      setEventos(evs.filter((e) => e.ubicacionTipo === 'tecnico'))
+    } catch (err) {
+      console.error('[TecnicoTab] listEventosInventario:', err)
+    }
+  }
+  useEffect(() => { reloadEventos() }, [])
 
   // Mismo patrón que Bodega/Movimientos: orden (por defecto, el que ya trae
   // getTecnicoLedger — por OTT) reemplazado por un clic en una columna;
@@ -700,6 +714,10 @@ function TecnicoTab() {
 
   return (
     <div className="space-y-3">
+      {eventos && eventos.length > 0 && (
+        <EventosAbiertosSection eventos={eventos} onResolved={reloadEventos} />
+      )}
+
       {tecnicos.length === 0 ? (
         <p className="text-xs text-slate-500">No hay técnicos ni logística registrados.</p>
       ) : (
@@ -800,7 +818,9 @@ function ConteoLista({ onSelect, refreshKey }: { onSelect: (id: string) => void;
     try {
       const [cs, evs] = await Promise.all([listConteos(), listEventosInventario({ estado: 'abierto' })])
       setConteos(cs)
-      setEventos(evs)
+      // Los de técnico (instalación forzada) se resuelven en la pestaña
+      // Técnico — acá solo quedan los de origen bodega (Conteo).
+      setEventos(evs.filter((e) => e.ubicacionTipo !== 'tecnico'))
     } catch (err) {
       setError(err instanceof Error ? err.message : String(err))
     }
@@ -897,9 +917,15 @@ const TIPO_RESOLUCION_LABELS: Record<ResolucionTipo, string> = {
   agregar: 'Agregar',
 }
 
-/** Solo lectura — resumen de eventos pendientes en el Home de Conteo. Cada uno tiene un botón directo a su conteo para resolverlo. */
+/**
+ * Solo lectura — resumen de eventos pendientes. Se usa en dos lugares, cada
+ * uno con solo su tipo de evento (separados para que cada uno se resuelva
+ * en su propia pestaña): Conteo (origen bodega, con botón a su conteo) y
+ * Técnico (origen instalación forzada, sin conteo asociado — `onVerConteo`
+ * no aplica ahí).
+ */
 function EventosAbiertosSection({ eventos, onVerConteo, onResolved }: {
-  eventos: EventoInventario[]; onVerConteo: (conteoId: string) => void; onResolved: () => void
+  eventos: EventoInventario[]; onVerConteo?: (conteoId: string) => void; onResolved: () => void
 }) {
   return (
     <div className="bg-amber-950/40 border border-amber-700/50 rounded-2xl p-4 space-y-2">
