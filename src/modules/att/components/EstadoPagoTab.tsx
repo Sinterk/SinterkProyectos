@@ -115,12 +115,18 @@ export function EstadoPagoTab({ projectId, tramos }: Props) {
     }
   }
 
+  /** Tab/salto de línea rompe el formato TSV que Excel espera por celda — se limpia antes de armar la fila. */
+  function celda(v: string | number | null | undefined): string {
+    return String(v ?? '').replace(/[\t\r\n]+/g, ' ').trim()
+  }
+
   function copiarParaExcel() {
+    const encabezados = ['Código ATT', 'Descripción', 'Unidad', 'Cantidad', 'Precio unit.', 'Total', 'Observaciones'].join('\t')
     const filasTexto = (filas ?? [])
-      .map((f) => [f.codigoAtt, f.descripcion, f.unidad ?? '', f.cantidad, f.precioUnitario, f.cantidad * f.precioUnitario].join('\t'))
+      .map((f) => [celda(f.codigoAtt), celda(f.descripcion), celda(f.unidad), f.cantidad, f.precioUnitario, f.cantidad * f.precioUnitario, celda(f.observaciones)].join('\t'))
       .join('\n')
-    navigator.clipboard.writeText(filasTexto)
-      .then(() => setMsg('Copiado — pega en la pestaña del Excel real.'))
+    navigator.clipboard.writeText([encabezados, filasTexto].join('\n'))
+      .then(() => setMsg('Copiado (con encabezados) — pega directo en la pestaña del Excel real.'))
       .catch(() => setError('No se pudo copiar al portapapeles.'))
   }
 
