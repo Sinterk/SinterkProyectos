@@ -130,6 +130,29 @@ export function EstadoPagoTab({ projectId, tramos }: Props) {
       .catch(() => setError('No se pudo copiar al portapapeles.'))
   }
 
+  /**
+   * Copiar la tabla entera de un tirón falla al pegar en el Excel real de
+   * Entel: la hoja tiene protección "en zigzag" (columnas protegidas
+   * intercaladas con columnas editables) — Excel rechaza el pegado apenas
+   * el bloque toca UNA celda protegida, aunque sea de otra columna. Por
+   * columna sí funciona: cada columna se pega sola en su columna destino
+   * (editable), sin arrastrar a las protegidas de al lado.
+   */
+  function copiarColumna(valores: (string | number)[], etiqueta: string) {
+    const texto = valores.map((v) => String(v)).join('\n')
+    navigator.clipboard.writeText(texto)
+      .then(() => setMsg(`Columna "${etiqueta}" copiada — pégala en su columna del Excel real.`))
+      .catch(() => setError('No se pudo copiar al portapapeles.'))
+  }
+
+  function BotonColumna({ etiqueta, valores }: { etiqueta: string; valores: (string | number)[] }) {
+    return (
+      <button type="button" onClick={() => copiarColumna(valores, etiqueta)}
+        title={`Copiar columna "${etiqueta}"`}
+        className="ml-1 text-slate-500 hover:text-brand-300 align-middle">📋</button>
+    )
+  }
+
   const total = useMemo(() => (filas ?? []).reduce((sum, f) => sum + f.cantidad * f.precioUnitario, 0), [filas])
 
   return (
@@ -153,18 +176,21 @@ export function EstadoPagoTab({ projectId, tramos }: Props) {
         <p className="text-xs text-slate-500">Cargando…</p>
       ) : (
         <>
+          <p className="text-[11px] text-slate-500">
+            📋 junto a cada columna copia solo esa columna — úsalo para pegar en el Excel real de Entel (la hoja tiene columnas protegidas intercaladas; pegar la tabla completa de una vez falla apenas toca una protegida).
+          </p>
           <div className="overflow-x-auto rounded-xl border border-slate-700">
             <table className="w-full text-xs border-collapse">
               <thead>
                 <tr className="bg-slate-900/60 text-slate-400 text-left divide-x divide-slate-700">
-                  <th className="px-2 py-1.5">Código ATT</th>
-                  <th className="px-2 py-1.5">Descripción</th>
-                  <th className="px-2 py-1.5">Unidad</th>
-                  <th className="px-2 py-1.5 text-right">Cantidad</th>
-                  <th className="px-2 py-1.5 text-right">Precio unit.</th>
-                  <th className="px-2 py-1.5 text-right">Total</th>
+                  <th className="px-2 py-1.5">Código ATT<BotonColumna etiqueta="Código ATT" valores={filas.map((f) => celda(f.codigoAtt))} /></th>
+                  <th className="px-2 py-1.5">Descripción<BotonColumna etiqueta="Descripción" valores={filas.map((f) => celda(f.descripcion))} /></th>
+                  <th className="px-2 py-1.5">Unidad<BotonColumna etiqueta="Unidad" valores={filas.map((f) => celda(f.unidad))} /></th>
+                  <th className="px-2 py-1.5 text-right">Cantidad<BotonColumna etiqueta="Cantidad" valores={filas.map((f) => f.cantidad)} /></th>
+                  <th className="px-2 py-1.5 text-right">Precio unit.<BotonColumna etiqueta="Precio unit." valores={filas.map((f) => f.precioUnitario)} /></th>
+                  <th className="px-2 py-1.5 text-right">Total<BotonColumna etiqueta="Total" valores={filas.map((f) => f.cantidad * f.precioUnitario)} /></th>
                   <th className="px-2 py-1.5">Origen</th>
-                  <th className="px-2 py-1.5">Observaciones</th>
+                  <th className="px-2 py-1.5">Observaciones<BotonColumna etiqueta="Observaciones" valores={filas.map((f) => celda(f.observaciones))} /></th>
                   <th className="px-2 py-1.5"></th>
                 </tr>
               </thead>
@@ -234,9 +260,9 @@ export function EstadoPagoTab({ projectId, tramos }: Props) {
               className="flex-1 py-2 rounded-xl bg-brand-600 hover:bg-brand-700 disabled:opacity-40 text-white text-sm font-semibold">
               {busy ? 'Guardando…' : '💾 Guardar'}
             </button>
-            <button type="button" onClick={copiarParaExcel}
+            <button type="button" onClick={copiarParaExcel} title="Copia todas las columnas juntas — falla si el destino tiene celdas protegidas"
               className="px-4 py-2 rounded-xl bg-slate-700 hover:bg-slate-600 text-white text-sm font-semibold">
-              📋 Copiar para Excel
+              📋 Copiar tabla completa
             </button>
           </div>
         </>
