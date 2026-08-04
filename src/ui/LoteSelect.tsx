@@ -44,10 +44,13 @@ export function LoteSelect({ materialId, ubicacionId, naturaleza, checkAvailabil
       <option value="">Sin lote específico</option>
       {(rows ?? []).map((r) => {
         const disponible = naturaleza === 'fisico' ? r.cantidadFisico : r.cantidadDigital
-        const disabled = checkAvailability && !(disponible > 0)
+        // Periodo transitivo (stock físico real vs. lo que ya quedó cargado
+        // en el sistema): no bloquear la salida por falta de stock — solo
+        // avisar. El backend ya permite quedar en negativo (0008_stock_alertas.sql).
+        const sinStock = checkAvailability && !(disponible > 0)
         return (
-          <option key={r.lote} value={r.lote} disabled={disabled}>
-            {r.lote} ({disponible})
+          <option key={r.lote} value={r.lote}>
+            {r.lote} ({disponible}){sinStock ? ' ⚠ sin stock' : ''}
           </option>
         )
       })}

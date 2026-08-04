@@ -23,15 +23,30 @@
 --  - El borrado del usuario de Auth del técnico invitado (iperez@sinterk.cl)
 --    y la limpieza de código (GUEST_TECNICO_* en auth.ts/LoginScreen.tsx/
 --    UserMenu.tsx + vars de .env) — eso va aparte, ver el bloque final.
+--  - Cualquier proyecto ATT real, incluido lo cargado el 04-08-2026 — el
+--    filtro de "proyectos de prueba" es por patrón de OTT, no por fecha, así
+--    que no debería tocarlo, pero revisa el detalle del punto 0 igual antes
+--    de confirmar.
 -- ============================================================================
 
 begin;
 
 -- ----------------------------------------------------------------------
 -- 0. Verificación previa (solo lectura) — revisa esto antes de seguir
+--
+-- IMPORTANTE (04-08-2026): Andrés agregó datos reales en ATT hoy que NO se
+-- deben borrar. El filtro de "proyectos de prueba" es por patrón de OTT
+-- (empieza con "_verify_" o "test-"), no por fecha — así que un proyecto
+-- real de hoy solo caería acá si coincidiera con ese patrón de nombre, cosa
+-- rara pero hay que confirmarlo a ojo. Por eso este SELECT ahora lista las
+-- filas completas (ott/nombre/área/fecha), no solo el conteo: revisa que
+-- CADA fila listada sea realmente de prueba antes de seguir. Si aparece
+-- algo de hoy que sí es real, para acá (rollback) y avisa para ajustar el
+-- filtro antes de reintentar.
 -- ----------------------------------------------------------------------
-select 'proyectos de prueba (_verify_*/TEST-*)' as detalle, count(*) as filas
-  from public.projects where ott like '\_verify\_%' escape '\' or ott ilike 'test-%';
+select id, ott, nombre_proyecto, area, created_at
+  from public.projects where ott like '\_verify\_%' escape '\' or ott ilike 'test-%'
+  order by created_at desc;
 select 'materiales de prueba (999901-999905)' as detalle, count(*)
   from public.materiales where sku in ('999901','999902','999903','999904','999905');
 select 'bodega de prueba TEST-IMPORT-VELOCIDAD' as detalle, count(*)
