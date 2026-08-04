@@ -13,6 +13,7 @@ import { EstadoProyectoBadge } from '@/ui/EstadoProyectoBadge'
 import { useRestorePhotoPreviews } from '../hooks/useRestorePhotoPreviews'
 import { useResolvePhotoUrls } from '../hooks/useResolvePhotoUrls'
 import { usePreventivoAutosave } from '../hooks/usePreventivoAutosave'
+import { isPuntoCerrado } from '../utils/puntoEstado'
 import { CuadranteSection } from './CuadranteSection'
 import { PuntoCard } from './PuntoCard'
 import { ExportZipButton } from './ExportZipButton'
@@ -72,7 +73,7 @@ export function Editor() {
   const { puntos } = record
   const conFoto = puntos.filter((p) => p.fotoLevantamiento || p.fotoAntes || p.fotoDespues).length
   const total = puntos.length
-  const cerrados = puntos.filter((p) => p.resuelto).length
+  const cerrados = puntos.filter(isPuntoCerrado).length
 
   return (
     <div className="space-y-4 pb-28">

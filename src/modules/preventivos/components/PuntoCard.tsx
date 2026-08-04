@@ -6,6 +6,7 @@ import { isUuid } from '../data/preventivoRepo'
 import { PhotoCapture } from './PhotoCapture'
 import { PuntoMaterialSection } from './PuntoMaterialSection'
 import { usePreventivoStore } from '../store'
+import { isPuntoCerrado } from '../utils/puntoEstado'
 import type { Punto, FotoKey } from '../types'
 
 interface Props {
@@ -46,6 +47,12 @@ const HALLAZGOS: string[] = [
   'CTO en condición insegura o no autorizada',
 ]
 
+// Texto de Corrección que se autocompleta al elegir cada hallazgo (mismo
+// patrón que RESPONSABLES_POR_ZONA en CuadranteSection) — queda editable
+// después. PENDIENTE: falta que Andrés pase el texto real de cada uno;
+// por ahora autocompleta vacío (el campo sigue funcionando manual).
+const CORRECCIONES_POR_HALLAZGO: Record<string, string> = {}
+
 export function PuntoCard({ preventivoId, punto, index, total, editable = true, soloFotos = false, onMove, onPhotoCapture }: Props) {
   const { updatePunto, removePunto, removeFoto } = usePreventivoStore()
   const [expanded, setExpanded] = useState(true)
@@ -55,6 +62,14 @@ export function PuntoCard({ preventivoId, punto, index, total, editable = true, 
   // soloFotos (rol técnico): los campos de texto/estado quedan de solo lectura,
   // pero las fotos siguen editables (siguen gobernadas por `editable`, no por esto).
   const camposEditable = editable && !soloFotos
+
+  function handleHallazgoChange(hallazgo: string) {
+    updatePunto(preventivoId, punto.id, {
+      hallazgo,
+      correccion: CORRECCIONES_POR_HALLAZGO[hallazgo] ?? '',
+      resuelto: false,
+    })
+  }
 
   const inputCls = `w-full text-sm rounded-lg px-3 py-2 border focus:outline-none placeholder-slate-500
     ${camposEditable
@@ -115,9 +130,9 @@ export function PuntoCard({ preventivoId, punto, index, total, editable = true, 
         )}
 
         <span className={`text-[10px] font-semibold px-2 py-0.5 rounded-full shrink-0 ${
-          punto.resuelto ? 'bg-green-900/50 text-green-400' : 'bg-amber-900/50 text-amber-400'
+          isPuntoCerrado(punto) ? 'bg-green-900/50 text-green-400' : 'bg-amber-900/50 text-amber-400'
         }`}>
-          {punto.resuelto ? '🔒 Cerrado' : '🔓 Abierto'}
+          {isPuntoCerrado(punto) ? '🔒 Cerrado' : '🔓 Abierto'}
         </span>
 
         <div className="flex items-center gap-1 shrink-0">
@@ -168,6 +183,22 @@ export function PuntoCard({ preventivoId, punto, index, total, editable = true, 
         <div className="px-4 pb-4 space-y-3 border-t border-slate-700 pt-3">
 
           <div>
+            <label className="block text-xs text-slate-400 mb-2">Fotografías</label>
+            <div className="grid grid-cols-3 gap-2">
+              {(['fotoLevantamiento', 'fotoAntes', 'fotoDespues'] as FotoKey[]).map((key) => (
+                <PhotoCapture
+                  key={key}
+                  fotoKey={key}
+                  label={key === 'fotoLevantamiento' ? 'Levantamiento' : key === 'fotoAntes' ? 'Antes' : 'Después'}
+                  entry={punto[key]}
+                  onCapture={onPhotoCapture}
+                  onRemove={(k) => editable && removeFoto(preventivoId, punto.id, k)}
+                />
+              ))}
+            </div>
+          </div>
+
+          <div>
             <label className="block text-xs text-slate-400 mb-1">
               Descripción <span className="text-red-400">*</span>
             </label>
@@ -196,22 +227,10 @@ export function PuntoCard({ preventivoId, punto, index, total, editable = true, 
           </div>
 
           <div>
-            <label className="block text-xs text-slate-400 mb-1">Corrección</label>
-            <input
-              type="text"
-              value={punto.correccion ?? ''}
-              onChange={(e) => camposEditable && updatePunto(preventivoId, punto.id, { correccion: e.target.value })}
-              readOnly={!camposEditable}
-              placeholder="Corrección aplicada (opcional)"
-              className={inputCls}
-            />
-          </div>
-
-          <div>
             <label className="block text-xs text-slate-400 mb-1">Tipo de hallazgo</label>
             <select
               value={punto.hallazgo ?? ''}
-              onChange={(e) => camposEditable && updatePunto(preventivoId, punto.id, { hallazgo: e.target.value })}
+              onChange={(e) => camposEditable && handleHallazgoChange(e.target.value)}
               disabled={!camposEditable}
               className={inputCls}
             >
@@ -222,32 +241,30 @@ export function PuntoCard({ preventivoId, punto, index, total, editable = true, 
             </select>
           </div>
 
-          <label className="flex items-center gap-2 text-sm text-slate-200">
-            <input
-              type="checkbox"
-              checked={!!punto.resuelto}
-              disabled={!camposEditable}
-              onChange={(e) => camposEditable && updatePunto(preventivoId, punto.id, { resuelto: e.target.checked })}
-              className="w-4 h-4 accent-brand-500 disabled:opacity-50"
-            />
-            Punto cerrado (marca manualmente cuando quede resuelto)
-          </label>
-
           <div>
-            <label className="block text-xs text-slate-400 mb-2">Fotografías</label>
-            <div className="grid grid-cols-3 gap-2">
-              {(['fotoLevantamiento', 'fotoAntes', 'fotoDespues'] as FotoKey[]).map((key) => (
-                <PhotoCapture
-                  key={key}
-                  fotoKey={key}
-                  label={key === 'fotoLevantamiento' ? 'Levantamiento' : key === 'fotoAntes' ? 'Antes' : 'Después'}
-                  entry={punto[key]}
-                  onCapture={onPhotoCapture}
-                  onRemove={(k) => editable && removeFoto(preventivoId, punto.id, k)}
-                />
-              ))}
-            </div>
+            <label className="block text-xs text-slate-400 mb-1">Corrección</label>
+            <input
+              type="text"
+              value={punto.correccion ?? ''}
+              onChange={(e) => camposEditable && updatePunto(preventivoId, punto.id, { correccion: e.target.value })}
+              readOnly={!camposEditable}
+              placeholder="Se autocompleta al elegir el hallazgo — editable"
+              className={inputCls}
+            />
           </div>
+
+          {punto.hallazgo !== '' && (
+            <label className="flex items-center gap-2 text-sm text-slate-200">
+              <input
+                type="checkbox"
+                checked={!!punto.resuelto}
+                disabled={!camposEditable}
+                onChange={(e) => camposEditable && updatePunto(preventivoId, punto.id, { resuelto: e.target.checked })}
+                className="w-4 h-4 accent-brand-500 disabled:opacity-50"
+              />
+              Punto cerrado (marca manualmente cuando quede resuelto)
+            </label>
+          )}
 
           {/* Material/comentarios requieren que el punto exista de verdad en el
               servidor (id real, no borrador local) — mismo guard que Incidencias. */}
