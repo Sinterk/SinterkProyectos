@@ -71,6 +71,16 @@ create temporary table _t_ubicaciones on commit drop as
   where nombre ilike 'TEST-IMPORT-VELOCIDAD'
      or owner_user_id = (select id from public.profiles where email = 'iperez@sinterk.cl');
 
+-- Movimientos que el paso 6 va a borrar — se necesita el set completo acá
+-- arriba para poder soltar, antes de borrar, las referencias que le apuntan
+-- desde eventos_inventario.movimiento_id (ver paso 2-bis).
+create temporary table _t_movimientos on commit drop as
+  select id from public.movimientos
+  where material_id          in (select id from _t_materiales)
+     or ubicacion_id         in (select id from _t_ubicaciones)
+     or ubicacion_destino_id in (select id from _t_ubicaciones)
+     or project_id           in (select id from _t_projects);
+
 -- ----------------------------------------------------------------------
 -- 2. Romper el ciclo movimientos <-> eventos_inventario_resoluciones antes
 --    de poder borrar cualquiera de los dos lados
@@ -83,6 +93,17 @@ where evento_resolucion_id in (
      or e.ubicacion_id in (select id from _t_ubicaciones)
      or r.project_id   in (select id from _t_projects)
 );
+
+-- ----------------------------------------------------------------------
+-- 2-bis. Soltar eventos_inventario.movimiento_id (agregada en la migración
+--    0040, posterior a cuando se escribió este script) para cualquier
+--    evento que apunte a un movimiento de prueba — sin importar si el
+--    evento en sí califica como "de prueba" (paso 4) o no: si su
+--    movimiento_id apunta a uno de los que se borran en el paso 6, hay que
+--    soltarlo primero o la FK bloquea el delete.
+-- ----------------------------------------------------------------------
+update public.eventos_inventario set movimiento_id = null
+where movimiento_id in (select id from _t_movimientos);
 
 -- ----------------------------------------------------------------------
 -- 3. Resoluciones de eventos de prueba (o que referencian un proyecto de prueba)
@@ -111,13 +132,9 @@ where material_id in (select id from _t_materiales)
 delete from public.conteos where ubicacion_id in (select id from _t_ubicaciones);
 
 -- ----------------------------------------------------------------------
--- 6. Movimientos de prueba (por material, ubicación origen/destino o proyecto)
+-- 6. Movimientos de prueba (mismo set calculado en _t_movimientos, arriba)
 -- ----------------------------------------------------------------------
-delete from public.movimientos
-where material_id          in (select id from _t_materiales)
-   or ubicacion_id         in (select id from _t_ubicaciones)
-   or ubicacion_destino_id in (select id from _t_ubicaciones)
-   or project_id           in (select id from _t_projects);
+delete from public.movimientos where id in (select id from _t_movimientos);
 
 -- ----------------------------------------------------------------------
 -- 7. Ciclo de material por proyecto — redundante con el cascade de
