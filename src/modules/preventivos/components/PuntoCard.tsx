@@ -56,10 +56,6 @@ export function PuntoCard({ preventivoId, punto, index, total, editable = true, 
   // pero las fotos siguen editables (siguen gobernadas por `editable`, no por esto).
   const camposEditable = editable && !soloFotos
 
-  function handleHallazgoChange(hallazgo: string) {
-    updatePunto(preventivoId, punto.id, { hallazgo, resuelto: hallazgo !== '' })
-  }
-
   const inputCls = `w-full text-sm rounded-lg px-3 py-2 border focus:outline-none placeholder-slate-500
     ${camposEditable
       ? 'bg-slate-700 text-white border-slate-600 focus:border-brand-500'
@@ -215,7 +211,7 @@ export function PuntoCard({ preventivoId, punto, index, total, editable = true, 
             <label className="block text-xs text-slate-400 mb-1">Tipo de hallazgo</label>
             <select
               value={punto.hallazgo ?? ''}
-              onChange={(e) => camposEditable && handleHallazgoChange(e.target.value)}
+              onChange={(e) => camposEditable && updatePunto(preventivoId, punto.id, { hallazgo: e.target.value })}
               disabled={!camposEditable}
               className={inputCls}
             >
@@ -226,15 +222,15 @@ export function PuntoCard({ preventivoId, punto, index, total, editable = true, 
             </select>
           </div>
 
-          <label className={`flex items-center gap-2 text-sm ${punto.hallazgo ? 'text-slate-200' : 'text-slate-500'}`}>
+          <label className="flex items-center gap-2 text-sm text-slate-200">
             <input
               type="checkbox"
               checked={!!punto.resuelto}
-              disabled={!camposEditable || !punto.hallazgo}
+              disabled={!camposEditable}
               onChange={(e) => camposEditable && updatePunto(preventivoId, punto.id, { resuelto: e.target.checked })}
               className="w-4 h-4 accent-brand-500 disabled:opacity-50"
             />
-            Resuelto
+            Punto cerrado (marca manualmente cuando quede resuelto)
           </label>
 
           <div>
