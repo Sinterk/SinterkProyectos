@@ -1,9 +1,13 @@
 # Continuar — Migración a backend Supabase
 
 > Documento de retomada — LEER ESTO PRIMERO si se retoma en otra máquina o
-> sesión nueva. Última actualización: 01-08-2026.
+> sesión nueva. Última actualización: 04-08-2026.
 
-## ⚡ Estado ahora mismo (01-08-2026)
+## ⚡ Estado ahora mismo (04-08-2026)
+- **v1.23** (04-08-2026): dos features chicas, en `backend-supabase` (aún no pusheadas a `main`, ver más abajo):
+  1. **Aviso global de "sin sincronizar"**: `src/lib/useGlobalPendingSync.ts` (nuevo) combina `hasPendingSync` de los 3 módulos con estado local (att/preventivos/incidencias — cada uno ya lo exporta desde su `store.ts`) y expone `{ total, porArea }`. Se muestra en el header (`src/ui/Layout.tsx`, junto al `UserMenu`) como botón ⚠️ con el conteo total, tooltip con el desglose por área, y al hacer clic navega a la primera área con pendientes. Antes cada módulo solo avisaba dentro de su propio `Home.tsx` — esto se ve en cualquier pantalla. **Nota**: el EP (`ep_informes`) no tiene concepto de "pendiente de sync" (escribe directo a Supabase sin cola offline), así que no está incluido — solo att/preventivos/incidencias, que sí usan el patrón nanoid-antes-de-sync.
+  2. **Preventivos: estado abierto/cerrado visible por punto**: `Punto` ya tenía `resuelto: boolean` pero no había ninguna señal visual fuera del checkbox (enterrado dentro de la tarjeta expandida). Se agregó una etiqueta 🔓 Abierto (ámbar) / 🔒 Cerrado (verde) en el header de cada `PuntoCard` (`src/modules/preventivos/components/PuntoCard.tsx`), visible aunque la tarjeta esté colapsada, más un resumen "N abierto(s) · M cerrado(s)" junto al total en `Editor.tsx`. No se agregó campo nuevo — reutiliza `resuelto`. Objetivo (pedido explícito): que una segunda brigada que llega a reparar sepa de un vistazo qué puntos ya están cerrados sin tener que abrir cada tarjeta.
+  - **Pendiente de probar por Andrés en el navegador** (esta sesión no pudo verificar visualmente — el sandbox de este entorno no alcanza `localhost:5173`, limitación de tooling ya conocida, no de la app). Compila limpio (`tsc --noEmit` sin errores).
 - **Ya en producción.** `main` fue reemplazado por completo (`git push origin backend-supabase:main --force-with-lease`) — ya NO es la app vieja cliente-only, es esta reescritura con Supabase. Deploy automático vía `.github/workflows/deploy.yml` a GitHub Pages en cada push a `main`, confirmado exitoso (run #75).
 - **Ramas**: `main` = `backend-supabase` (mismo commit, `4904358` al momento de escribir esto) — limpias, SIN el invitado técnico. `prueba` (commit `f01abed`) es una rama aparte, creada solo para tener el botón "Continuar como invitado (técnico)" disponible al probar — **nunca mergear `prueba` a `main`/`backend-supabase` sin volver a sacar ese revert**, o el invitado técnico volvería a producción.
 - **Migraciones**: todas las de `supabase/migrations/` hasta `0046_projects_client_local_id.sql` están CORRIDAS y verificadas (Andrés confirmó cada una). No hay ninguna pendiente de correr a esta fecha.

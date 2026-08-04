@@ -118,6 +118,12 @@ export function PuntoCard({ preventivoId, punto, index, total, editable = true, 
           <span className="text-[10px] text-slate-500 shrink-0">📷 {fotosSubidas}/3</span>
         )}
 
+        <span className={`text-[10px] font-semibold px-2 py-0.5 rounded-full shrink-0 ${
+          punto.resuelto ? 'bg-green-900/50 text-green-400' : 'bg-amber-900/50 text-amber-400'
+        }`}>
+          {punto.resuelto ? '🔒 Cerrado' : '🔓 Abierto'}
+        </span>
+
         <div className="flex items-center gap-1 shrink-0">
           {/* Mover al inicio / al final — solo visible con 3+ puntos */}
           {camposEditable && total >= 3 && (

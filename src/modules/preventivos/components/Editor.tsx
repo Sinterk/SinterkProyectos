@@ -72,6 +72,7 @@ export function Editor() {
   const { puntos } = record
   const conFoto = puntos.filter((p) => p.fotoLevantamiento || p.fotoAntes || p.fotoDespues).length
   const total = puntos.length
+  const cerrados = puntos.filter((p) => p.resuelto).length
 
   return (
     <div className="space-y-4 pb-28">
@@ -129,7 +130,12 @@ export function Editor() {
           <div className="space-y-3">
             <div className="flex items-center justify-between">
               <h2 className="text-sm font-semibold text-brand-400 uppercase tracking-wide">🔧 Puntos</h2>
-              <span className="text-xs text-slate-500">{total} punto(s)</span>
+              <span className="text-xs text-slate-500">
+                {total} punto(s)
+                {total > 0 && (
+                  <> · <span className="text-amber-400">{total - cerrados} abierto(s)</span> · <span className="text-green-400">{cerrados} cerrado(s)</span></>
+                )}
+              </span>
             </div>
 
             {puntos.length === 0 && (

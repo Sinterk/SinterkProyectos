@@ -1,6 +1,7 @@
-import { NavLink, useLocation } from 'react-router-dom'
+import { NavLink, useLocation, useNavigate } from 'react-router-dom'
 import { registry } from '@/core/registry/projectRegistry'
 import { useAuth } from '@/lib/auth'
+import { useGlobalPendingSync } from '@/lib/useGlobalPendingSync'
 import { UserMenu } from './UserMenu'
 import { OfflineBanner } from './OfflineBanner'
 
@@ -16,7 +17,9 @@ const buildStamp = (() => {
 export function Layout({ children }: Props) {
   const modules = registry.getAll()
   const { pathname } = useLocation()
+  const navigate = useNavigate()
   const isTecnico = useAuth((s) => s.profile?.rol === 'tecnico')
+  const pendingSync = useGlobalPendingSync()
 
   // Nav solo visible en pantallas de inicio, no en editores (/preventivos/:id, /att/:id, etc.)
   // Para técnico, los botones "← Volver" de los editores navegan a /att o
@@ -32,6 +35,15 @@ export function Layout({ children }: Props) {
       <header className="bg-slate-900 border-b border-slate-800 px-4 py-3 flex items-center gap-3 sticky top-0 z-30">
         <span className="text-xl">📡</span>
         <span className="font-bold text-base tracking-tight flex-1">SinterkProyectos</span>
+        {pendingSync.total > 0 && (
+          <button type="button"
+            onClick={() => navigate(pendingSync.porArea[0]?.path ?? '/')}
+            title={`Sin sincronizar: ${pendingSync.porArea.map((a) => `${a.label} (${a.count})`).join(', ')}`}
+            className="flex items-center gap-1 text-amber-300 hover:text-amber-200 text-xs font-semibold shrink-0">
+            <span className="text-base leading-none">⚠️</span>
+            {pendingSync.total}
+          </button>
+        )}
         <UserMenu />
         <span className="text-[10px] font-mono text-slate-500 leading-tight text-right shrink-0">
           <span className="text-brand-400 font-semibold">{__APP_VERSION__}</span>
