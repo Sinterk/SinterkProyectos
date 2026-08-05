@@ -16,6 +16,7 @@ import { SeccionFotos } from './SeccionFotos'
 import { LogisticaTab } from '@/ui/LogisticaTab'
 import { EstadoProyectoBadge } from '@/ui/EstadoProyectoBadge'
 import { EstadoPagoTab } from './EstadoPagoTab'
+import { useDocumentTitle } from '@/ui/useDocumentTitle'
 import { useAuth } from '@/lib/auth'
 
 type GenStatus = 'idle' | 'generating' | 'error'
@@ -52,6 +53,11 @@ export function Editor() {
   // Trae la versión del servidor al abrir (deep-link / recarga); no pisa
   // ediciones locales más nuevas (ver `mergeFromServer` en el store).
   useEffect(() => { if (id) syncOne(id) }, [id, syncOne])
+
+  // La OTT es el identificador principal de un informe ATT — que se vea en
+  // el título de la pestaña del navegador ayuda a distinguir varias pestañas
+  // abiertas a la vez. Se actualiza en vivo mientras se tipea.
+  useDocumentTitle(record?.ott ? `OTT ${record.ott}` : undefined)
 
   if (!id || !record) return null
 
