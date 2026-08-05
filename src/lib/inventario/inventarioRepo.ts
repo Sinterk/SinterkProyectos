@@ -69,6 +69,38 @@ export async function listMateriales(): Promise<Material[]> {
   return (data as MaterialRow[]).map(materialFromRow)
 }
 
+/**
+ * Crea un material nuevo en el catálogo — hasta ahora solo llegaban por
+ * import SAP. Pide la misma información que ya se muestra/edita en la
+ * pestaña Catálogo (SKU, descripción, nombre alternativo, tipo, mínimo);
+ * los proveedores se asignan aparte con `updateMaterialProveedores` una vez
+ * creado (necesita el id del material, que recién existe después del
+ * insert). `sku` único lo valida la BD (constraint `materiales_sku_key`).
+ */
+export async function crearMaterial(datos: {
+  sku: string
+  descripcion: string
+  apodo: string | null
+  tipoId: string | null
+  stockMinimo: number | null
+}): Promise<Material> {
+  const { data, error } = await supabase.from('materiales')
+    .insert({
+      sku: datos.sku.trim(),
+      descripcion: datos.descripcion.trim(),
+      apodo: datos.apodo?.trim() || null,
+      tipo_id: datos.tipoId,
+      stock_minimo: datos.stockMinimo,
+    })
+    .select('*, material_tipos(id, nombre), material_proveedores(proveedores(id, nombre))')
+    .single()
+  if (error) {
+    if (error.code === '23505') throw new Error(`Ya existe un material con el SKU "${datos.sku}".`)
+    throw new Error(`materiales.crear: ${error.message}`)
+  }
+  return materialFromRow(data as MaterialRow)
+}
+
 /** Umbral de alerta ("hay que renovar") — null para quitarlo. */
 export async function updateMaterialStockMinimo(materialId: string, stockMinimo: number | null): Promise<void> {
   const { error } = await supabase.from('materiales').update({ stock_minimo: stockMinimo }).eq('id', materialId)

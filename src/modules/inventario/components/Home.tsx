@@ -12,7 +12,7 @@ import { UbicacionSelect } from '@/ui/UbicacionSelect'
 import { useFileDrop } from '@/ui/useFileDrop'
 import {
   getStock, getTecnicoLedger, listMovimientos, listMateriales, listUbicaciones,
-  updateMaterialStockMinimo, updateMaterialComentario, updateMaterialTendido,
+  updateMaterialStockMinimo, updateMaterialComentario, updateMaterialTendido, crearMaterial,
   listMaterialTipos, crearMaterialTipo, updateMaterialApodo, updateMaterialTipo,
   listProveedores, crearProveedor, updateMaterialProveedores,
   listConteos, getConteoLineas, abrirConteo, agregarLineaConteo, actualizarLineaConteo, cerrarConteo, descartarConteo,
@@ -1798,11 +1798,24 @@ function CatalogoTab() {
     return nuevo
   }
 
+  async function crearTipoCatalogo(nombre: string): Promise<MaterialTipo> {
+    const nuevo = await crearMaterialTipo(nombre)
+    setTipos((prev) => [...prev, nuevo].sort((a, b) => a.nombre.localeCompare(b.nombre)))
+    return nuevo
+  }
+
+  function agregarMaterialLocal(m: Material) {
+    setMateriales((prev) => [...(prev ?? []), m].sort((a, b) => compareSku(a.sku, b.sku, 'asc')))
+  }
+
   return (
     <div className="space-y-3">
       <p className="text-[11px] text-slate-500 leading-relaxed">
         Todos los SKU: nombre alternativo (como se conoce en terreno), tipo (los de cable se consideran para el Estado de Pago), mínimo (alerta de stock bajo en Bodega) y proveedores.
       </p>
+
+      <NuevoMaterialForm tipos={tipos} proveedoresCatalogo={proveedoresCatalogo}
+        onCreated={agregarMaterialLocal} onNuevoTipo={crearTipoCatalogo} onNuevoProveedor={crearProveedorCatalogo} />
 
       <input value={q} onChange={(e) => setQ(e.target.value)} placeholder="Buscar por SKU, descripción o nombre alternativo…"
         className={`${inputCls} w-full`} />
@@ -1873,6 +1886,143 @@ function CatalogoTab() {
         </div>
         {!codigosLpu ? <p className="text-xs text-slate-500">Cargando…</p> : <LpuTendidoMapEditor codigos={codigosLpu} />}
       </div>
+    </div>
+  )
+}
+
+function NuevoMaterialForm({ tipos, proveedoresCatalogo, onCreated, onNuevoTipo, onNuevoProveedor }: {
+  tipos: MaterialTipo[]
+  proveedoresCatalogo: Proveedor[]
+  onCreated: (m: Material) => void
+  onNuevoTipo: (nombre: string) => Promise<MaterialTipo>
+  onNuevoProveedor: (nombre: string) => Promise<Proveedor>
+}) {
+  const [open, setOpen] = useState(false)
+  const [sku, setSku] = useState('')
+  const [descripcion, setDescripcion] = useState('')
+  const [apodo, setApodo] = useState('')
+  const [tipoId, setTipoId] = useState('')
+  const [minimo, setMinimo] = useState('')
+  const [proveedores, setProveedores] = useState<Proveedor[]>([])
+  const [creandoTipo, setCreandoTipo] = useState(false)
+  const [nombreNuevoTipo, setNombreNuevoTipo] = useState('')
+  const [saving, setSaving] = useState(false)
+  const [error, setError] = useState<string | null>(null)
+
+  function reset() {
+    setSku(''); setDescripcion(''); setApodo(''); setTipoId(''); setMinimo('')
+    setProveedores([]); setCreandoTipo(false); setNombreNuevoTipo(''); setError(null)
+  }
+
+  async function confirmarNuevoTipo() {
+    const nombre = nombreNuevoTipo.trim()
+    if (!nombre) return
+    try {
+      const nuevo = await onNuevoTipo(nombre)
+      setTipoId(nuevo.id)
+      setNombreNuevoTipo('')
+      setCreandoTipo(false)
+    } catch (err) {
+      setError(err instanceof Error ? err.message : String(err))
+    }
+  }
+
+  async function guardar() {
+    if (!sku.trim() || !descripcion.trim()) {
+      setError('SKU y descripción son obligatorios.')
+      return
+    }
+    setSaving(true)
+    setError(null)
+    try {
+      const nuevo = await crearMaterial({
+        sku: sku.trim(),
+        descripcion: descripcion.trim(),
+        apodo: apodo.trim() || null,
+        tipoId: tipoId || null,
+        stockMinimo: minimo.trim() === '' ? null : Number(minimo),
+      })
+      if (proveedores.length > 0) {
+        await updateMaterialProveedores(nuevo.id, proveedores.map((p) => p.id))
+      }
+      onCreated({ ...nuevo, tipo: tipos.find((t) => t.id === tipoId) ?? null, proveedores })
+      reset()
+      setOpen(false)
+    } catch (err) {
+      setError(err instanceof Error ? err.message : String(err))
+    } finally {
+      setSaving(false)
+    }
+  }
+
+  if (!open) {
+    return (
+      <button type="button" onClick={() => setOpen(true)}
+        className="text-xs font-semibold text-brand-400 hover:text-brand-300 border-2 border-dashed border-slate-600 hover:border-brand-500 rounded-xl px-3 py-2 w-full transition-colors">
+        ➕ Agregar material
+      </button>
+    )
+  }
+
+  return (
+    <div className="bg-slate-800 rounded-2xl border border-slate-700 p-4 space-y-3">
+      <div className="flex items-center justify-between">
+        <h3 className="text-xs font-semibold text-brand-400 uppercase tracking-wide">Nuevo material</h3>
+        <button type="button" onClick={() => { reset(); setOpen(false) }} className="text-slate-500 hover:text-slate-300 text-xs">
+          ✕ Cancelar
+        </button>
+      </div>
+
+      {error && <p className="text-xs text-red-400">{error}</p>}
+
+      <div className="grid grid-cols-2 gap-3">
+        <div>
+          <label className="block text-xs text-slate-400 mb-1">SKU <span className="text-red-400">*</span></label>
+          <input value={sku} onChange={(e) => setSku(e.target.value)} placeholder="Ej. 123456" className={`${inputCls} w-full`} />
+        </div>
+        <div>
+          <label className="block text-xs text-slate-400 mb-1">Descripción <span className="text-red-400">*</span></label>
+          <input value={descripcion} onChange={(e) => setDescripcion(e.target.value)} placeholder="Descripción SAP" className={`${inputCls} w-full`} />
+        </div>
+        <div>
+          <label className="block text-xs text-slate-400 mb-1">Nombre alternativo</label>
+          <input value={apodo} onChange={(e) => setApodo(e.target.value)} placeholder="Como se conoce en terreno (opcional)" className={`${inputCls} w-full`} />
+        </div>
+        <div>
+          <label className="block text-xs text-slate-400 mb-1">Mínimo</label>
+          <input type="number" value={minimo} onChange={(e) => setMinimo(e.target.value)} placeholder="Alerta de stock bajo (opcional)" className={`${inputCls} w-full`} />
+        </div>
+        <div>
+          <label className="block text-xs text-slate-400 mb-1">Tipo</label>
+          {creandoTipo ? (
+            <div className="flex gap-1">
+              <input autoFocus value={nombreNuevoTipo} onChange={(e) => setNombreNuevoTipo(e.target.value)}
+                onKeyDown={(e) => { if (e.key === 'Enter') confirmarNuevoTipo(); if (e.key === 'Escape') setCreandoTipo(false) }}
+                placeholder="Nombre del tipo…" className={`${inputCls} flex-1`} />
+              <button type="button" onClick={confirmarNuevoTipo} className="text-brand-400 hover:text-brand-300 text-xs shrink-0">✓</button>
+              <button type="button" onClick={() => setCreandoTipo(false)} className="text-slate-500 hover:text-slate-300 text-xs shrink-0">✕</button>
+            </div>
+          ) : (
+            <select value={tipoId}
+              onChange={(e) => e.target.value === NUEVO_TIPO ? setCreandoTipo(true) : setTipoId(e.target.value)}
+              className={`${inputCls} w-full`}>
+              <option value="">(vacío)</option>
+              {tipos.map((t) => <option key={t.id} value={t.id}>{t.nombre}</option>)}
+              <option value={NUEVO_TIPO}>+ Nuevo tipo…</option>
+            </select>
+          )}
+        </div>
+        <div>
+          <label className="block text-xs text-slate-400 mb-1">Proveedores</label>
+          <ProveedoresSelect value={proveedores} catalogo={proveedoresCatalogo}
+            onChange={setProveedores} onNuevoProveedor={onNuevoProveedor} />
+        </div>
+      </div>
+
+      <button type="button" onClick={guardar} disabled={saving}
+        className="w-full py-2 rounded-xl bg-brand-600 text-white text-sm font-semibold hover:bg-brand-500 disabled:opacity-50">
+        {saving ? 'Guardando…' : 'Guardar material'}
+      </button>
     </div>
   )
 }
