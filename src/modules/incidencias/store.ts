@@ -17,13 +17,20 @@ export function hasPendingSync(record: Incidencia): boolean {
 }
 
 /**
- * Fusiona un record recién leído del servidor con lo que ya hay en cache —
- * mismo criterio que att/store.ts: si lo local es más nuevo, se conserva tal
- * cual; si gana el servidor, se preservan previewUrl/blobId locales de las
- * fotos ya resueltas (por storagePath).
+ * Fusiona un record recién leído del servidor con lo que ya hay en cache.
+ *
+ * Ver el comentario largo en att/store.ts: antes se decidía comparando
+ * `local.updatedAt > server.updatedAt` (reloj del dispositivo vs. reloj de
+ * Postgres — frágil si el reloj local está atrasado). Ahora se decide con
+ * `synced`: el `updatedAt` que se sabe con certeza que ya quedó confirmado
+ * en el servidor. Si el local no coincide, hay una edición sin confirmar y
+ * se conserva tal cual, sin comparar timestamps de relojes distintos.
+ *
+ * Si gana el servidor, se preservan previewUrl/blobId locales de las fotos
+ * ya resueltas (por storagePath).
  */
-function mergeFromServer(local: Incidencia | undefined, server: Incidencia): Incidencia {
-  if (local && local.updatedAt > server.updatedAt) return local
+function mergeFromServer(local: Incidencia | undefined, server: Incidencia, synced: number | undefined): Incidencia {
+  if (local && local.updatedAt !== synced) return local
   function mergeFoto(f: FotoEntry): FotoEntry {
     const prev = local?.fotos.find((lf) => lf.storagePath && lf.storagePath === f.storagePath)
     return prev ? { ...f, previewUrl: prev.previewUrl, blobId: prev.blobId } : f
@@ -47,6 +54,11 @@ export function emptyIncidencia(id: string, now: number): Incidencia {
 
 interface IncidenciaState {
   records: Record<string, Incidencia>
+  /** Ver el comentario largo de `syncedAt` en att/store.ts: distingue "el
+   *  store se refrescó desde Supabase" de "el usuario editó algo", y es lo
+   *  que usa `mergeFromServer` para saber si hay una edición local sin
+   *  confirmar — a propósito no compara timestamps de relojes distintos.
+   *  Por eso se persiste (`partialize`, más abajo). */
   syncedAt: Record<string, number>
 
   createNew: () => string
@@ -133,7 +145,7 @@ export const useIncidenciaStore = create<IncidenciaState>()(
           const syncedAt = { ...s.syncedAt }
           for (const rec of serverRecords) {
             const before = records[rec.id]
-            const merged = mergeFromServer(before, rec)
+            const merged = mergeFromServer(before, rec, s.syncedAt[rec.id])
             records[rec.id] = merged
             if (merged.updatedAt !== before?.updatedAt) syncedAt[rec.id] = merged.updatedAt
           }
@@ -147,7 +159,7 @@ export const useIncidenciaStore = create<IncidenciaState>()(
         if (!rec) return
         set((s) => {
           const before = s.records[id]
-          const merged = mergeFromServer(before, rec)
+          const merged = mergeFromServer(before, rec, s.syncedAt[id])
           const tookServer = merged.updatedAt !== before?.updatedAt
           return {
             records: { ...s.records, [rec.id]: merged },
@@ -173,6 +185,7 @@ export const useIncidenciaStore = create<IncidenciaState>()(
       async persistToServer(id) {
         const current = get().records[id]
         if (!current) throw new Error('persistToServer: la incidencia ya no está en el store local')
+        const startedUpdatedAt = current.updatedAt
 
         const withPhotos = await uploadRecordPhotos(current)
         withPhotos.fotos.forEach((f, i) => {
@@ -182,7 +195,20 @@ export const useIncidenciaStore = create<IncidenciaState>()(
         })
 
         const saved = await incidenciaRepo.save(withPhotos)
-        if (saved.id !== id) get().rekey(id, saved)
+        if (saved.id !== id) {
+          get().rekey(id, saved)
+        } else {
+          // Ver el comentario equivalente en att/store.ts: solo marcar
+          // sincronizado si nada cambió localmente mientras el guardado
+          // viajaba a Supabase.
+          set((s) => {
+            const nowRec = s.records[id]
+            if (nowRec && nowRec.updatedAt === startedUpdatedAt) {
+              return { syncedAt: { ...s.syncedAt, [id]: startedUpdatedAt } }
+            }
+            return s
+          })
+        }
         return saved
       },
 
@@ -237,6 +263,8 @@ export const useIncidenciaStore = create<IncidenciaState>()(
             fotos: rec.fotos.map((f) => ({ ...f, previewUrl: '' })),
           }])
         ),
+        // Tiene que sobrevivir un reload — ver el comentario de `syncedAt` arriba.
+        syncedAt: s.syncedAt,
       }),
     }
   )

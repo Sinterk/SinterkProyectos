@@ -37,15 +37,21 @@ function collectFotosByPath(record: Preventivo | undefined): Map<string, FotoEnt
 }
 
 /**
- * Fusiona un record recién leído del servidor con lo que ya hay en cache:
- * - si lo local es más nuevo (edición en curso aún no sincronizada), se
- *   conserva lo local tal cual (evita pisar tipeo en curso con datos viejos).
- * - si el servidor gana, se preservan los `previewUrl`/`blobId` locales de
- *   las fotos ya resueltas (por storagePath), para no forzar un refetch de
- *   la signed URL sin necesidad.
+ * Fusiona un record recién leído del servidor con lo que ya hay en cache.
+ *
+ * Ver el comentario largo en att/store.ts: antes se decidía comparando
+ * `local.updatedAt > server.updatedAt` (reloj del dispositivo vs. reloj de
+ * Postgres — frágil si el reloj local está atrasado). Ahora se decide con
+ * `synced`: el `updatedAt` que se sabe con certeza que ya quedó confirmado
+ * en el servidor. Si el local no coincide, hay una edición sin confirmar y
+ * se conserva tal cual, sin comparar timestamps de relojes distintos.
+ *
+ * Si el servidor gana, se preservan los `previewUrl`/`blobId` locales de las
+ * fotos ya resueltas (por storagePath), para no forzar un refetch de la
+ * signed URL sin necesidad.
  */
-function mergeFromServer(local: Preventivo | undefined, server: Preventivo): Preventivo {
-  if (local && local.updatedAt > server.updatedAt) return local
+function mergeFromServer(local: Preventivo | undefined, server: Preventivo, synced: number | undefined): Preventivo {
+  if (local && local.updatedAt !== synced) return local
 
   const localFotos = collectFotosByPath(local)
   function mergeFoto(f: FotoEntry | undefined): FotoEntry | undefined {
@@ -68,9 +74,12 @@ function mergeFromServer(local: Preventivo | undefined, server: Preventivo): Pre
 
 interface PreventivoState {
   records: Record<string, Preventivo>
-  /** Ver `syncedAt` en att/store.ts: distingue "el store se refrescó desde
-   *  Supabase" de "el usuario editó algo", para que el autoguardado no
-   *  dispare un guardado espurio al abrir/recargar un levantamiento. */
+  /** Ver el comentario largo de `syncedAt` en att/store.ts: distingue "el
+   *  store se refrescó desde Supabase" de "el usuario editó algo" (para que
+   *  el autoguardado no dispare un guardado espurio al abrir/recargar), y
+   *  además es lo que usa `mergeFromServer` para saber si hay una edición
+   *  local sin confirmar — a propósito no compara timestamps de relojes
+   *  distintos. Por eso se persiste (`partialize`, más abajo). */
   syncedAt: Record<string, number>
 
   upsert: (p: Preventivo) => void
@@ -190,7 +199,7 @@ export const usePreventivoStore = create<PreventivoState>()(
           const syncedAt = { ...s.syncedAt }
           for (const rec of serverRecords) {
             const before = records[rec.id]
-            const merged = mergeFromServer(before, rec)
+            const merged = mergeFromServer(before, rec, s.syncedAt[rec.id])
             records[rec.id] = merged
             if (merged.updatedAt !== before?.updatedAt) syncedAt[rec.id] = merged.updatedAt
           }
@@ -204,7 +213,7 @@ export const usePreventivoStore = create<PreventivoState>()(
         if (!rec) return
         set((s) => {
           const before = s.records[id]
-          const merged = mergeFromServer(before, rec)
+          const merged = mergeFromServer(before, rec, s.syncedAt[id])
           const tookServer = merged.updatedAt !== before?.updatedAt
           return {
             records: { ...s.records, [rec.id]: merged },
@@ -242,6 +251,7 @@ export const usePreventivoStore = create<PreventivoState>()(
       async persistToServer(id) {
         const current = get().records[id]
         if (!current) throw new Error('persistToServer: el levantamiento ya no está en el store local')
+        const startedUpdatedAt = current.updatedAt
 
         const withPhotos = await uploadRecordPhotos(current)
         if (
@@ -262,7 +272,20 @@ export const usePreventivoStore = create<PreventivoState>()(
         })
 
         const saved = await preventivoRepo.save(withPhotos)
-        if (saved.id !== id) get().rekey(id, saved)
+        if (saved.id !== id) {
+          get().rekey(id, saved)
+        } else {
+          // Ver el comentario equivalente en att/store.ts: solo marcar
+          // sincronizado si nada cambió localmente mientras el guardado
+          // viajaba a Supabase.
+          set((s) => {
+            const nowRec = s.records[id]
+            if (nowRec && nowRec.updatedAt === startedUpdatedAt) {
+              return { syncedAt: { ...s.syncedAt, [id]: startedUpdatedAt } }
+            }
+            return s
+          })
+        }
         return saved
       },
 
@@ -421,6 +444,8 @@ export const usePreventivoStore = create<PreventivoState>()(
             },
           ]),
         ),
+        // Tiene que sobrevivir un reload — ver el comentario de `syncedAt` arriba.
+        syncedAt: s.syncedAt,
       }),
     },
   ),

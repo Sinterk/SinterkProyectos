@@ -27,15 +27,26 @@ export function hasPendingSync(record: AttRecord): boolean {
 }
 
 /**
- * Fusiona un record recién leído del servidor con lo que ya hay en cache:
- * - si lo local es más nuevo (edición en curso aún no sincronizada), se
- *   conserva lo local tal cual (evita pisar tipeo en curso con datos viejos).
- * - si el servidor gana, se preservan los `previewUrl`/`blobId` locales de
- *   las fotos que ya se habían resuelto (por storagePath), para no perder la
- *   miniatura y forzar un refetch de la signed URL sin necesidad.
+ * Fusiona un record recién leído del servidor con lo que ya hay en cache.
+ *
+ * Antes esto se decidía comparando `local.updatedAt > server.updatedAt` —
+ * dos relojes distintos (el del dispositivo vs. el de Postgres). Si el
+ * reloj del celular/PC estaba atrasado respecto al del servidor, una
+ * edición local recién terminada podía "perder" contra un guardado parcial
+ * anterior (ej. autoguardado de una pausa a mitad de tipeo) — bug real
+ * reportado por Andrés (texto de OTT cortado a la mitad al cambiar de
+ * pestaña). Ahora se decide con `synced`: el `updatedAt` que se sabe con
+ * certeza que ya quedó confirmado en el servidor (ver `syncedAt` más abajo
+ * y cómo lo actualiza `persistToServer`). Si el `updatedAt` local no
+ * coincide con ese valor, hay una edición sin confirmar y se conserva lo
+ * local — sin comparar timestamps de relojes distintos.
+ *
+ * Además, si el servidor gana, se preservan los `previewUrl`/`blobId`
+ * locales de las fotos que ya se habían resuelto (por storagePath), para no
+ * perder la miniatura y forzar un refetch de la signed URL sin necesidad.
  */
-function mergeFromServer(local: AttRecord | undefined, server: AttRecord): AttRecord {
-  if (local && local.updatedAt > server.updatedAt) return local
+function mergeFromServer(local: AttRecord | undefined, server: AttRecord, synced: number | undefined): AttRecord {
+  if (local && local.updatedAt !== synced) return local
 
   const localAerea = local?.fotoAerea
   function mergeFoto(f: FotoEntry): FotoEntry {
@@ -98,12 +109,22 @@ export function emptyAttRecord(id: string, now: number): AttRecord {
 interface AttState {
   records: Record<string, AttRecord>
   /**
-   * Última marca `updatedAt` de cada record que llegó del SERVIDOR (por
-   * syncList/syncOne/rekey), no de una edición del usuario. `useAttAutosave`
-   * la usa para no confundir "el store se refrescó desde Supabase" con "el
-   * usuario tipeó algo" — si no se distinguiera, cada vez que se abre o
-   * recarga un informe se dispararía un guardado (delete+insert de
-   * tramos/fotos) sin que nadie haya editado nada.
+   * `updatedAt` que se sabe con certeza que ya quedó confirmado en el
+   * servidor para cada record (lo actualizan `syncList`/`syncOne`/`rekey` al
+   * traer del servidor, y `persistToServer` al guardar con éxito). Dos usos:
+   * 1. `useAttAutosave` lo usa para no confundir "el store se refrescó desde
+   *    Supabase" con "el usuario tipeó algo" — si no se distinguiera, cada
+   *    vez que se abre o recarga un informe se dispararía un guardado
+   *    (delete+insert de tramos/fotos) sin que nadie haya editado nada.
+   * 2. `mergeFromServer` lo usa para decidir si hay una edición local sin
+   *    confirmar (`record.updatedAt !== syncedAt[id]`) — a propósito NO se
+   *    compara contra el `updatedAt` que trae el servidor en cada fetch,
+   *    porque son relojes distintos (dispositivo vs. Postgres) y comparar
+   *    timestamps de relojes distintos es frágil (ver el comentario de
+   *    `mergeFromServer`). Por eso este mapa se persiste (`partialize`, más
+   *    abajo): si no sobreviviera un reload, toda edición local parecería
+   *    "sin confirmar" para siempre y el servidor nunca podría traer
+   *    cambios de otro dispositivo/usuario para ese record.
    */
   syncedAt: Record<string, number>
 
@@ -220,7 +241,7 @@ export const useAttStore = create<AttState>()(
           const syncedAt = { ...s.syncedAt }
           for (const rec of serverRecords) {
             const before = records[rec.id]
-            const merged = mergeFromServer(before, rec)
+            const merged = mergeFromServer(before, rec, s.syncedAt[rec.id])
             records[rec.id] = merged
             if (merged.updatedAt !== before?.updatedAt) syncedAt[rec.id] = merged.updatedAt
           }
@@ -234,7 +255,7 @@ export const useAttStore = create<AttState>()(
         if (!rec) return
         set((s) => {
           const before = s.records[id]
-          const merged = mergeFromServer(before, rec)
+          const merged = mergeFromServer(before, rec, s.syncedAt[id])
           const tookServer = merged.updatedAt !== before?.updatedAt
           return {
             records: { ...s.records, [rec.id]: merged },
@@ -265,6 +286,7 @@ export const useAttStore = create<AttState>()(
       async persistToServer(id) {
         const current = get().records[id]
         if (!current) throw new Error('persistToServer: el informe ya no está en el store local')
+        const startedUpdatedAt = current.updatedAt
 
         const withPhotos = await uploadRecordPhotos(current)
         // Persistir los storagePath recién subidos ANTES de guardar, para que
@@ -279,7 +301,23 @@ export const useAttStore = create<AttState>()(
         }
 
         const saved = await attRepo.save(withPhotos)
-        if (saved.id !== id) get().rekey(id, saved) // borrador local promovido a uuid del servidor
+        if (saved.id !== id) {
+          get().rekey(id, saved) // borrador local promovido a uuid del servidor
+        } else {
+          // Marca este `updatedAt` como confirmado en el servidor — pero solo
+          // si nada cambió localmente mientras el guardado viajaba a
+          // Supabase (comparación local-contra-local, mismo reloj, sin el
+          // problema de `mergeFromServer`). Si sí cambió, se deja "sin
+          // confirmar" a propósito: el próximo ciclo de autoguardado va a
+          // volver a intentarlo con lo más nuevo.
+          set((s) => {
+            const nowRec = s.records[id]
+            if (nowRec && nowRec.updatedAt === startedUpdatedAt) {
+              return { syncedAt: { ...s.syncedAt, [id]: startedUpdatedAt } }
+            }
+            return s
+          })
+        }
         return saved
       },
 
@@ -428,6 +466,9 @@ export const useAttStore = create<AttState>()(
             fotos: rec.fotos.map((f) => ({ ...f, previewUrl: '' })),
           }])
         ),
+        // Tiene que sobrevivir un reload: si no, toda edición local parecería
+        // "sin confirmar" para siempre (ver comentario de `syncedAt` arriba).
+        syncedAt: s.syncedAt,
       }),
     }
   )
