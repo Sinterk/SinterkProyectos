@@ -351,6 +351,19 @@ export async function listMovimientos(filters?: ListMovimientosFilters): Promise
   return (data as unknown as MovimientoJoinRow[]).map(movimientoFromJoinRow)
 }
 
+/**
+ * Revierte el efecto real de un movimiento (mismo mapeo tipo→stock que
+ * `registrar_movimiento`, invertido) y recién ahí borra la fila — nunca un
+ * DELETE crudo, que dejaría el stock desincronizado. Falla si algo más
+ * depende de este movimiento (evento de inventario asociado, o si el
+ * movimiento en sí es la resolución de un evento de conteo) — ver
+ * 0048_anular_movimiento.sql.
+ */
+export async function anularMovimiento(movimientoId: string): Promise<void> {
+  const { error } = await supabase.rpc('anular_movimiento', { p_movimiento_id: movimientoId })
+  if (error) throw new Error(`movimientos.anular: ${error.message}`)
+}
+
 // ---------------------------------------------------------------------------
 // Registrar movimiento / reasignar tránsito (RPC — lógica en la BD)
 // ---------------------------------------------------------------------------

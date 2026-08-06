@@ -171,6 +171,13 @@ export function ResumenProyectoTable({ projectId, area, puntos, refreshKey = 0, 
   // elige un lote distinto simplemente aparece como fila propia tras recargar.
   const [rowLoteOverride, setRowLoteOverride] = useState<Record<string, string>>({})
   const [rowTecnicoOverride, setRowTecnicoOverride] = useState<Record<string, string>>({})
+  // Antes la bodega de una fila existente no se veía ni se podía elegir —
+  // "+" siempre usaba la bodega compartida de la barra de abajo (por defecto
+  // la del área), sin importar si el material realmente estaba ahí. Bug real
+  // encontrado por Andrés (OTT 72603674035): un material que no vivía en esa
+  // bodega quedó en negativo porque nunca hubo forma de corregir de cuál
+  // bodega salía por fila. Mismo patrón que lote/técnico: override por fila.
+  const [rowBodegaOverride, setRowBodegaOverride] = useState<Record<string, string>>({})
 
   // Filas nuevas (materiales aún no presentes en `rows`): mismo mecanismo de
   // "+" que una fila existente, solo que además hay que elegir material/lote/
@@ -215,6 +222,19 @@ export function ResumenProyectoTable({ projectId, area, puntos, refreshKey = 0, 
   }
   function setRowTecnico(key: string, tecnicoUserId: string) {
     setRowTecnicoOverride((prev) => ({ ...prev, [key]: tecnicoUserId }))
+  }
+  function getRowBodega(key: string): string {
+    return rowBodegaOverride[key] || bodegaEdicion
+  }
+  function setRowBodega(key: string, ubicacionBodegaId: string) {
+    setRowBodegaOverride((prev) => ({ ...prev, [key]: ubicacionBodegaId }))
+    // La bodega elegida gobierna qué lotes hay disponibles — un lote ya
+    // elegido para la bodega anterior puede no existir en la nueva.
+    setRowLoteOverride((prev) => {
+      const next = { ...prev }
+      delete next[key]
+      return next
+    })
   }
 
   function agregarFilaNueva() {
@@ -281,11 +301,12 @@ export function ResumenProyectoTable({ projectId, area, puntos, refreshKey = 0, 
         if (nextEdits[key]) nextErrors[`${key}|__tecnico__`] = 'Elige un técnico antes de guardar'
         continue
       }
+      const bodegaFila = getRowBodega(key)
       for (const campo of CAMPOS) {
         const raw = byCampo[campo]
         const n = Number(raw)
         if (!raw || !(n > 0)) continue
-        if (CAMPO_NECESITA_BODEGA.includes(campo) && !bodegaEdicion) {
+        if (CAMPO_NECESITA_BODEGA.includes(campo) && !bodegaFila) {
           nextErrors[`${key}|${campo}`] = 'Falta elegir bodega'
           nextEdits[key] = { ...nextEdits[key], [campo]: raw }
           continue
@@ -294,7 +315,7 @@ export function ResumenProyectoTable({ projectId, area, puntos, refreshKey = 0, 
           await registrarMovimiento({
             tipoUI: CAMPO_TIPO[campo], materialId: row.materialId, cantidad: n, lote: loteFila || undefined,
             projectId, puntoId: row.puntoId, tecnicoUserId: tecnicoFila,
-            ubicacionBodegaId: CAMPO_NECESITA_BODEGA.includes(campo) ? bodegaEdicion : undefined,
+            ubicacionBodegaId: CAMPO_NECESITA_BODEGA.includes(campo) ? bodegaFila : undefined,
           })
         } catch (err) {
           nextErrors[`${key}|${campo}`] = err instanceof Error ? err.message : String(err)
@@ -585,12 +606,18 @@ export function ResumenProyectoTable({ projectId, area, puntos, refreshKey = 0, 
                       </td>
                       <td className="px-2 py-2 text-slate-300 whitespace-nowrap">{row.materialSku}</td>
                       <td className="px-2 py-2 align-top space-y-1">
-                        <LoteSelect materialId={row.materialId} ubicacionId={bodegaEdicion || null} naturaleza="fisico"
+                        <LoteSelect materialId={row.materialId} ubicacionId={getRowBodega(key) || null} naturaleza="fisico"
                           checkAvailability={false} value={getRowLote(row)}
                           onChange={(lote) => setRowLote(key, lote)}
                           className="w-24 bg-slate-700 text-white text-xs rounded px-1.5 py-1 border border-slate-600 focus:border-brand-500 focus:outline-none" />
                       </td>
-                      <td className="px-2 py-2 text-slate-600 whitespace-nowrap">—</td>
+                      <td className="px-2 py-2 align-top">
+                        <select value={getRowBodega(key)} onChange={(e) => setRowBodega(key, e.target.value)}
+                          className="w-24 bg-slate-700 text-white text-xs rounded px-1.5 py-1 border border-slate-600 focus:border-brand-500 focus:outline-none">
+                          <option value="">Bodega…</option>
+                          {bodegas.map((b) => <option key={b.id} value={b.id}>{b.nombre}</option>)}
+                        </select>
+                      </td>
                       {CAMPOS.map((campo) => {
                         const valor = row[campo]
                         const esCorregible = modoCorreccion && CAMPO_DB[campo] !== undefined && editableCamposVista.includes(campo)

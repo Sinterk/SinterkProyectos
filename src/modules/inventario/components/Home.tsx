@@ -3,6 +3,7 @@ import { createPortal } from 'react-dom'
 import { useNavigate } from 'react-router-dom'
 import { adminRepo } from '@/lib/adminRepo'
 import type { ProjectSummary, MemberProfile } from '@/lib/adminRepo'
+import { useAuth } from '@/lib/auth'
 import type { Profile } from '@/lib/auth'
 import { LpuCodigoSelect } from '@/ui/LpuCodigoSelect'
 import { MaterialSelect } from '@/ui/MaterialSelect'
@@ -12,7 +13,7 @@ import { ResumenProyectoTable } from '@/ui/ResumenProyectoTable'
 import { UbicacionSelect } from '@/ui/UbicacionSelect'
 import { useFileDrop } from '@/ui/useFileDrop'
 import {
-  getStock, getTecnicoLedger, listMovimientos, listMateriales, listUbicaciones,
+  getStock, getTecnicoLedger, listMovimientos, anularMovimiento, listMateriales, listUbicaciones,
   updateMaterialStockMinimo, updateMaterialComentario, updateMaterialTendido, crearMaterial,
   listMaterialTipos, crearMaterialTipo, updateMaterialApodo, updateMaterialTipo,
   listProveedores, crearProveedor, updateMaterialProveedores,
@@ -176,11 +177,14 @@ function sortMovColumnValues(key: MovColKey, values: string[]): string[] {
 }
 
 function MovimientosTab({ refreshKey }: { refreshKey: number }) {
+  const rol = useAuth((s) => s.profile?.rol)
+  const puedeAnular = rol === 'admin' || rol === 'jp' || rol === 'log'
   const [rows, setRows] = useState<Movimiento[] | null>(null)
   const [error, setError] = useState<string | null>(null)
   const [desde, setDesde] = useState('')
   const [hasta, setHasta] = useState('')
   const [search, setSearch] = useState('')
+  const [anulando, setAnulando] = useState<string | null>(null)
 
   // Mismo patrón que BodegaTab: orden por defecto (acá, el que ya trae la API —
   // fecha desc) reemplazado por un solo clic en una columna; filtro tipo Google
@@ -200,6 +204,21 @@ function MovimientosTab({ refreshKey }: { refreshKey: number }) {
     }
   }
   useEffect(() => { reload() /* eslint-disable-next-line react-hooks/exhaustive-deps */ }, [desde, hasta, refreshKey])
+
+  async function handleAnular(m: Movimiento) {
+    const detalle = `${TIPO_LABELS_MOV[m.tipo] ?? m.tipo} — ${m.materialSku} (${m.cantidad}) — ${m.fecha.slice(0, 10)}`
+    if (!confirm(`¿Anular este movimiento?\n\n${detalle}\n\nEsto revierte el stock que movió y borra el registro. No se puede deshacer.`)) return
+    setAnulando(m.id)
+    setError(null)
+    try {
+      await anularMovimiento(m.id)
+      await reload()
+    } catch (err) {
+      setError(err instanceof Error ? err.message : String(err))
+    } finally {
+      setAnulando(null)
+    }
+  }
 
   const q = search.trim().toLowerCase()
   const searched = (rows ?? []).filter((m) => !q
@@ -285,11 +304,12 @@ function MovimientosTab({ refreshKey }: { refreshKey: number }) {
                       open={openMenu === col.key} onToggle={() => setOpenMenu((k) => (k === col.key ? null : col.key))} />
                   )
                 })}
+                {puedeAnular && <th className="px-2 py-1.5 font-medium">Acción</th>}
               </tr>
             </thead>
             <tbody>
               {displayRows.length === 0 && (
-                <tr><td colSpan={MOV_COLUMNS.length} className="px-2 py-3 text-center text-slate-500">
+                <tr><td colSpan={MOV_COLUMNS.length + (puedeAnular ? 1 : 0)} className="px-2 py-3 text-center text-slate-500">
                   Ningún resultado con los filtros de columna actuales.
                 </td></tr>
               )}
@@ -308,6 +328,14 @@ function MovimientosTab({ refreshKey }: { refreshKey: number }) {
                   <td className="px-2 py-2 text-slate-300 whitespace-nowrap">{m.area ?? '—'}</td>
                   <td className="px-2 py-2 text-slate-300 whitespace-nowrap">{m.usuarioNombre ?? '—'}</td>
                   <td className="px-2 py-2 max-w-[220px]"><p className="text-slate-400 truncate">{m.nota ?? '—'}</p></td>
+                  {puedeAnular && (
+                    <td className="px-2 py-2 whitespace-nowrap">
+                      <button type="button" onClick={() => handleAnular(m)} disabled={anulando === m.id}
+                        className="text-[10px] text-red-400 hover:text-red-300 disabled:opacity-40">
+                        {anulando === m.id ? 'Anulando…' : '🗑 Anular'}
+                      </button>
+                    </td>
+                  )}
                 </tr>
               ))}
             </tbody>
