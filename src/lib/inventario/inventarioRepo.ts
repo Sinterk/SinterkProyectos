@@ -546,14 +546,23 @@ interface MovimientoLedgerJoinRow {
  * por proyecto+material+lote, calculado desde el libro de `movimientos`
  * (no desde `proyecto_materiales`, que es un acumulado de TODOS los técnicos
  * del proyecto). Las filas con `projectId: null` son material reasignado
- * como preventivo (sin proyecto asociado).
+ * como preventivo (sin proyecto asociado) o de un Conteo/Entrega desde
+ * Inventario → Asignaciones (ver `AsignacionesForm.tsx`).
+ *
+ * `ajuste` (tipoUI 'conteo') cuenta como `cantEntregada` — un Conteo es
+ * exactamente eso desde el punto de vista del técnico: material que quedó
+ * asignado a su nombre, solo que sin restarle a ninguna bodega. Bug real
+ * encontrado por Andrés: antes 'ajuste' no estaba en el filtro `in(tipo,…)`,
+ * así que un Conteo créditaba el stock real (`adjust_stock` sí corría bien
+ * en `registrar_movimiento`) pero desaparecía de esta pestaña — parecía que
+ * "no quedó asignado" aunque el stock del técnico ya estaba correcto.
  */
 export async function getTecnicoLedger(userId: string): Promise<TecnicoLedgerRow[]> {
   const { data, error } = await supabase
     .from('movimientos')
     .select('project_id, material_id, lote, tipo, cantidad, materiales(sku,descripcion), projects(ott,area)')
     .eq('usuario_id', userId)
-    .in('tipo', ['salida', 'instalado', 'traslado', 'rebaja', 'merma'])
+    .in('tipo', ['salida', 'instalado', 'traslado', 'rebaja', 'merma', 'ajuste'])
   if (error) throw new Error(`movimientos.tecnico: ${error.message}`)
 
   const key = (r: MovimientoLedgerJoinRow) => `${r.project_id ?? ''}|${r.material_id}|${r.lote}`
@@ -572,7 +581,7 @@ export async function getTecnicoLedger(userId: string): Promise<TecnicoLedgerRow
       map.set(k, row)
     }
     const cantidad = Number(r.cantidad)
-    if (r.tipo === 'salida') row.cantEntregada += cantidad
+    if (r.tipo === 'salida' || r.tipo === 'ajuste') row.cantEntregada += cantidad
     else if (r.tipo === 'instalado') row.cantInstalada += cantidad
     else if (r.tipo === 'traslado') row.cantDevuelta += cantidad
     else if (r.tipo === 'rebaja') row.cantRebajada += cantidad
