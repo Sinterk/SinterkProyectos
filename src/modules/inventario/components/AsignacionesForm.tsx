@@ -110,8 +110,8 @@ export function AsignacionesForm({ onRegistered }: { onRegistered?: () => void }
   }, [tipo, tecnicoUbicacionId])
 
   function documentoAuto(t: AsigTipo): string {
-    const label = t === 'entrega' ? 'Preventivo' : t === 'devolucion' ? 'Devolución' : 'Conteo'
-    return `${label} ${fechaCorta(fecha)}`
+    const label = t === 'entrega' ? 'preventivos' : t === 'devolucion' ? 'Devolución' : 'Conteo'
+    return `${label} (${fechaCorta(fecha)})`
   }
 
   function updateLinea(localId: string, patch: Partial<Linea>) {
