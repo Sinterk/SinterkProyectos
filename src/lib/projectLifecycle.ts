@@ -15,6 +15,19 @@ function todayISO(): string {
   return new Date().toISOString().slice(0, 10)
 }
 
+// `getSession()` de supabase-js refresca el token solo si ya venció (usa el
+// refresh token guardado) antes de devolver la sesión — llamarla justo antes
+// de un DELETE/UPDATE sensible a RLS evita el caso real donde el timer de
+// `autoRefreshToken` no alcanzó a correr (ej. pestaña en segundo plano un
+// rato largo) y la escritura sale con un token vencido: la RLS la rechaza
+// silenciosamente (0 filas), y sin esto el único síntoma visible era un
+// mensaje de "te falta el rol admin" que en realidad no tenía que ver con
+// el rol — bug real reportado por Andrés (tenía rol admin y aun así no podía
+// borrar un informe).
+async function refrescarSesion(): Promise<void> {
+  try { await supabase.auth.getSession() } catch { /* best-effort, la llamada real de abajo igual va a fallar si algo sigue mal */ }
+}
+
 /**
  * Borra un proyecto (el cascade arrastra sus hijos, sea cual sea el área).
  * La RLS reserva el DELETE al rol `admin`: para cualquier otro rol, Postgres
@@ -24,10 +37,11 @@ function todayISO(): string {
  */
 export async function removeProject(id: string): Promise<void> {
   if (!isUuid(id)) return
+  await refrescarSesion()
   const { data, error } = await supabase.from('projects').delete().eq('id', id).select('id')
   if (error) throw new Error(`projects.delete: ${error.message}`)
   if (!data || data.length === 0) {
-    throw new Error('No tienes permiso para eliminar este informe (requiere rol admin).')
+    throw new Error('No se pudo eliminar (0 filas afectadas) — puede ser que te falte el rol admin, o que tu sesión haya quedado vencida. Si tienes rol admin, cierra sesión y vuelve a entrar e inténtalo de nuevo.')
   }
 }
 
@@ -38,6 +52,7 @@ export async function removeProject(id: string): Promise<void> {
  */
 export async function closeProject(id: string): Promise<void> {
   if (!isUuid(id)) return
+  await refrescarSesion()
   const { data, error } = await supabase
     .from('projects')
     .update({ estado: 'cerrado', fecha_cierre: todayISO() })
@@ -45,13 +60,14 @@ export async function closeProject(id: string): Promise<void> {
     .select('id')
   if (error) throw new Error(`projects.close: ${error.message}`)
   if (!data || data.length === 0) {
-    throw new Error('No tienes permiso para cerrar este informe.')
+    throw new Error('No se pudo cerrar (0 filas afectadas) — puede ser que te falte el permiso, o que tu sesión haya quedado vencida. Prueba cerrar sesión y volver a entrar.')
   }
 }
 
 /** Reabre un proyecto cerrado (estado=activo, sin fecha_cierre). Misma RLS que `closeProject` (jp/admin). */
 export async function reopenProject(id: string): Promise<void> {
   if (!isUuid(id)) return
+  await refrescarSesion()
   const { data, error } = await supabase
     .from('projects')
     .update({ estado: 'activo', fecha_cierre: null })
@@ -59,6 +75,6 @@ export async function reopenProject(id: string): Promise<void> {
     .select('id')
   if (error) throw new Error(`projects.reopen: ${error.message}`)
   if (!data || data.length === 0) {
-    throw new Error('No tienes permiso para reabrir este informe.')
+    throw new Error('No se pudo reabrir (0 filas afectadas) — puede ser que te falte el permiso, o que tu sesión haya quedado vencida. Prueba cerrar sesión y volver a entrar.')
   }
 }
