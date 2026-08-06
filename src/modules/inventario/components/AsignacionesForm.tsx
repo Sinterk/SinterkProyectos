@@ -313,20 +313,25 @@ export function AsignacionesForm({ onRegistered }: { onRegistered?: () => void }
             const r = resultados[l.localId]
             return (
               <div key={l.localId} className="bg-slate-700/50 rounded-xl p-2 space-y-2">
-                <div className="grid grid-cols-6 gap-1.5">
+                <div className="grid grid-cols-2 gap-1.5">
                   <MaterialSelect materiales={materiales} value={l.materialId}
-                    onChange={(id) => updateLinea(l.localId, { materialId: id, lote: '' })}
-                    className="col-span-3" />
-                  <input type="number" min="0" step="any" placeholder="Cant." value={l.cantidad}
-                    onChange={(e) => updateLinea(l.localId, { cantidad: e.target.value })} className={`${inputCls} col-span-1`} />
+                    onChange={(id) => updateLinea(l.localId, { materialId: id, lote: '' })} />
+                  <UbicacionSelect value={l.ubicacionBodegaId} onChange={(id) => updateLinea(l.localId, { ubicacionBodegaId: id, lote: '' })}
+                    tipo="bodega" placeholder="Bodega de origen…" className={`${inputCls} w-full`} />
+                </div>
+                <div className="grid grid-cols-6 gap-1.5">
+                  {/* Recién acá se conoce la bodega: LoteSelect ya puede
+                      mostrarse como desplegable con los lotes disponibles,
+                      en vez de caer al campo de texto libre (mismo
+                      comportamiento que en Logística/Registrar Movimiento). */}
                   <LoteSelect materialId={l.materialId} ubicacionId={l.ubicacionBodegaId || null} naturaleza="fisico"
                     checkAvailability={tipo === 'entrega'} value={l.lote}
-                    onChange={(lote) => updateLinea(l.localId, { lote })} className={`${inputCls} col-span-1`} />
+                    onChange={(lote) => updateLinea(l.localId, { lote })} className={`${inputCls} col-span-3`} />
+                  <input type="number" min="0" step="any" placeholder="Cant." value={l.cantidad}
+                    onChange={(e) => updateLinea(l.localId, { cantidad: e.target.value })} className={`${inputCls} col-span-2`} />
                   <button type="button" onClick={() => removeLinea(l.localId)} disabled={lineas.length === 1}
                     className="col-span-1 text-xs text-red-400 disabled:opacity-30">Quitar</button>
                 </div>
-                <UbicacionSelect value={l.ubicacionBodegaId} onChange={(id) => updateLinea(l.localId, { ubicacionBodegaId: id, lote: '' })}
-                  tipo="bodega" placeholder="Bodega de origen…" className={`${inputCls} w-full`} />
                 {r && <p className={`text-xs ${r.ok ? 'text-green-400' : 'text-red-400'}`}>{r.texto}</p>}
               </div>
             )
