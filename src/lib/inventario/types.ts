@@ -68,7 +68,7 @@ export interface StockRow {
  * (tabla original) y 0037_traslado_bodega.sql (traspaso bodega↔bodega, sin
  * técnico) para el detalle de qué toca cada uno.
  */
-export type MovimientoTipoUI = 'entrada' | 'solicitud' | 'entrega' | 'instalado' | 'devuelto' | 'rebajado' | 'merma' | 'traslado_bodega'
+export type MovimientoTipoUI = 'entrada' | 'solicitud' | 'entrega' | 'instalado' | 'devuelto' | 'rebajado' | 'merma' | 'traslado_bodega' | 'conteo'
 
 export interface Movimiento {
   id: string

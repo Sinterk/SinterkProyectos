@@ -7,6 +7,7 @@ import type { Profile } from '@/lib/auth'
 import { LpuCodigoSelect } from '@/ui/LpuCodigoSelect'
 import { MaterialSelect } from '@/ui/MaterialSelect'
 import { RegistrarMovimientoForm } from '@/ui/RegistrarMovimientoForm'
+import { AsignacionesForm } from './AsignacionesForm'
 import { ResumenProyectoTable } from '@/ui/ResumenProyectoTable'
 import { UbicacionSelect } from '@/ui/UbicacionSelect'
 import { useFileDrop } from '@/ui/useFileDrop'
@@ -38,7 +39,7 @@ type MainTab = 'movimientos' | 'bodega' | 'proyecto' | 'tecnico' | 'conteo' | 'c
 const TIPO_LABELS_MOV: Record<string, string> = {
   entrada: 'Entrada', salida: 'Salida', traslado: 'Traslado/Devuelto',
   rebaja: 'Rebajado (SAP)', solicitud: 'Solicitud', instalado: 'Instalado', merma: 'Merma',
-  traslado_bodega: 'Traspaso entre bodegas',
+  traslado_bodega: 'Traspaso entre bodegas', ajuste: 'Ajuste (Conteo)',
 }
 
 const inputCls = 'bg-slate-800 text-white text-sm rounded-lg px-2 py-1.5 border border-slate-700 focus:border-brand-500 focus:outline-none'
@@ -83,6 +84,7 @@ function TabButton({ active, onClick, children }: { active: boolean; onClick: ()
 
 function EntradasSalidasTab() {
   const [sub, setSub] = useState<'registro' | 'movimientos'>('registro')
+  const [registroTipo, setRegistroTipo] = useState<'entrada' | 'asignaciones'>('asignaciones')
   const [refreshKey, setRefreshKey] = useState(0)
 
   return (
@@ -97,9 +99,25 @@ function EntradasSalidasTab() {
           Movimientos
         </button>
       </div>
-      {sub === 'registro'
-        ? <RegistrarMovimientoForm onRegistered={() => setRefreshKey((k) => k + 1)} />
-        : <MovimientosTab refreshKey={refreshKey} />}
+      {sub === 'registro' ? (
+        <div className="space-y-3">
+          <div className="flex gap-2">
+            <button type="button" onClick={() => setRegistroTipo('asignaciones')}
+              className={`flex-1 text-xs font-semibold py-1.5 rounded-lg ${registroTipo === 'asignaciones' ? 'bg-brand-600 text-white' : 'bg-slate-700 text-slate-300'}`}>
+              Asignaciones
+            </button>
+            <button type="button" onClick={() => setRegistroTipo('entrada')}
+              className={`flex-1 text-xs font-semibold py-1.5 rounded-lg ${registroTipo === 'entrada' ? 'bg-brand-600 text-white' : 'bg-slate-700 text-slate-300'}`}>
+              Entrada
+            </button>
+          </div>
+          {registroTipo === 'asignaciones'
+            ? <AsignacionesForm onRegistered={() => setRefreshKey((k) => k + 1)} />
+            : <RegistrarMovimientoForm soloEntrada onRegistered={() => setRefreshKey((k) => k + 1)} />}
+        </div>
+      ) : (
+        <MovimientosTab refreshKey={refreshKey} />
+      )}
     </div>
   )
 }

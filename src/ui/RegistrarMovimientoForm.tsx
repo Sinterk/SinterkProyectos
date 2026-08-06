@@ -28,6 +28,10 @@ const TIPO_LABELS: Record<MovimientoTipoUI, string> = {
   entrada: 'Entrada', solicitud: 'Solicitud', entrega: 'Entrega',
   instalado: 'Instalado', devuelto: 'Devuelto', rebajado: 'Rebajado (SAP)', merma: 'Merma',
   traslado_bodega: 'Traspaso entre bodegas',
+  // No seleccionable desde este formulario compartido (solo desde
+  // AsignacionesForm, en Inventario → Entradas/Salidas) — está acá solo
+  // para que el Record<MovimientoTipoUI, string> quede exhaustivo.
+  conteo: 'Conteo',
 }
 /** Tipos de Salida que no exigen proyecto (permiten "Salida preventiva"). */
 const PROYECTO_OPCIONAL: MovimientoTipoUI[] = ['entrega', 'devuelto']
@@ -59,11 +63,15 @@ interface Props {
   puntos?: { id: string; nombre: string }[]
   /** Si se pasa, oculta el selector Entrada/Salida y de tipo, dejándolo fijo (alta rápida de material por punto, siempre 'instalado'). */
   lockTipoUI?: MovimientoTipoUI
+  /** Si se pasa, oculta el selector Entrada/Salida y deja el formulario fijo
+   *  en modo Entrada — usado desde Inventario → Entradas/Salidas, donde el
+   *  lado "Asignaciones" ahora lo maneja `AsignacionesForm` aparte. */
+  soloEntrada?: boolean
   /** Se llama tras cada registro exitoso, para refrescar listas/resúmenes en el padre. */
   onRegistered?: () => void
 }
 
-export function RegistrarMovimientoForm({ fixedProject, puntos, lockTipoUI, onRegistered }: Props) {
+export function RegistrarMovimientoForm({ fixedProject, puntos, lockTipoUI, soloEntrada, onRegistered }: Props) {
   const rol = useAuth((s) => s.profile?.rol)
   const puedeCrearProyecto = rol === 'admin' || rol === 'jp'
   const [datosTipo, setDatosTipo] = useState<'entrada' | 'salida'>('salida')
@@ -113,7 +121,7 @@ export function RegistrarMovimientoForm({ fixedProject, puntos, lockTipoUI, onRe
     }
   }, [fixedProject])
 
-  const esEntrada = !lockTipoUI && !fixedProject && datosTipo === 'entrada'
+  const esEntrada = soloEntrada || (!lockTipoUI && !fixedProject && datosTipo === 'entrada')
   // Traspaso entre bodegas: sin técnico ni proyecto — ambos extremos son bodegas.
   const esTraslado = tipoUI === 'traslado_bodega'
   const requiereProyecto = !PROYECTO_OPCIONAL.includes(tipoUI) && !esTraslado
@@ -259,7 +267,7 @@ export function RegistrarMovimientoForm({ fixedProject, puntos, lockTipoUI, onRe
     <div className="bg-slate-800 rounded-2xl border border-slate-700 p-4 space-y-4">
       {loadError && <p className="text-xs text-red-400">{loadError}</p>}
 
-      {!lockTipoUI && !fixedProject && (
+      {!lockTipoUI && !fixedProject && !soloEntrada && (
         <div className="flex gap-2">
           <button type="button" onClick={() => setDatosTipo('salida')}
             className={`flex-1 text-xs font-semibold py-1.5 rounded-lg ${datosTipo === 'salida' ? 'bg-brand-600 text-white' : 'bg-slate-700 text-slate-300'}`}>
