@@ -1,5 +1,11 @@
-// Resumen de material de un proyecto (solicitado/entregado/instalado/
-// devuelto/rebajado/tránsito), como tabla con columnas fijas, editable por
+// Resumen de material de un proyecto en DOS tablas: la FÍSICA (solicitado/
+// entregado/instalado/devuelto/merma/asignado a técnico/tránsito) y la
+// DIGITAL (la baja contable de SAP, `TablaDigital` al final del archivo).
+// Las dos se alimentan de las mismas filas de `proyecto_materiales`, así que
+// una fila cargada en la física aparece sola en la digital con el mismo SKU
+// y lote, y un solo "Guardar cambios" registra lo pendiente de ambas.
+//
+// Ambas son tablas con columnas fijas, editables por
 // suma: cada celda editable registra un movimiento real (mismo camino que
 // "Registrar movimiento" — atómico, respeta stock) en vez de sobreescribir
 // el número directamente, así nunca se desincroniza del stock real. Por eso
@@ -63,6 +69,17 @@ const CAMPO_DB: Partial<Record<Campo, CampoCorregible>> = {
   cantEntregada: 'cant_entregada', cantInstalada: 'cant_instalada',
   cantDevuelta: 'cant_devuelta', cantRebajada: 'cant_rebajada', cantMerma: 'cant_merma',
 }
+/**
+ * El material del proyecto se muestra en DOS tablas (pedido de Andrés):
+ * la física (lo que se mueve de verdad) y la digital (la baja contable en
+ * SAP). `cantRebajada` es la única columna digital — por eso sale de la
+ * tabla física y vive en `TablaDigital`, más abajo. Ambas comparten el
+ * mismo estado (`edits`/`corrections`) y las mismas filas de
+ * `proyecto_materiales`: por eso una fila nueva cargada en la física
+ * aparece sola en la digital, con el mismo SKU y lote.
+ */
+const CAMPOS_FISICOS: Campo[] = ['cantSolicitada', 'cantEntregada', 'cantInstalada', 'cantDevuelta', 'cantMerma']
+const CAMPO_DIGITAL: Campo = 'cantRebajada'
 
 const NINGUN_PUNTO = ''
 const TODOS_LOS_PUNTOS = ''
@@ -178,6 +195,9 @@ export function ResumenProyectoTable({ projectId, area, puntos, refreshKey = 0, 
   // bodega quedó en negativo porque nunca hubo forma de corregir de cuál
   // bodega salía por fila. Mismo patrón que lote/técnico: override por fila.
   const [rowBodegaOverride, setRowBodegaOverride] = useState<Record<string, string>>({})
+  /** Bodega por fila de la tabla DIGITAL — separada de la física: la baja de
+   *  SAP no tiene por qué salir de la misma bodega que el movimiento físico. */
+  const [rowBodegaDigitalOverride, setRowBodegaDigitalOverride] = useState<Record<string, string>>({})
 
   // Filas nuevas (materiales aún no presentes en `rows`): mismo mecanismo de
   // "+" que una fila existente, solo que además hay que elegir material/lote/
@@ -225,6 +245,12 @@ export function ResumenProyectoTable({ projectId, area, puntos, refreshKey = 0, 
   }
   function getRowBodega(key: string): string {
     return rowBodegaOverride[key] || bodegaEdicion
+  }
+  function getRowBodegaDigital(key: string): string {
+    return rowBodegaDigitalOverride[key] || bodegaEdicion
+  }
+  function setRowBodegaDigital(key: string, ubicacionBodegaId: string) {
+    setRowBodegaDigitalOverride((prev) => ({ ...prev, [key]: ubicacionBodegaId }))
   }
   function setRowBodega(key: string, ubicacionBodegaId: string) {
     setRowBodegaOverride((prev) => ({ ...prev, [key]: ubicacionBodegaId }))
@@ -301,11 +327,13 @@ export function ResumenProyectoTable({ projectId, area, puntos, refreshKey = 0, 
         if (nextEdits[key]) nextErrors[`${key}|__tecnico__`] = 'Elige un técnico antes de guardar'
         continue
       }
-      const bodegaFila = getRowBodega(key)
       for (const campo of CAMPOS) {
         const raw = byCampo[campo]
         const n = Number(raw)
         if (!raw || !(n > 0)) continue
+        // La fila digital (Rebajado) tiene su propia bodega, distinta de la
+        // de la fila física — ver `rowBodegaDigitalOverride`.
+        const bodegaFila = campo === CAMPO_DIGITAL ? getRowBodegaDigital(key) : getRowBodega(key)
         if (CAMPO_NECESITA_BODEGA.includes(campo) && !bodegaFila) {
           nextErrors[`${key}|${campo}`] = 'Falta elegir bodega'
           nextEdits[key] = { ...nextEdits[key], [campo]: raw }
@@ -520,7 +548,6 @@ export function ResumenProyectoTable({ projectId, area, puntos, refreshKey = 0, 
                   <th className="px-2 py-2 font-medium text-center whitespace-nowrap">Entregado</th>
                   <th className="px-2 py-2 font-medium text-center whitespace-nowrap">Instalado</th>
                   <th className="px-2 py-2 font-medium text-center whitespace-nowrap">Devuelto</th>
-                  <th className="px-2 py-2 font-medium text-center whitespace-nowrap">Rebajado</th>
                   <th className="px-2 py-2 font-medium text-center whitespace-nowrap">Merma</th>
                   {/* `cant_rezagada` — lo que se dejó como preventivo al cerrar
                       (botón "→ preventivo"). Antes no se mostraba en ninguna
@@ -575,7 +602,7 @@ export function ResumenProyectoTable({ projectId, area, puntos, refreshKey = 0, 
                           {bodegas.map((b) => <option key={b.id} value={b.id}>{b.nombre}</option>)}
                         </select>
                       </td>
-                      {CAMPOS.map((campo) => {
+                      {CAMPOS_FISICOS.map((campo) => {
                         if (!editableCampos.includes(campo)) {
                           return <td key={campo} className="px-2 py-2 text-center whitespace-nowrap align-top text-slate-600">—</td>
                         }
@@ -627,7 +654,7 @@ export function ResumenProyectoTable({ projectId, area, puntos, refreshKey = 0, 
                           {bodegas.map((b) => <option key={b.id} value={b.id}>{b.nombre}</option>)}
                         </select>
                       </td>
-                      {CAMPOS.map((campo) => {
+                      {CAMPOS_FISICOS.map((campo) => {
                         const valor = row[campo]
                         const esCorregible = modoCorreccion && CAMPO_DB[campo] !== undefined && editableCamposVista.includes(campo)
                         if (esCorregible) {
@@ -704,6 +731,22 @@ export function ResumenProyectoTable({ projectId, area, puntos, refreshKey = 0, 
             </table>
           </div>
 
+          <TablaDigital
+            rows={displayRows}
+            rowKey={rowKey}
+            edits={edits}
+            onDraft={setDraft}
+            cellErrors={cellErrors}
+            modoCorreccion={modoCorreccion}
+            corrections={corrections}
+            onCorrection={setCorrection}
+            correctionErrors={correctionErrors}
+            bodegas={bodegas}
+            getBodega={getRowBodegaDigital}
+            onBodegaChange={setRowBodegaDigital}
+            editable={editableCampos.includes(CAMPO_DIGITAL)}
+          />
+
           {hayPendientes && (
             <div className="bg-slate-700/40 rounded-xl border border-dashed border-slate-600 p-3 space-y-2">
               <p className="text-[11px] text-slate-400">
@@ -745,6 +788,147 @@ export function ResumenProyectoTable({ projectId, area, puntos, refreshKey = 0, 
           )}
         </>
       )}
+    </div>
+  )
+}
+
+/**
+ * Tabla DIGITAL del proyecto (baja contable en SAP). Comparte filas y estado
+ * con la física de arriba: son las mismas filas de `proyecto_materiales`
+ * (mismo SKU y lote), así que una fila cargada allá aparece sola acá — no
+ * hay que darla de alta dos veces. La única columna editable es Cantidad
+ * (`cantRebajada`), con la misma mecánica aditiva del resto de la app: lo
+ * tecleado se registra como un movimiento `rebajado` al guardar, no
+ * sobreescribe el número. "Disponible" es el stock DIGITAL de esa bodega
+ * para ese material+lote, de solo lectura.
+ */
+function TablaDigital({
+  rows, rowKey, edits, onDraft, cellErrors,
+  modoCorreccion, corrections, onCorrection, correctionErrors,
+  bodegas, getBodega, onBodegaChange, editable,
+}: {
+  rows: ResumenMaterialProyecto[]
+  rowKey: (r: ResumenMaterialProyecto) => string
+  edits: Record<string, Partial<Record<Campo, string>>>
+  onDraft: (key: string, campo: Campo, v: string) => void
+  cellErrors: Record<string, string>
+  modoCorreccion: boolean
+  corrections: Record<string, Partial<Record<Campo, string>>>
+  onCorrection: (key: string, campo: Campo, v: string) => void
+  correctionErrors: Record<string, string>
+  bodegas: Ubicacion[]
+  getBodega: (key: string) => string
+  onBodegaChange: (key: string, ubicacionBodegaId: string) => void
+  editable: boolean
+}) {
+  // Stock digital disponible por bodega+material+lote. Se pide una vez por
+  // cada bodega distinta que haya elegida entre las filas (no una por fila).
+  const [disponible, setDisponible] = useState<Record<string, number>>({})
+
+  const bodegasEnUso = [...new Set(rows.map((r) => getBodega(rowKey(r))).filter(Boolean))].sort().join(',')
+
+  useEffect(() => {
+    const ids = bodegasEnUso ? bodegasEnUso.split(',') : []
+    if (ids.length === 0) { setDisponible({}); return }
+    let cancelado = false
+    Promise.all(ids.map((ubicacionId) => getStock({ ubicacionId })))
+      .then((listas) => {
+        if (cancelado) return
+        const mapa: Record<string, number> = {}
+        for (const filas of listas) {
+          for (const s of filas) mapa[`${s.ubicacionId}|${s.materialId}|${s.lote}`] = s.cantidadDigital
+        }
+        setDisponible(mapa)
+      })
+      .catch(() => { if (!cancelado) setDisponible({}) })
+    return () => { cancelado = true }
+  }, [bodegasEnUso])
+
+  if (rows.length === 0) return null
+
+  return (
+    <div className="space-y-2">
+      <div>
+        <h3 className="text-xs font-semibold text-brand-400 uppercase tracking-wide">Material digital (SAP)</h3>
+        <p className="text-[11px] text-slate-500 leading-relaxed mt-1">
+          Baja contable en SAP, sin movimiento físico. Las filas salen solas de la tabla de arriba (mismo SKU y lote).
+        </p>
+      </div>
+      <div className="overflow-x-auto rounded-xl border border-slate-700">
+        <table className="w-full text-xs border-collapse">
+          <thead>
+            <tr className="bg-slate-900/60 text-slate-400 text-left divide-x divide-slate-700">
+              <th className="px-2 py-2 font-medium whitespace-nowrap">SKU</th>
+              <th className="px-2 py-2 font-medium whitespace-nowrap">Lote</th>
+              <th className="px-2 py-2 font-medium whitespace-nowrap">Bodega</th>
+              <th className="px-2 py-2 font-medium text-center whitespace-nowrap">Cantidad</th>
+              <th className="px-2 py-2 font-medium text-center whitespace-nowrap">Disponible</th>
+            </tr>
+          </thead>
+          <tbody>
+            {rows.map((row) => {
+              const key = rowKey(row)
+              const bodegaId = getBodega(key)
+              const disp = bodegaId ? disponible[`${bodegaId}|${row.materialId}|${row.lote}`] : undefined
+              const err = cellErrors[`${key}|${CAMPO_DIGITAL}`]
+              const errCorreccion = correctionErrors[`${key}|${CAMPO_DIGITAL}`]
+              const esCorregible = modoCorreccion && editable
+              return (
+                <tr key={key} className="border-t border-slate-700 divide-x divide-slate-700 bg-slate-800/60">
+                  <td className="px-2 py-2 text-slate-300 whitespace-nowrap">{row.materialSku}</td>
+                  <td className="px-2 py-2 text-slate-400 whitespace-nowrap">{row.lote || '—'}</td>
+                  <td className="px-2 py-2 align-top">
+                    <select value={bodegaId} onChange={(e) => onBodegaChange(key, e.target.value)}
+                      className="w-24 bg-slate-700 text-white text-xs rounded px-1.5 py-1 border border-slate-600 focus:border-brand-500 focus:outline-none">
+                      <option value="">Bodega…</option>
+                      {bodegas.map((b) => <option key={b.id} value={b.id}>{b.nombre}</option>)}
+                    </select>
+                  </td>
+                  <td className="px-2 py-2 text-center whitespace-nowrap align-top">
+                    {esCorregible ? (
+                      <>
+                        <div className="flex items-center justify-center gap-1">
+                          <span className="text-slate-500 text-[10px]">=</span>
+                          <input type="number" min="0" step="any"
+                            value={corrections[key]?.[CAMPO_DIGITAL] ?? String(row.cantRebajada)}
+                            onChange={(e) => onCorrection(key, CAMPO_DIGITAL, e.target.value)}
+                            className="w-12 bg-amber-950/30 text-amber-200 text-xs rounded px-1 py-0.5 border border-amber-700/60 focus:border-amber-500 focus:outline-none text-center" />
+                        </div>
+                        {errCorreccion && <p className="text-[9px] text-red-400 mt-0.5">{errCorreccion}</p>}
+                      </>
+                    ) : (
+                      <>
+                        <div className="flex items-center justify-center gap-1">
+                          <span className="text-white font-medium">{row.cantRebajada}</span>
+                          {editable && (
+                            <>
+                              <span className="text-slate-500 text-[10px]">+</span>
+                              <input type="number" min="0" step="any" placeholder="0"
+                                value={edits[key]?.[CAMPO_DIGITAL] ?? ''}
+                                onChange={(e) => onDraft(key, CAMPO_DIGITAL, e.target.value)}
+                                className="w-12 bg-slate-700 text-white text-xs rounded px-1 py-0.5 border border-slate-600 focus:border-brand-500 focus:outline-none text-center" />
+                            </>
+                          )}
+                        </div>
+                        {err && <p className="text-[9px] text-red-400 mt-0.5">{err}</p>}
+                      </>
+                    )}
+                  </td>
+                  <td className="px-2 py-2 text-center whitespace-nowrap">
+                    {!bodegaId ? (
+                      <span className="text-slate-600">—</span>
+                    ) : disp === undefined ? (
+                      <span className="text-slate-600">…</span>
+                    ) : (
+                      <span className={disp <= 0 ? 'text-red-400 font-medium' : 'text-white'}>{disp}</span>
+                    )}
+                  </td>
+                </tr>
+              )
+            })}
+          </tbody>
+        </table>
+      </div>
     </div>
   )
 }
