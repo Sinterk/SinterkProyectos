@@ -522,6 +522,13 @@ export function ResumenProyectoTable({ projectId, area, puntos, refreshKey = 0, 
                   <th className="px-2 py-2 font-medium text-center whitespace-nowrap">Devuelto</th>
                   <th className="px-2 py-2 font-medium text-center whitespace-nowrap">Rebajado</th>
                   <th className="px-2 py-2 font-medium text-center whitespace-nowrap">Merma</th>
+                  {/* `cant_rezagada` — lo que se dejó como preventivo al cerrar
+                      (botón "→ preventivo"). Antes no se mostraba en ninguna
+                      parte y era un término invisible de la fórmula de
+                      Tránsito: Andrés vio un −1 sin ningún movimiento que lo
+                      explicara. "Asignado a técnico" es el nombre que él pidió,
+                      más claro que "rezagado". */}
+                  <th className="px-2 py-2 font-medium text-center whitespace-nowrap">Asignado a técnico</th>
                   <th className="px-2 py-2 font-medium text-center whitespace-nowrap">Tránsito</th>
                 </tr>
               </thead>
@@ -582,6 +589,8 @@ export function ResumenProyectoTable({ projectId, area, puntos, refreshKey = 0, 
                           </td>
                         )
                       })}
+                      {/* Asignado a técnico: una fila nueva todavía no tiene nada reasignado. */}
+                      <td className="px-2 py-2 text-center whitespace-nowrap align-top text-slate-600">—</td>
                       <td className="px-2 py-2 text-center align-top">
                         <button type="button" onClick={() => quitarFilaNueva(fila.localId)}
                           className="text-[10px] text-slate-500 hover:text-red-400">✕ Quitar</button>
@@ -656,6 +665,11 @@ export function ResumenProyectoTable({ projectId, area, puntos, refreshKey = 0, 
                           </td>
                         )
                       })}
+                      <td className="px-2 py-2 text-center whitespace-nowrap align-top">
+                        <span className={row.cantRezagada > 0 ? 'text-amber-400 font-medium' : 'text-white'}>
+                          {row.cantRezagada}
+                        </span>
+                      </td>
                       <td className={`px-2 py-2 text-center font-semibold whitespace-nowrap ${row.cantTransito > 0 ? 'text-amber-400' : 'text-white'}`}>
                         {row.cantTransito}
                         {row.cantTransito > 0 && (
