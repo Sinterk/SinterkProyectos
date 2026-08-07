@@ -284,6 +284,7 @@ interface MovimientoJoinRow {
   nota: string | null
   proveedor: string | null
   documento: string | null
+  requiere_revision: boolean | null
   created_at: string
   materiales: { sku: string; descripcion: string } | null
   origen: { nombre: string } | null
@@ -316,6 +317,7 @@ function movimientoFromJoinRow(r: MovimientoJoinRow): Movimiento {
     nota: r.nota,
     proveedor: r.proveedor,
     documento: r.documento,
+    requiereRevision: !!r.requiere_revision,
     createdAt: r.created_at,
   }
 }

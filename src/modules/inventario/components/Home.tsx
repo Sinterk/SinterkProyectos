@@ -223,7 +223,14 @@ function MovimientosTab({ refreshKey }: { refreshKey: number }) {
 
   async function handleAnular(m: Movimiento) {
     const detalle = `${TIPO_LABELS_MOV[m.tipo] ?? m.tipo} — ${m.materialSku} (${m.cantidad}) — ${m.fecha.slice(0, 10)}`
-    if (!confirm(`¿Anular este movimiento?\n\n${detalle}\n\nEsto revierte el stock que movió y borra el registro. No se puede deshacer.`)) return
+    // Aviso extra para la instalación forzada: al anularla se borra también el
+    // evento de revisión que generó, con sus resoluciones. Eso NO revierte lo
+    // que esas resoluciones movieron — cada una dejó su propio movimiento en
+    // esta misma tabla y hay que anularlo aparte (ver 0058).
+    const aviso = m.requiereRevision
+      ? '\n\nOJO: este movimiento generó un evento de revisión. Al anularlo se borra ese evento y sus resoluciones. Lo que esas resoluciones movieron NO se revierte acá: cada una dejó su propio movimiento en esta tabla, y hay que anularlo por separado.'
+      : ''
+    if (!confirm(`¿Anular este movimiento?\n\n${detalle}\n\nEsto revierte el stock que movió y borra el registro. No se puede deshacer.${aviso}`)) return
     setAnulando(m.id)
     setError(null)
     try {

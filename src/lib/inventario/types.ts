@@ -95,6 +95,10 @@ export interface Movimiento {
   nota: string | null
   proveedor: string | null
   documento: string | null
+  /** true solo en una instalación forzada en negativo: ese movimiento generó
+   *  un `eventos_inventario` de revisión (ver 0025/0040). Se usa para avisar
+   *  al anularlo, porque ahí también se borra ese evento y sus resoluciones. */
+  requiereRevision: boolean
   createdAt: string
 }
 
