@@ -422,7 +422,8 @@ export async function registrarMovimiento(input: RegistrarMovimientoInput): Prom
   }
 }
 
-export type CampoCorregible = 'cant_entregada' | 'cant_instalada' | 'cant_devuelta' | 'cant_rebajada' | 'cant_merma'
+/** `cant_rezagada` se agregó a la lista blanca de `corregir_proyecto_material` en 0052_corregir_rezagada.sql. */
+export type CampoCorregible = 'cant_entregada' | 'cant_instalada' | 'cant_devuelta' | 'cant_rebajada' | 'cant_merma' | 'cant_rezagada'
 
 /**
  * Corrección directa de un error de tipeo (Entregado/Instalado/Devuelto/

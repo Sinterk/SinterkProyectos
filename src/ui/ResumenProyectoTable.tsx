@@ -56,18 +56,24 @@ export function Stat({ label, value, highlight }: { label: string; value: number
   )
 }
 
-type Campo = 'cantSolicitada' | 'cantEntregada' | 'cantInstalada' | 'cantDevuelta' | 'cantRebajada' | 'cantMerma'
-const CAMPOS: Campo[] = ['cantSolicitada', 'cantEntregada', 'cantInstalada', 'cantDevuelta', 'cantRebajada', 'cantMerma']
-const CAMPO_TIPO: Record<Campo, MovimientoTipoUI> = {
+type Campo = 'cantSolicitada' | 'cantEntregada' | 'cantInstalada' | 'cantDevuelta' | 'cantRebajada' | 'cantMerma' | 'cantRezagada'
+const CAMPOS: Campo[] = ['cantSolicitada', 'cantEntregada', 'cantInstalada', 'cantDevuelta', 'cantRebajada', 'cantMerma', 'cantRezagada']
+/** `cantRezagada` no está acá: no se registra con `registrar_movimiento` sino
+ *  con `reasignar_transito_a_preventivo` — ver `guardarCambios`. */
+const CAMPO_TIPO: Partial<Record<Campo, MovimientoTipoUI>> = {
   cantSolicitada: 'solicitud', cantEntregada: 'entrega', cantInstalada: 'instalado',
   cantDevuelta: 'devuelto', cantRebajada: 'rebajado', cantMerma: 'merma',
 }
+/** Asignar a técnico (lo que antes era el botón "→ preventivo"): ahora es una
+ *  celda editable más, pero su guardado va por otra RPC. */
+const CAMPO_REASIGNACION: Campo = 'cantRezagada'
 /** Campos cuyo movimiento requiere elegir bodega (origen para Entrega/Rebajado, destino para Devuelto). Merma, como Instalado, sale del stock propio del técnico — sin bodega. */
 const CAMPO_NECESITA_BODEGA: Campo[] = ['cantEntregada', 'cantDevuelta', 'cantRebajada']
 /** Campos corregibles directo (viven como columna propia en proyecto_materiales). Solicitado queda afuera: es un cálculo (suma de movimientos tipo='solicitud'), no una columna. */
 const CAMPO_DB: Partial<Record<Campo, CampoCorregible>> = {
   cantEntregada: 'cant_entregada', cantInstalada: 'cant_instalada',
   cantDevuelta: 'cant_devuelta', cantRebajada: 'cant_rebajada', cantMerma: 'cant_merma',
+  cantRezagada: 'cant_rezagada',
 }
 /**
  * El material del proyecto se muestra en DOS tablas (pedido de Andrés):
@@ -78,7 +84,7 @@ const CAMPO_DB: Partial<Record<Campo, CampoCorregible>> = {
  * `proyecto_materiales`: por eso una fila nueva cargada en la física
  * aparece sola en la digital, con el mismo SKU y lote.
  */
-const CAMPOS_FISICOS: Campo[] = ['cantSolicitada', 'cantEntregada', 'cantInstalada', 'cantDevuelta', 'cantMerma']
+const CAMPOS_FISICOS: Campo[] = ['cantSolicitada', 'cantEntregada', 'cantInstalada', 'cantDevuelta', 'cantMerma', 'cantRezagada']
 const CAMPO_DIGITAL: Campo = 'cantRebajada'
 
 const NINGUN_PUNTO = ''
@@ -143,7 +149,7 @@ export function ResumenProyectoTable({ projectId, area, puntos, refreshKey = 0, 
   // registrar_movimiento ya autoriza al técnico para cualquier tipoUI sobre
   // sus propios proyectos, igual que otros candados de este estilo en la app
   // (ver "auto-democión" del admin en AdminScreen/UserRow).
-  const editableCampos: Campo[] = rol === 'tecnico' ? ['cantInstalada', 'cantDevuelta', 'cantMerma'] : CAMPOS
+  const editableCampos: Campo[] = rol === 'tecnico' ? ['cantInstalada', 'cantDevuelta', 'cantMerma', 'cantRezagada'] : CAMPOS
   // Preventivos: por defecto la tabla muestra el total (Instalado = suma de
   // todos los puntos, ver agregarPorMaterial) — un punto específico filtra a
   // solo sus filas, y ahí Instalado vuelve a ser editable (mismo resultado
@@ -166,12 +172,6 @@ export function ResumenProyectoTable({ projectId, area, puntos, refreshKey = 0, 
   const [members, setMembers] = useState<MemberProfile[]>([])
   const [bodegas, setBodegas] = useState<Ubicacion[]>([])
   const [error, setError] = useState<string | null>(null)
-
-  const [reassignKey, setReassignKey] = useState<string | null>(null)
-  const [reassignTecnico, setReassignTecnico] = useState('')
-  const [reassignCantidad, setReassignCantidad] = useState('')
-  const [reassignBusy, setReassignBusy] = useState(false)
-  const [reassignMsg, setReassignMsg] = useState<string | null>(null)
 
   // Edición por suma: `edits[rowKey][campo]` = cantidad a agregar, tecleada pero aún sin guardar.
   const [edits, setEdits] = useState<Record<string, Partial<Record<Campo, string>>>>({})
@@ -339,12 +339,30 @@ export function ResumenProyectoTable({ projectId, area, puntos, refreshKey = 0, 
           nextEdits[key] = { ...nextEdits[key], [campo]: raw }
           continue
         }
+        // Guarda contra el caso que dejó un Tránsito en −1: asignar al técnico
+        // más de lo que realmente quedó en tránsito. Si el número está mal por
+        // otra razón, se arregla con el modo corrección (ver 0052).
+        if (campo === CAMPO_REASIGNACION && n > row.cantTransito) {
+          nextErrors[`${key}|${campo}`] = `No puedes asignar más de lo que hay en tránsito (${row.cantTransito})`
+          nextEdits[key] = { ...nextEdits[key], [campo]: raw }
+          continue
+        }
         try {
-          await registrarMovimiento({
-            tipoUI: CAMPO_TIPO[campo], materialId: row.materialId, cantidad: n, lote: loteFila || undefined,
-            projectId, puntoId: row.puntoId, tecnicoUserId: tecnicoFila,
-            ubicacionBodegaId: CAMPO_NECESITA_BODEGA.includes(campo) ? bodegaFila : undefined,
-          })
+          if (campo === CAMPO_REASIGNACION) {
+            // "Asignado a técnico" no es un movimiento común: el material ya
+            // está físicamente con el técnico desde la entrega, esto solo
+            // cierra la parte del proyecto (reemplaza al botón "→ preventivo").
+            await reasignarTransitoAPreventivo({
+              projectId, materialId: row.materialId, lote: loteFila, puntoId: row.puntoId,
+              tecnicoUserId: tecnicoFila, cantidad: n,
+            })
+          } else {
+            await registrarMovimiento({
+              tipoUI: CAMPO_TIPO[campo]!, materialId: row.materialId, cantidad: n, lote: loteFila || undefined,
+              projectId, puntoId: row.puntoId, tecnicoUserId: tecnicoFila,
+              ubicacionBodegaId: CAMPO_NECESITA_BODEGA.includes(campo) ? bodegaFila : undefined,
+            })
+          }
         } catch (err) {
           nextErrors[`${key}|${campo}`] = err instanceof Error ? err.message : String(err)
           nextEdits[key] = { ...nextEdits[key], [campo]: raw }
@@ -368,6 +386,9 @@ export function ResumenProyectoTable({ projectId, area, puntos, refreshKey = 0, 
       }
       const nextFilaEdits: Partial<Record<Campo, string>> = {}
       for (const campo of CAMPOS) {
+        // Una fila nueva todavía no tiene nada entregado que reasignar — esa
+        // celda se muestra vacía y no se guarda (ver el render más abajo).
+        if (campo === CAMPO_REASIGNACION) continue
         const raw = fila.edits[campo]
         const n = Number(raw)
         if (!raw || !(n > 0)) continue
@@ -378,7 +399,7 @@ export function ResumenProyectoTable({ projectId, area, puntos, refreshKey = 0, 
         }
         try {
           await registrarMovimiento({
-            tipoUI: CAMPO_TIPO[campo], materialId: fila.materialId, cantidad: n, lote: fila.lote || undefined,
+            tipoUI: CAMPO_TIPO[campo]!, materialId: fila.materialId, cantidad: n, lote: fila.lote || undefined,
             projectId, puntoId: fila.puntoId, tecnicoUserId: fila.tecnicoUserId,
             ubicacionBodegaId: CAMPO_NECESITA_BODEGA.includes(campo) ? fila.ubicacionBodegaId : undefined,
           })
@@ -457,33 +478,6 @@ export function ResumenProyectoTable({ projectId, area, puntos, refreshKey = 0, 
   function descartarCorrecciones() {
     setCorrections({})
     setCorrectionErrors({})
-  }
-
-  function startReassign(row: ResumenMaterialProyecto) {
-    setReassignKey(rowKey(row))
-    setReassignCantidad(String(row.cantTransito))
-    setReassignTecnico(members[0]?.id ?? '')
-    setReassignMsg(null)
-  }
-
-  async function confirmReassign(row: ResumenMaterialProyecto) {
-    if (!reassignTecnico) { setReassignMsg('Elige un técnico'); return }
-    const cantidad = Number(reassignCantidad)
-    if (!(cantidad > 0)) { setReassignMsg('Cantidad inválida'); return }
-    setReassignBusy(true)
-    setReassignMsg(null)
-    try {
-      await reasignarTransitoAPreventivo({
-        projectId, materialId: row.materialId, lote: row.lote, puntoId: row.puntoId,
-        tecnicoUserId: reassignTecnico, cantidad,
-      })
-      setReassignKey(null)
-      await reload()
-    } catch (err) {
-      setReassignMsg(err instanceof Error ? err.message : String(err))
-    } finally {
-      setReassignBusy(false)
-    }
   }
 
   const selectCls = 'bg-slate-700 text-white text-xs rounded-lg px-2 py-1 border border-slate-600 focus:border-brand-500 focus:outline-none'
@@ -603,7 +597,9 @@ export function ResumenProyectoTable({ projectId, area, puntos, refreshKey = 0, 
                         </select>
                       </td>
                       {CAMPOS_FISICOS.map((campo) => {
-                        if (!editableCampos.includes(campo)) {
+                        // "Asignado a técnico" no aplica a una fila nueva: no hay
+                        // nada entregado todavía que se pueda reasignar.
+                        if (campo === CAMPO_REASIGNACION || !editableCampos.includes(campo)) {
                           return <td key={campo} className="px-2 py-2 text-center whitespace-nowrap align-top text-slate-600">—</td>
                         }
                         const err = cellErrors[`${fila.localId}|${campo}`]
@@ -616,8 +612,6 @@ export function ResumenProyectoTable({ projectId, area, puntos, refreshKey = 0, 
                           </td>
                         )
                       })}
-                      {/* Asignado a técnico: una fila nueva todavía no tiene nada reasignado. */}
-                      <td className="px-2 py-2 text-center whitespace-nowrap align-top text-slate-600">—</td>
                       <td className="px-2 py-2 text-center align-top">
                         <button type="button" onClick={() => quitarFilaNueva(fila.localId)}
                           className="text-[10px] text-slate-500 hover:text-red-400">✕ Quitar</button>
@@ -692,37 +686,8 @@ export function ResumenProyectoTable({ projectId, area, puntos, refreshKey = 0, 
                           </td>
                         )
                       })}
-                      <td className="px-2 py-2 text-center whitespace-nowrap align-top">
-                        <span className={row.cantRezagada > 0 ? 'text-amber-400 font-medium' : 'text-white'}>
-                          {row.cantRezagada}
-                        </span>
-                      </td>
                       <td className={`px-2 py-2 text-center font-semibold whitespace-nowrap ${row.cantTransito > 0 ? 'text-amber-400' : 'text-white'}`}>
                         {row.cantTransito}
-                        {row.cantTransito > 0 && (
-                          reassignKey === key ? (
-                            <div className="flex flex-wrap items-center justify-center gap-1 mt-1">
-                              <select value={reassignTecnico} onChange={(e) => setReassignTecnico(e.target.value)} className={selectCls}>
-                                <option value="">Técnico…</option>
-                                {members.map((m) => <option key={m.id} value={m.id}>{m.nombre?.trim() || m.email}</option>)}
-                              </select>
-                              <input type="number" min="0" step="any" value={reassignCantidad}
-                                onChange={(e) => setReassignCantidad(e.target.value)}
-                                className="w-16 bg-slate-700 text-white text-xs rounded-lg px-2 py-1 border border-slate-600 focus:border-brand-500 focus:outline-none" />
-                              <button type="button" disabled={reassignBusy} onClick={() => confirmReassign(row)}
-                                className="text-[10px] font-semibold px-2 py-1 rounded-lg bg-brand-600 hover:bg-brand-700 text-white disabled:opacity-40">
-                                OK
-                              </button>
-                              <button type="button" onClick={() => setReassignKey(null)} className="text-[10px] text-slate-400">✕</button>
-                              {reassignMsg && <p className="text-[9px] text-red-400 w-full">{reassignMsg}</p>}
-                            </div>
-                          ) : (
-                            <button type="button" onClick={() => startReassign(row)}
-                              className="block mx-auto mt-1 text-[9px] text-amber-400 font-semibold underline decoration-dotted">
-                              → preventivo
-                            </button>
-                          )
-                        )}
                       </td>
                     </tr>
                   )

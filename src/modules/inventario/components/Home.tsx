@@ -140,6 +140,22 @@ const MOV_COLUMNS: { key: MovColKey; label: string; numeric?: boolean; align?: '
 ]
 
 const SIN_PROYECTO = 'Sin proyecto'
+
+/**
+ * Etiqueta de la columna Proyecto. La reasignación a preventivo ("Asignado a
+ * técnico" en la tabla del proyecto) deja el movimiento SIN `project_id` a
+ * propósito — el material ya está con el técnico, no pertenece más al
+ * proyecto — pero sí guarda de dónde salió en `documento`
+ * ("PREVENTIVO - <código>", ver 0051_preventivo_documento.sql). Antes esas
+ * filas se veían solo como "—"; ahora se muestran como "Sobrante (<código>)".
+ */
+function etiquetaProyecto(m: Movimiento): string | null {
+  if (m.projectOtt) return m.projectOtt
+  const doc = m.documento?.trim() ?? ''
+  const PREFIJO = 'PREVENTIVO - '
+  if (doc.startsWith(PREFIJO)) return `Sobrante (${doc.slice(PREFIJO.length)})`
+  return null
+}
 const SIN_AREA = 'Sin área'
 const SIN_TECNICO = 'Sin técnico'
 const SIN_NOTA = 'Sin nota'
@@ -153,7 +169,7 @@ function movColValue(m: Movimiento, key: MovColKey): string | number {
     case 'lote': return m.lote
     case 'cantidad': return m.cantidad
     case 'bodega': return m.ubicacionDestinoNombre ? `${m.ubicacionNombre} → ${m.ubicacionDestinoNombre}` : m.ubicacionNombre
-    case 'proyecto': return m.projectOtt ?? ''
+    case 'proyecto': return etiquetaProyecto(m) ?? ''
     case 'area': return m.area ?? ''
     case 'tecnico': return m.usuarioNombre ?? ''
     case 'nota': return m.nota ?? ''
@@ -162,7 +178,7 @@ function movColValue(m: Movimiento, key: MovColKey): string | number {
 
 /** Igual que stockColDisplayValue: texto para el checklist de filtro (por eso los campos vacíos se ven como "Sin X", no como cadena vacía). */
 function movColDisplayValue(m: Movimiento, key: MovColKey): string {
-  if (key === 'proyecto') return m.projectOtt || SIN_PROYECTO
+  if (key === 'proyecto') return etiquetaProyecto(m) || SIN_PROYECTO
   if (key === 'area') return m.area || SIN_AREA
   if (key === 'tecnico') return m.usuarioNombre || SIN_TECNICO
   if (key === 'nota') return m.nota?.trim() ? m.nota : SIN_NOTA
@@ -324,7 +340,7 @@ function MovimientosTab({ refreshKey }: { refreshKey: number }) {
                   <td className="px-2 py-2 text-slate-300 whitespace-nowrap">
                     {m.ubicacionDestinoNombre ? `${m.ubicacionNombre} → ${m.ubicacionDestinoNombre}` : m.ubicacionNombre}
                   </td>
-                  <td className="px-2 py-2 text-slate-300 whitespace-nowrap">{m.projectOtt ?? '—'}</td>
+                  <td className="px-2 py-2 text-slate-300 whitespace-nowrap">{etiquetaProyecto(m) ?? '—'}</td>
                   <td className="px-2 py-2 text-slate-300 whitespace-nowrap">{m.area ?? '—'}</td>
                   <td className="px-2 py-2 text-slate-300 whitespace-nowrap">{m.usuarioNombre ?? '—'}</td>
                   <td className="px-2 py-2 max-w-[220px]"><p className="text-slate-400 truncate">{m.nota ?? '—'}</p></td>

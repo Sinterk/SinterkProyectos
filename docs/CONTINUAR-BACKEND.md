@@ -4,6 +4,13 @@
 > sesión nueva. Última actualización: 04-08-2026.
 
 ## ⚡ Estado ahora mismo (05-08-2026)
+- **v1.41 — "Asignado a técnico" pasa de botón a celda editable + "Sobrante (código)" en Movimientos** (pedido de Andrés).
+  - **Migración `0052_corregir_rezagada.sql`** — **PENDIENTE de correr**. Agrega `cant_rezagada` a la lista blanca de `corregir_proyecto_material` (cuerpo idéntico al de `0022_merma.sql` salvo eso). Sin esto, un "Asignado a técnico" mal puesto solo se podía arreglar por SQL a mano — justo lo que le pasó a Andrés con el Tránsito en −1.
+  - **Se eliminó el botón "→ preventivo"** de la columna Tránsito (y todo su formulario inline: `reassignKey`/`reassignTecnico`/`startReassign`/`confirmReassign`). Ahora "Asignado a técnico" es una celda más de la tabla física, con la misma mecánica aditiva del resto: el técnico sale del selector de la propia fila y al guardar se llama `reasignarTransitoAPreventivo` en vez de `registrar_movimiento` (`CAMPO_REASIGNACION` en `ResumenProyectoTable.tsx`). También quedó corregible en el modo "🔧 Corregir errores de tipeo".
+  - **Guarda nueva**: no deja asignar al técnico más de lo que hay en tránsito — era exactamente cómo se generaba el −1 (el botón viejo no validaba nada y se apretaba por error creyendo que borraba la fila).
+  - Una fila NUEVA no ofrece esa celda (no hay nada entregado que reasignar todavía).
+  - **Movimientos**: la columna Proyecto ya no muestra "—" para estas reasignaciones. Como el movimiento va sin `project_id` a propósito pero lleva `documento = 'PREVENTIVO - <código>'` (ver 0051), ahora se muestra como **"Sobrante (código)"** — helper `etiquetaProyecto` en `Home.tsx`, usado también por el orden y el filtro de esa columna para que todo concuerde.
+  - Compila limpio (`tsc --noEmit`); falta que Andrés lo pruebe.
 - **v1.39/v1.40 — material del proyecto en dos tablas (física y digital) + trazabilidad de la reasignación a preventivo** (pedido de Andrés).
   - **Migración `0051_preventivo_documento.sql`** — **PENDIENTE de correr**. El movimiento que deja el botón "→ preventivo" sigue con `project_id = null` (a propósito), pero ahora lleva `documento = 'PREVENTIVO - <projects.ott>'`, así se puede rastrear de qué OTT salió. Antes aparecía como "Sin proyecto" y sin ninguna referencia.
   - **Columna "Asignado a técnico"** (`cant_rezagada`) ahora visible en la tabla del proyecto — era un término invisible de la fórmula de Tránsito y por eso Andrés vio un −1 sin ningún movimiento que lo explicara. Nombre elegido por él (más claro que "rezagado").
