@@ -41,7 +41,7 @@ export async function removeProject(id: string): Promise<void> {
   const { data, error } = await supabase.from('projects').delete().eq('id', id).select('id')
   if (error) throw new Error(`projects.delete: ${error.message}`)
   if (!data || data.length === 0) {
-    throw new Error('No se pudo eliminar (0 filas afectadas) — puede ser que te falte el rol admin, o que tu sesión haya quedado vencida. Si tienes rol admin, cierra sesión y vuelve a entrar e inténtalo de nuevo.')
+    throw new Error('No se pudo eliminar (0 filas afectadas): el informe ya no existe en el servidor (lo más probable si aparecía en la lista de este dispositivo pero fue borrado desde otro lado), o te falta el rol admin, o tu sesión quedó vencida. Vuelve a la lista y recárgala — si ya no está allá, era una copia vieja en caché de este dispositivo.')
   }
 }
 

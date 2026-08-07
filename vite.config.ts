@@ -17,7 +17,7 @@ const https = loadCerts()
 
 // Versión visible en la UI. Súbela en cada deploy para verificar (junto al
 // timestamp de build) que el service worker realmente cargó el bundle nuevo.
-const APP_VERSION = 'v1.35'
+const APP_VERSION = 'v1.36'
 
 export default defineConfig({
   base: './',

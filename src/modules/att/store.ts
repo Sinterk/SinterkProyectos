@@ -245,6 +245,32 @@ export const useAttStore = create<AttState>()(
             records[rec.id] = merged
             if (merged.updatedAt !== before?.updatedAt) syncedAt[rec.id] = merged.updatedAt
           }
+          // Saca de la caché lo que el servidor ya no tiene como activo — sin
+          // esto, un informe borrado (o cerrado) en el servidor quedaba de
+          // fantasma para siempre en este dispositivo: seguía en la lista, y
+          // al intentar borrarlo el DELETE no encontraba nada que borrar
+          // ("0 filas afectadas"), lo que el mensaje de error atribuía por
+          // error a falta de permisos. Bug real encontrado por Andrés con los
+          // datos de prueba que el script de limpieza ya había borrado.
+          //
+          // Guardas para no perder trabajo: nunca un borrador local ni algo
+          // con fotos sin subir (`hasPendingSync`), solo lo que localmente
+          // figura como activo (un cerrado no tiene por qué venir en esta
+          // lista), y nada con ediciones locales sin confirmar. Ojo con esto
+          // último: `syncedAt` puede venir `undefined` en caché vieja (es un
+          // marcador reciente), y eso NO significa "tiene ediciones" — si no
+          // se distinguiera, los fantasmas viejos (justo el caso que hay que
+          // limpiar) nunca se irían.
+          const idsServidor = new Set(serverRecords.map((r) => r.id))
+          for (const rec of Object.values(records)) {
+            if (idsServidor.has(rec.id)) continue
+            if (rec.estado !== 'activo') continue
+            if (hasPendingSync(rec)) continue
+            const marcado = syncedAt[rec.id]
+            if (marcado !== undefined && rec.updatedAt !== marcado) continue
+            delete records[rec.id]
+            delete syncedAt[rec.id]
+          }
           return { records, syncedAt }
         })
       },

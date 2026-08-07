@@ -203,6 +203,23 @@ export const usePreventivoStore = create<PreventivoState>()(
             records[rec.id] = merged
             if (merged.updatedAt !== before?.updatedAt) syncedAt[rec.id] = merged.updatedAt
           }
+          // Ver el comentario largo en att/store.ts: saca de la caché lo que
+          // el servidor ya no tiene como activo (borrado/cerrado allá), que
+          // si no quedaba de fantasma para siempre en este dispositivo.
+          // Guardas: nunca un borrador local ni algo con fotos sin subir
+          // (`hasPendingSync`), solo lo que acá figura como activo, y nada
+          // con ediciones locales sin confirmar (`syncedAt` undefined = caché
+          // vieja, no "tiene ediciones" — ver att/store.ts).
+          const idsServidor = new Set(serverRecords.map((r) => r.id))
+          for (const rec of Object.values(records)) {
+            if (idsServidor.has(rec.id)) continue
+            if (rec.estado !== 'activo') continue
+            if (hasPendingSync(rec)) continue
+            const marcado = syncedAt[rec.id]
+            if (marcado !== undefined && rec.updatedAt !== marcado) continue
+            delete records[rec.id]
+            delete syncedAt[rec.id]
+          }
           return { records, syncedAt }
         })
       },
