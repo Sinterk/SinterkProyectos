@@ -53,9 +53,17 @@ export async function removeProject(id: string): Promise<void> {
 export async function closeProject(id: string): Promise<void> {
   if (!isUuid(id)) return
   await refrescarSesion()
+  // Si el proyecto ya tiene fecha de término (escrita a mano en la barra del
+  // Editor, o de un cierre anterior), cerrar NO la pisa con la de hoy —
+  // pedido explícito de Andrés. Solo se rellena cuando está vacía.
+  const { data: actual } = await supabase
+    .from('projects').select('fecha_cierre').eq('id', id).maybeSingle()
+  const patch = actual?.fecha_cierre
+    ? { estado: 'cerrado' as const }
+    : { estado: 'cerrado' as const, fecha_cierre: todayISO() }
   const { data, error } = await supabase
     .from('projects')
-    .update({ estado: 'cerrado', fecha_cierre: todayISO() })
+    .update(patch)
     .eq('id', id)
     .select('id')
   if (error) throw new Error(`projects.close: ${error.message}`)

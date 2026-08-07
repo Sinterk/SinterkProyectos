@@ -92,6 +92,7 @@ interface ProjectRow {
   codigo_servicio: string | null
   nombre_servicio: string | null
   comuna: string | null
+  direccion: string | null
   region: string | null
   contratista: string | null
   ingeniero_proyecto: string | null
@@ -100,6 +101,7 @@ interface ProjectRow {
   coords_termino: { lat: string; lng: string } | null
   estado: 'activo' | 'cerrado'
   fecha_cierre: string | null
+  fecha_inicio: string | null
   created_at: string
   updated_at: string
   informes?: InformeRow[]
@@ -180,6 +182,7 @@ function rowToRecord(p: ProjectRow): AttRecord {
     updatedAt: toMs(p.updated_at),
     estado: p.estado,
     fechaCierre: p.fecha_cierre ?? undefined,
+    fechaInicio: p.fecha_inicio ?? undefined,
 
     // Sección 1–2 — projects
     tipoProyecto: (p.tipo_proyecto ?? '') as TipoProyecto | '',
@@ -189,6 +192,7 @@ function rowToRecord(p: ProjectRow): AttRecord {
     ingenieroProyecto: p.ingeniero_proyecto ?? '',
     jefeProyecto: p.jefe_proyecto ?? '',
     comuna: p.comuna ?? '',
+    direccion: p.direccion ?? '',
     region: p.region ?? '',
     contratista: p.contratista ?? '',
     coordsInicio: p.coords_inicio ?? { lat: '', lng: '' },
@@ -257,6 +261,8 @@ function recordToProjectRow(
     codigo_servicio: r.codigoServicio || null,
     nombre_servicio: r.nombreServicio || null,
     comuna: r.comuna || null,
+    direccion: r.direccion || null,
+    fecha_inicio: r.fechaInicio || null,
     region: r.region || null,
     contratista: r.contratista || null,
     ingeniero_proyecto: r.ingenieroProyecto || null,
@@ -440,4 +446,16 @@ export const attRepo = {
 
   /** Reabre un informe cerrado. Ver `reopenProject`. */
   reopen: reopenProject,
+
+  /**
+   * Fecha de término escrita a mano desde la barra fija del Editor. Va por su
+   * propio camino en vez de sumarse al payload de `save()`: ahí `fecha_cierre`
+   * está excluido a propósito, para que un autoguardado normal nunca pueda
+   * tocar el cierre de un proyecto (ver `recordToProjectRow`).
+   */
+  async setFechaCierre(projectId: string, fecha: string | null): Promise<void> {
+    const { error } = await supabase.from('projects')
+      .update({ fecha_cierre: fecha || null }).eq('id', projectId)
+    if (error) throw new Error(`projects.setFechaCierre: ${error.message}`)
+  },
 }

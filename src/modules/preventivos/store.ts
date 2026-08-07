@@ -184,7 +184,9 @@ export const usePreventivoStore = create<PreventivoState>()(
           set((s) => {
             const rec = s.records[id]
             if (!rec) return s
-            return { records: { ...s.records, [id]: { ...rec, estado, fechaCierre: estado === 'cerrado' ? todayISO() : undefined } } }
+            // Al cerrar NO se pisa una fecha de término que ya estuviera puesta —
+            // mismo criterio que `closeProject` en el servidor.
+            return { records: { ...s.records, [id]: { ...rec, estado, fechaCierre: estado === 'cerrado' ? (rec.fechaCierre || todayISO()) : undefined } } }
           })
           return { ok: true }
         } catch (err) {

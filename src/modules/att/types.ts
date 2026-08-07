@@ -83,7 +83,11 @@ export interface AttRecord {
   /** Ciclo de vida del proyecto en el servidor. Solo lectura desde el Editor:
    *  se cambia vía attRepo.close()/remove(), nunca por un save() normal. */
   estado: 'activo' | 'cerrado'
+  /** Fecha de término. La pone `close()` al cerrar si estaba vacía, y también
+   *  se puede escribir a mano desde la barra fija del Editor. */
   fechaCierre?: string
+  /** Fecha de inicio. Vacía = se muestra la de creación de la OTT (`createdAt`). */
+  fechaInicio?: string
 
   // Sección 1 — Tipo de proyecto
   tipoProyecto: TipoProyecto | ''
@@ -95,6 +99,8 @@ export interface AttRecord {
   ingenieroProyecto: string
   jefeProyecto: string
   comuna: string
+  /** Dirección del proyecto — se muestra en la barra fija del Editor, arriba de las pestañas. */
+  direccion?: string
   region: string
   contratista: string
   coordsInicio: { lat: string; lng: string }

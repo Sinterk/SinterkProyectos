@@ -134,6 +134,10 @@ interface AttState {
   /** Widget de estado del Editor (jp/admin): abrir/cerrar directo, sin pasar por `remove`. */
   setEstado: (id: string, estado: 'activo' | 'cerrado') => Promise<{ ok: true } | { ok: false; error: string }>
   update: (id: string, data: Partial<AttRecord>) => void
+  /** Fecha de término escrita a mano en la barra fija del Editor. Va por su
+   *  propio camino (no por el autoguardado) porque `fecha_cierre` está
+   *  excluido del payload de `save()` a propósito — ver `recordToProjectRow`. */
+  setFechaCierre: (id: string, fecha: string) => Promise<{ ok: true } | { ok: false; error: string }>
 
   /** Trae la lista del servidor y la fusiona en cache (Zustand = caché, Supabase = fuente). */
   syncList: () => Promise<void>
@@ -226,7 +230,9 @@ export const useAttStore = create<AttState>()(
           set((s) => {
             const rec = s.records[id]
             if (!rec) return s
-            return { records: { ...s.records, [id]: { ...rec, estado, fechaCierre: estado === 'cerrado' ? todayISO() : undefined } } }
+            // Al cerrar NO se pisa una fecha de término que ya estuviera puesta —
+            // mismo criterio que `closeProject` en el servidor.
+            return { records: { ...s.records, [id]: { ...rec, estado, fechaCierre: estado === 'cerrado' ? (rec.fechaCierre || todayISO()) : undefined } } }
           })
           return { ok: true }
         } catch (err) {
@@ -370,6 +376,21 @@ export const useAttStore = create<AttState>()(
           if (!rec) return s
           return { records: { ...s.records, [id]: touch(rec, data) } }
         })
+      },
+
+      async setFechaCierre(id, fecha) {
+        if (!isUuid(id)) return { ok: false, error: 'Guarda el informe primero.' }
+        try {
+          await attRepo.setFechaCierre(id, fecha || null)
+          set((s) => {
+            const rec = s.records[id]
+            if (!rec) return s
+            return { records: { ...s.records, [id]: { ...rec, fechaCierre: fecha || undefined } } }
+          })
+          return { ok: true }
+        } catch (err) {
+          return { ok: false, error: err instanceof Error ? err.message : String(err) }
+        }
       },
 
       addTramo(id) {

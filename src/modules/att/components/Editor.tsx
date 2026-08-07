@@ -18,6 +18,7 @@ import { EstadoProyectoBadge } from '@/ui/EstadoProyectoBadge'
 import { EstadoPagoTab } from './EstadoPagoTab'
 import { useDocumentTitle } from '@/ui/useDocumentTitle'
 import { useAuth } from '@/lib/auth'
+import type { AttRecord } from '../types'
 
 type GenStatus = 'idle' | 'generating' | 'error'
 
@@ -37,7 +38,10 @@ export function Editor() {
   )
   const [genStatus, setGenStatus] = useState<GenStatus>('idle')
   const [pdfStatus, setPdfStatus] = useState<GenStatus>('idle')
-  const [tab, setTab] = useState<'info' | 'logistica' | 'ep'>('info')
+  // Logística primero (pedido de Andrés). Excepción: un informe recién creado
+  // todavía no existe en el servidor y esa pestaña solo diría "guarda el
+  // informe primero" — ahí conviene abrir en Info de proyecto.
+  const [tab, setTab] = useState<'info' | 'logistica' | 'ep'>(isUuid(id ?? '') ? 'logistica' : 'info')
 
   // El primer guardado de un borrador local "rekea" su id (nanoid → uuid del
   // servidor) en el store; ese instante deja momentáneamente sin record al id
@@ -105,14 +109,16 @@ export function Editor() {
         <EstadoProyectoBadge estado={record.estado} onChange={(next) => setEstado(id, next)} />
       </div>
 
+      <BarraDatosProyecto recordId={id} record={record} />
+
       <div className="flex gap-2">
-        <button type="button" onClick={() => setTab('info')}
-          className={`flex-1 text-xs font-semibold py-1.5 rounded-lg ${tab === 'info' ? 'bg-brand-600 text-white' : 'bg-slate-800 text-slate-400'}`}>
-          Info de proyecto
-        </button>
         <button type="button" onClick={() => setTab('logistica')}
           className={`flex-1 text-xs font-semibold py-1.5 rounded-lg ${tab === 'logistica' ? 'bg-brand-600 text-white' : 'bg-slate-800 text-slate-400'}`}>
           Logística
+        </button>
+        <button type="button" onClick={() => setTab('info')}
+          className={`flex-1 text-xs font-semibold py-1.5 rounded-lg ${tab === 'info' ? 'bg-brand-600 text-white' : 'bg-slate-800 text-slate-400'}`}>
+          Info de proyecto
         </button>
         {/* RLS de ep_informes/ep_lineas es admin/jp/log únicamente — no tiene sentido mostrarle la pestaña a un técnico. */}
         {!isTecnico && (
@@ -187,6 +193,65 @@ export function Editor() {
             : '📄 DOCX'}
         </button>
       </div>
+    </div>
+  )
+}
+
+/**
+ * Barra de datos siempre visible arriba de las pestañas: los cuatro datos que
+ * Andrés necesita a mano sin importar en qué pestaña esté (OTT, Dirección,
+ * Fecha de inicio, Fecha de término).
+ *
+ * - La OTT y la Dirección se guardan por el autoguardado normal del Editor.
+ * - Fecha de inicio: vacía muestra la fecha de creación de la OTT; al
+ *   escribir una, esa manda (queda en `fecha_inicio`, ver 0054).
+ * - Fecha de término: NO va por el autoguardado — `fecha_cierre` está
+ *   excluido del payload de `save()` a propósito, para que un guardado normal
+ *   no pueda tocar el cierre de un proyecto. Se escribe con su propia acción
+ *   (`setFechaCierre`) al salir del campo. Cerrar el proyecto desde el badge
+ *   de estado solo la rellena si está vacía.
+ */
+function BarraDatosProyecto({ recordId, record }: { recordId: string; record: AttRecord }) {
+  const update = useAttStore((s) => s.update)
+  const setFechaCierre = useAttStore((s) => s.setFechaCierre)
+  const [errorFecha, setErrorFecha] = useState<string | null>(null)
+
+  const fechaInicioMostrada = record.fechaInicio || new Date(record.createdAt).toISOString().slice(0, 10)
+  const inputCls = 'w-full bg-slate-700 text-white text-sm rounded-lg px-2 py-1.5 border border-slate-600 focus:border-brand-500 focus:outline-none'
+  const labelCls = 'block text-[10px] text-slate-400 mb-0.5'
+
+  async function guardarFechaTermino(valor: string) {
+    if ((valor || '') === (record.fechaCierre ?? '')) return
+    setErrorFecha(null)
+    const r = await setFechaCierre(recordId, valor)
+    if (!r.ok) setErrorFecha(r.error)
+  }
+
+  return (
+    <div className="bg-slate-800 rounded-2xl border border-slate-700 p-3">
+      <div className="grid grid-cols-2 sm:grid-cols-4 gap-2">
+        <label>
+          <span className={labelCls}>OTT</span>
+          <input value={record.ott} onChange={(e) => update(recordId, { ott: e.target.value })}
+            placeholder="Ej. 72503609135" className={inputCls} />
+        </label>
+        <label>
+          <span className={labelCls}>Dirección</span>
+          <input value={record.direccion ?? ''} onChange={(e) => update(recordId, { direccion: e.target.value })}
+            placeholder="Dirección del proyecto" className={inputCls} />
+        </label>
+        <label>
+          <span className={labelCls}>Fecha de inicio</span>
+          <input type="date" value={fechaInicioMostrada}
+            onChange={(e) => update(recordId, { fechaInicio: e.target.value })} className={inputCls} />
+        </label>
+        <label>
+          <span className={labelCls}>Fecha de término</span>
+          <input type="date" value={record.fechaCierre ?? ''}
+            onChange={(e) => guardarFechaTermino(e.target.value)} className={inputCls} />
+        </label>
+      </div>
+      {errorFecha && <p className="text-[11px] text-red-400 mt-1">{errorFecha}</p>}
     </div>
   )
 }
