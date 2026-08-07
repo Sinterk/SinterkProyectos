@@ -46,7 +46,13 @@ export function LoteSelect({ materialId, ubicacionId, naturaleza, checkAvailabil
         const disponible = naturaleza === 'fisico' ? r.cantidadFisico : r.cantidadDigital
         // Periodo transitivo (stock físico real vs. lo que ya quedó cargado
         // en el sistema): no bloquear la salida por falta de stock — solo
-        // avisar. El backend ya permite quedar en negativo (0008_stock_alertas.sql).
+        // avisar. OJO con el historial de este permiso: `0008_stock_alertas.sql`
+        // lo había abierto, `0025_prioridad_instalado.sql` lo volvió a cerrar
+        // dentro de `adjust_stock` (`p_permitir_negativo`, default false) y
+        // recién `0050_salidas_permiten_negativo.sql` lo abre de verdad para
+        // todas las salidas. Sacar el candado acá sin ese 0050 dejaba elegir
+        // el lote pero el servidor igual rechazaba con "Stock físico
+        // insuficiente" — pasó exactamente así entre v1.26 y v1.38.
         const sinStock = checkAvailability && !(disponible > 0)
         return (
           <option key={r.lote} value={r.lote}>
