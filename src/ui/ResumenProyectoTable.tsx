@@ -133,11 +133,13 @@ interface NuevaFila {
   tecnicoUserId: string
   /** De dónde sale el material — por defecto la bodega del área (BODEGA_DEFECTO_POR_AREA). */
   ubicacionBodegaId: string
+  /** Nota libre que se copia a los movimientos que registre esta fila. */
+  nota: string
   edits: Partial<Record<Campo, string>>
 }
 
 function filaVacia(tecnicoUserId: string, ubicacionBodegaId: string): NuevaFila {
-  return { localId: nanoid(8), materialId: '', lote: '', puntoId: null, tecnicoUserId, ubicacionBodegaId, edits: {} }
+  return { localId: nanoid(8), materialId: '', lote: '', puntoId: null, tecnicoUserId, ubicacionBodegaId, nota: '', edits: {} }
 }
 
 export function ResumenProyectoTable({ projectId, area, puntos, refreshKey = 0, membersVersion = 0 }: Props) {
@@ -198,6 +200,11 @@ export function ResumenProyectoTable({ projectId, area, puntos, refreshKey = 0, 
   /** Bodega por fila de la tabla DIGITAL — separada de la física: la baja de
    *  SAP no tiene por qué salir de la misma bodega que el movimiento físico. */
   const [rowBodegaDigitalOverride, setRowBodegaDigitalOverride] = useState<Record<string, string>>({})
+  /** Nota libre por fila — se copia a cada movimiento que registre esa fila
+   *  al guardar. Antes la nota solo se podía escribir desde "Registrar
+   *  movimiento" en Inventario, no desde la tabla de la OTT, aunque la
+   *  columna Nota sí se muestra en Movimientos. */
+  const [rowNota, setRowNota] = useState<Record<string, string>>({})
 
   // Filas nuevas (materiales aún no presentes en `rows`): mismo mecanismo de
   // "+" que una fila existente, solo que además hay que elegir material/lote/
@@ -266,7 +273,7 @@ export function ResumenProyectoTable({ projectId, area, puntos, refreshKey = 0, 
   function agregarFilaNueva() {
     setNuevasFilas((prev) => [...prev, filaVacia(members[0]?.id ?? '', defaultBodegaId)])
   }
-  function actualizarFilaNueva(localId: string, patch: Partial<Pick<NuevaFila, 'materialId' | 'lote' | 'puntoId' | 'tecnicoUserId' | 'ubicacionBodegaId'>>) {
+  function actualizarFilaNueva(localId: string, patch: Partial<Pick<NuevaFila, 'materialId' | 'lote' | 'puntoId' | 'tecnicoUserId' | 'ubicacionBodegaId' | 'nota'>>) {
     setNuevasFilas((prev) => prev.map((f) => (f.localId === localId ? { ...f, ...patch } : f)))
   }
 
@@ -361,6 +368,7 @@ export function ResumenProyectoTable({ projectId, area, puntos, refreshKey = 0, 
               tipoUI: CAMPO_TIPO[campo]!, materialId: row.materialId, cantidad: n, lote: loteFila || undefined,
               projectId, puntoId: row.puntoId, tecnicoUserId: tecnicoFila,
               ubicacionBodegaId: CAMPO_NECESITA_BODEGA.includes(campo) ? bodegaFila : undefined,
+              nota: rowNota[key]?.trim() || undefined,
             })
           }
         } catch (err) {
@@ -402,6 +410,7 @@ export function ResumenProyectoTable({ projectId, area, puntos, refreshKey = 0, 
             tipoUI: CAMPO_TIPO[campo]!, materialId: fila.materialId, cantidad: n, lote: fila.lote || undefined,
             projectId, puntoId: fila.puntoId, tecnicoUserId: fila.tecnicoUserId,
             ubicacionBodegaId: CAMPO_NECESITA_BODEGA.includes(campo) ? fila.ubicacionBodegaId : undefined,
+            nota: fila.nota.trim() || undefined,
           })
         } catch (err) {
           nextErrors[`${fila.localId}|${campo}`] = err instanceof Error ? err.message : String(err)
@@ -415,6 +424,15 @@ export function ResumenProyectoTable({ projectId, area, puntos, refreshKey = 0, 
     setEdits(nextEdits)
     setNuevasFilas(nextNuevasFilas)
     setCellErrors(nextErrors)
+    // La nota se limpia junto con lo que sí se guardó: si quedara pegada,
+    // el próximo movimiento de esa fila saldría con una nota vieja sin que
+    // nadie se dé cuenta. Las filas que fallaron conservan la suya para el
+    // reintento.
+    setRowNota((prev) => {
+      const next = { ...prev }
+      for (const k of Object.keys(next)) if (!nextEdits[k]) delete next[k]
+      return next
+    })
     setSaving(false)
     await reload()
   }
@@ -551,6 +569,7 @@ export function ResumenProyectoTable({ projectId, area, puntos, refreshKey = 0, 
                       más claro que "rezagado". */}
                   <th className="px-2 py-2 font-medium text-center whitespace-nowrap">Asignado a técnico</th>
                   <th className="px-2 py-2 font-medium text-center whitespace-nowrap">Tránsito</th>
+                  <th className="px-2 py-2 font-medium whitespace-nowrap">Nota</th>
                 </tr>
               </thead>
               <tbody>
@@ -615,6 +634,11 @@ export function ResumenProyectoTable({ projectId, area, puntos, refreshKey = 0, 
                       <td className="px-2 py-2 text-center align-top">
                         <button type="button" onClick={() => quitarFilaNueva(fila.localId)}
                           className="text-[10px] text-slate-500 hover:text-red-400">✕ Quitar</button>
+                      </td>
+                      <td className="px-2 py-2 align-top">
+                        <input value={fila.nota} onChange={(e) => actualizarFilaNueva(fila.localId, { nota: e.target.value })}
+                          placeholder="Nota…"
+                          className="w-32 bg-slate-700 text-white text-xs rounded px-1.5 py-1 border border-slate-600 focus:border-brand-500 focus:outline-none" />
                       </td>
                     </tr>
                   )
@@ -688,6 +712,12 @@ export function ResumenProyectoTable({ projectId, area, puntos, refreshKey = 0, 
                       })}
                       <td className={`px-2 py-2 text-center font-semibold whitespace-nowrap ${row.cantTransito > 0 ? 'text-amber-400' : 'text-white'}`}>
                         {row.cantTransito}
+                      </td>
+                      <td className="px-2 py-2 align-top">
+                        {/* Se copia a cada movimiento que registre esta fila al guardar. */}
+                        <input value={rowNota[key] ?? ''} onChange={(e) => setRowNota((prev) => ({ ...prev, [key]: e.target.value }))}
+                          placeholder="Nota…"
+                          className="w-32 bg-slate-700 text-white text-xs rounded px-1.5 py-1 border border-slate-600 focus:border-brand-500 focus:outline-none" />
                       </td>
                     </tr>
                   )
