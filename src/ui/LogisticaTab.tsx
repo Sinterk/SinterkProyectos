@@ -55,8 +55,12 @@ function EquipoSection({ projectId, onMembersChanged }: { projectId: string; onM
 
   useEffect(() => {
     reload()
+    // Cualquier trabajador activo, sin importar su área/rol (antes solo
+    // Terreno y Logística) — pedido explícito: hay gente de Oficina que
+    // también se asigna a una OTT. El rol sigue mostrándose entre paréntesis
+    // en la lista para saber de qué área es cada uno.
     adminRepo.listProfiles()
-      .then((all) => setCandidates(all.filter((p) => p.activo && (p.rol === 'tecnico' || p.rol === 'log'))))
+      .then((all) => setCandidates(all.filter((p) => p.activo)))
       .catch(() => {})
   }, [projectId])
 
@@ -126,12 +130,12 @@ function EquipoSection({ projectId, onMembersChanged }: { projectId: string; onM
           )}
 
           {disponibles.length === 0 ? (
-            members.length === 0 && <p className="text-xs text-slate-500">No hay técnicos ni logística registrados todavía.</p>
+            members.length === 0 && <p className="text-xs text-slate-500">No hay trabajadores registrados todavía.</p>
           ) : (
             <div className="flex gap-2">
               <select value={selectedId} onChange={(e) => setSelectedId(e.target.value)}
                 className="flex-1 min-w-0 bg-slate-700 text-white text-sm rounded-lg px-2 py-1.5 border border-slate-600 focus:border-brand-500 focus:outline-none">
-                <option value="">Elegir técnico o logística…</option>
+                <option value="">Elegir trabajador…</option>
                 {disponibles.map((c) => (
                   <option key={c.id} value={c.id}>{c.nombre?.trim() || c.email} ({ROL_LABELS[c.rol]})</option>
                 ))}
