@@ -2,6 +2,7 @@
 
 import { supabase } from '../supabaseClient'
 import { getResumenProyecto, listMateriales } from '../inventario/inventarioRepo'
+import { esTipoCable } from '@/lib/inventario/esCable'
 import { listLpuMaterialMapPorMateriales, listLpuTendidoMap, listPreciosPorZona } from '../lpu/lpuRepo'
 import type { EpInforme, EpLinea, EpLineaInput, EpLineaSugerida } from './types'
 
@@ -151,7 +152,7 @@ export async function calcularAvanceEp(
   // pero ya no es el proxy para "esto es cable".
   const materialesCable = [...new Set(instalados.map((r) => r.materialId))]
     .map((id) => materialPorId.get(id))
-    .filter((m): m is NonNullable<typeof m> => !!m && !!m.tipo && m.tipo.nombre.toLowerCase().startsWith('cable '))
+    .filter((m): m is NonNullable<typeof m> => !!m && esTipoCable(m.tipo?.nombre))
   if (materialesCable.length === 1) {
     const cable = materialesCable[0]
     const tendidos = (await listLpuTendidoMap()).filter((t) =>

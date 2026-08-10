@@ -232,11 +232,19 @@ function AttCard({ record, totales, onSelect, onDelete }: {
               queda ilegible con todo junto. */}
           <div className="flex items-center gap-3 mt-1.5 text-[11px]">
             <span className="text-slate-400">📅 {fechaInicioDe(record)}</span>
-            <span className="hidden sm:inline text-slate-500">
-              Entregado <span className="text-slate-300 font-medium">{totales?.entregado ?? 0}</span>
+            {/* Cable y "el resto" van separados a propósito: el cable se mide en
+                metros y lo demás en unidades, así que un total único no diría
+                nada. El criterio de qué es cable sale del Tipo del Catálogo
+                (ver `esTipoCable`), el mismo que usa el Estado de Pago. */}
+            <span className="hidden sm:inline text-slate-500" title="Cable entregado / instalado">
+              Cable <span className="text-slate-300 font-medium">{totales?.cableEntregado ?? 0}</span>
+              <span className="text-slate-600"> / </span>
+              <span className="text-slate-300 font-medium">{totales?.cableInstalado ?? 0}</span>
             </span>
-            <span className="hidden sm:inline text-slate-500">
-              Instalado <span className="text-slate-300 font-medium">{totales?.instalado ?? 0}</span>
+            <span className="hidden sm:inline text-slate-500" title="Material entregado / instalado">
+              Material <span className="text-slate-300 font-medium">{totales?.materialEntregado ?? 0}</span>
+              <span className="text-slate-600"> / </span>
+              <span className="text-slate-300 font-medium">{totales?.materialInstalado ?? 0}</span>
             </span>
           </div>
           <div className="flex gap-3 mt-1.5 flex-wrap">

@@ -13,6 +13,7 @@ import type {
   Conteo, ConteoLinea, EventoInventario, ResolucionTipo, ConsumoArea, ResolverEventoInput, Observacion,
 } from './types'
 import type { FilaImportSap } from './importarSap'
+import { esTipoCable } from './esCable'
 
 // Nota sobre embeds de PostgREST: `stock`/`movimientos`/`proyecto_materiales`
 // referencian a `materiales`/`ubicaciones`/`profiles`/`projects` con una FK
@@ -543,16 +544,25 @@ export async function getResumenProyecto(projectId: string): Promise<ResumenMate
   return [...map.values()].sort((a, b) => a.materialSku.localeCompare(b.materialSku))
 }
 
-/** Totales de material de un proyecto, para mostrarlos en la lista de OTTs. */
+/**
+ * Totales de un proyecto para la lista de OTTs, separados en cable y "el
+ * resto": son magnitudes distintas (el cable se mide en metros, lo demás en
+ * unidades) y sumarlas juntas daría un número sin sentido.
+ */
 export interface TotalesMaterialProyecto {
-  entregado: number
-  instalado: number
+  cableEntregado: number
+  cableInstalado: number
+  materialEntregado: number
+  materialInstalado: number
 }
 
 /**
  * Entregado/instalado por proyecto, en una sola consulta para toda la lista.
  * Se suma en el cliente porque PostgREST no agrupa sin una vista/RPC, y la
  * cantidad de filas es chica (unos pocos materiales por proyecto).
+ *
+ * "Es cable" se decide por el Tipo del Catálogo (ver `esTipoCable`), el mismo
+ * criterio que usa el Estado de Pago.
  */
 export async function getTotalesMaterialPorProyecto(
   projectIds: string[],
@@ -560,15 +570,29 @@ export async function getTotalesMaterialPorProyecto(
   if (projectIds.length === 0) return {}
   const { data, error } = await supabase
     .from('proyecto_materiales')
-    .select('project_id, cant_entregada, cant_instalada')
+    .select('project_id, cant_entregada, cant_instalada, materiales(material_tipos(nombre))')
     .in('project_id', projectIds)
   if (error) throw new Error(`proyecto_materiales.totales: ${error.message}`)
 
+  interface Fila {
+    project_id: string
+    cant_entregada: number
+    cant_instalada: number
+    materiales: { material_tipos: { nombre: string } | null } | null
+  }
+
   const out: Record<string, TotalesMaterialProyecto> = {}
-  for (const r of data as { project_id: string; cant_entregada: number; cant_instalada: number }[]) {
-    const acc = out[r.project_id] ?? (out[r.project_id] = { entregado: 0, instalado: 0 })
-    acc.entregado += Number(r.cant_entregada)
-    acc.instalado += Number(r.cant_instalada)
+  for (const r of data as unknown as Fila[]) {
+    const acc = out[r.project_id] ?? (out[r.project_id] = {
+      cableEntregado: 0, cableInstalado: 0, materialEntregado: 0, materialInstalado: 0,
+    })
+    if (esTipoCable(r.materiales?.material_tipos?.nombre)) {
+      acc.cableEntregado += Number(r.cant_entregada)
+      acc.cableInstalado += Number(r.cant_instalada)
+    } else {
+      acc.materialEntregado += Number(r.cant_entregada)
+      acc.materialInstalado += Number(r.cant_instalada)
+    }
   }
   return out
 }
