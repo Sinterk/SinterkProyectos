@@ -1,7 +1,10 @@
 import { useEffect, useState } from 'react'
 import { useNavigate } from 'react-router-dom'
 import { useAttStore, hasPendingSync } from '../store'
-import { attRepo } from '../data/attRepo'
+import { attRepo, isUuid } from '../data/attRepo'
+import { fechaInicioDe } from '../utils/fechaInicio'
+import { getTotalesMaterialPorProyecto } from '@/lib/inventario/inventarioRepo'
+import type { TotalesMaterialProyecto } from '@/lib/inventario/inventarioRepo'
 import { useAuth } from '@/lib/auth'
 import { TIPO_PROYECTO_LABELS } from '../types'
 import type { AttRecord } from '../types'
@@ -42,6 +45,21 @@ export function Home() {
   // desaparecer la página mientras se está editando) — hay que filtrar acá.
   const base = estadoFilter === 'activo' ? Object.values(records).filter((r) => r.estado === 'activo') : extra
   const list = base.filter((r) => matchesSearch(r, search)).sort((a, b) => b.updatedAt - a.updatedAt)
+
+  // Entregado/instalado por OTT para las tarjetas. Se pide en una sola
+  // consulta para toda la lista visible (no una por tarjeta), y se re-pide
+  // solo cuando cambia el conjunto de ids — no en cada render, que sería un
+  // ciclo infinito porque `list` se recalcula siempre.
+  const [totales, setTotales] = useState<Record<string, TotalesMaterialProyecto>>({})
+  const idsVisibles = list.filter((r) => isUuid(r.id)).map((r) => r.id).sort().join(',')
+  useEffect(() => {
+    const ids = idsVisibles ? idsVisibles.split(',') : []
+    let cancelado = false
+    getTotalesMaterialPorProyecto(ids)
+      .then((t) => { if (!cancelado) setTotales(t) })
+      .catch(() => { if (!cancelado) setTotales({}) })
+    return () => { cancelado = true }
+  }, [idsVisibles])
   const pending = Object.values(records).filter(hasPendingSync)
 
   function handleNew() {
@@ -108,7 +126,7 @@ export function Home() {
       ) : (
         <div className="space-y-3">
           {list.map((r) => (
-            <AttCard key={r.id} record={r}
+            <AttCard key={r.id} record={r} totales={totales[r.id]}
               onSelect={() => navigate(`/att/${r.id}`)}
               onDelete={() => { handleDelete(r).catch(console.error) }} />
           ))}
@@ -178,8 +196,8 @@ function MigrationBanner({ pending }: { pending: AttRecord[] }) {
   )
 }
 
-function AttCard({ record, onSelect, onDelete }: {
-  record: AttRecord; onSelect: () => void; onDelete: () => void
+function AttCard({ record, totales, onSelect, onDelete }: {
+  record: AttRecord; totales?: TotalesMaterialProyecto; onSelect: () => void; onDelete: () => void
 }) {
   const fotoCount = record.fotos.length
   const tipoLabel = record.tipoProyecto ? TIPO_PROYECTO_LABELS[record.tipoProyecto] : null
@@ -209,6 +227,18 @@ function AttCard({ record, onSelect, onDelete }: {
           {record.comuna && (
             <div className="text-xs text-slate-400 mt-0.5">📍 {record.comuna}{record.region ? `, ${record.region}` : ''}</div>
           )}
+          {/* Datos de cabecera pedidos para la lista: fecha de comienzo siempre;
+              el material solo desde tablet/escritorio — en móvil la tarjeta
+              queda ilegible con todo junto. */}
+          <div className="flex items-center gap-3 mt-1.5 text-[11px]">
+            <span className="text-slate-400">📅 {fechaInicioDe(record)}</span>
+            <span className="hidden sm:inline text-slate-500">
+              Entregado <span className="text-slate-300 font-medium">{totales?.entregado ?? 0}</span>
+            </span>
+            <span className="hidden sm:inline text-slate-500">
+              Instalado <span className="text-slate-300 font-medium">{totales?.instalado ?? 0}</span>
+            </span>
+          </div>
           <div className="flex gap-3 mt-1.5 flex-wrap">
             {record.tramos.length > 0 && (
               <span className="text-[11px] text-slate-500">{record.tramos.length} tramo(s)</span>

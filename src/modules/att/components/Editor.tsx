@@ -19,6 +19,7 @@ import { EstadoPagoTab } from './EstadoPagoTab'
 import { useDocumentTitle } from '@/ui/useDocumentTitle'
 import { useAuth } from '@/lib/auth'
 import type { AttRecord } from '../types'
+import { fechaInicioDe } from '../utils/fechaInicio'
 
 type GenStatus = 'idle' | 'generating' | 'error'
 
@@ -216,7 +217,7 @@ function BarraDatosProyecto({ recordId, record }: { recordId: string; record: At
   const setFechaCierre = useAttStore((s) => s.setFechaCierre)
   const [errorFecha, setErrorFecha] = useState<string | null>(null)
 
-  const fechaInicioMostrada = record.fechaInicio || new Date(record.createdAt).toISOString().slice(0, 10)
+  const fechaInicioMostrada = fechaInicioDe(record)
   const inputCls = 'w-full bg-slate-700 text-white text-sm rounded-lg px-2 py-1.5 border border-slate-600 focus:border-brand-500 focus:outline-none'
   const labelCls = 'block text-[10px] text-slate-400 mb-0.5'
 

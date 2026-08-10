@@ -543,6 +543,36 @@ export async function getResumenProyecto(projectId: string): Promise<ResumenMate
   return [...map.values()].sort((a, b) => a.materialSku.localeCompare(b.materialSku))
 }
 
+/** Totales de material de un proyecto, para mostrarlos en la lista de OTTs. */
+export interface TotalesMaterialProyecto {
+  entregado: number
+  instalado: number
+}
+
+/**
+ * Entregado/instalado por proyecto, en una sola consulta para toda la lista.
+ * Se suma en el cliente porque PostgREST no agrupa sin una vista/RPC, y la
+ * cantidad de filas es chica (unos pocos materiales por proyecto).
+ */
+export async function getTotalesMaterialPorProyecto(
+  projectIds: string[],
+): Promise<Record<string, TotalesMaterialProyecto>> {
+  if (projectIds.length === 0) return {}
+  const { data, error } = await supabase
+    .from('proyecto_materiales')
+    .select('project_id, cant_entregada, cant_instalada')
+    .in('project_id', projectIds)
+  if (error) throw new Error(`proyecto_materiales.totales: ${error.message}`)
+
+  const out: Record<string, TotalesMaterialProyecto> = {}
+  for (const r of data as { project_id: string; cant_entregada: number; cant_instalada: number }[]) {
+    const acc = out[r.project_id] ?? (out[r.project_id] = { entregado: 0, instalado: 0 })
+    acc.entregado += Number(r.cant_entregada)
+    acc.instalado += Number(r.cant_instalada)
+  }
+  return out
+}
+
 // ---------------------------------------------------------------------------
 // Ledger por técnico (pestaña Técnico)
 // ---------------------------------------------------------------------------
