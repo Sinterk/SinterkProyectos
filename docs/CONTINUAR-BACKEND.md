@@ -1,9 +1,16 @@
 # Continuar — Migración a backend Supabase
 
 > Documento de retomada — LEER ESTO PRIMERO si se retoma en otra máquina o
-> sesión nueva. Última actualización: 04-08-2026.
+> sesión nueva. Última actualización: 07-08-2026.
 
-## ⚡ Estado ahora mismo (05-08-2026)
+## ⚡ Estado ahora mismo (07-08-2026)
+- **Todo sincronizado**: `main` y `backend-supabase` están en el MISMO commit (`cdfcf91`, v1.46) y el árbol de trabajo está limpio. Producción tiene todo lo de esta semana.
+- **Migraciones**: todas corridas y confirmadas hasta `0058_anular_sin_bloqueo_resoluciones.sql`. Ninguna pendiente.
+- **Para retomar en otra máquina**: `git clone` (o `git fetch` + `git checkout backend-supabase`; si el `main` local quedó viejo, `git branch -f main origin/main`), `npm install`, recrear el `.env` a mano (los nombres de variable están en `src/lib/supabaseClient.ts` y `src/lib/auth.ts`; los valores NO están en el repo, es público — Andrés los tiene), `npm run dev`.
+- **Pendientes de Andrés** (no bloquean nada): (1) pasar la tabla de texto de Corrección por cada uno de los ~22 hallazgos de Preventivos — `CORRECCIONES_POR_HALLAZGO` en `PuntoCard.tsx` sigue vacía; (2) corregir con el modo corrección los 2 "Asignado a técnico" que quedaron en la OTT de prueba; (3) decidir si se automatiza la reversión de resoluciones al anular (bloqueo conocido: `resolver_evento_parcial` no llena `movimientos.evento_resolucion_id`); (4) las tablas copiables a Excel, que dejó "para más adelante".
+- **Sin resolver, a investigar**: producción mostraba **v1.28** cuando `main` ya estaba en v1.44. El workflow (`.github/workflows/deploy.yml`) se dispara con cada push a `main`, así que hay que mirar el historial de ejecuciones en GitHub Actions para ver si fallan, o si es el service worker sirviendo un bundle viejo. Quedó a medio investigar.
+
+## Estado anterior (05-08-2026)
 - **v1.46 — los totales de la lista de ATT se separan en cable y material** (pedido de Andrés). Cada tarjeta muestra `Cable <entregado>/<instalado>` y `Material <entregado>/<instalado>` (ambos ocultos en móvil, donde queda solo la fecha). Van separados porque son magnitudes distintas: el cable se mide en metros y el resto en unidades — un total único no diría nada.
   - **Criterio de "es cable"**: extraído a `src/lib/inventario/esCable.ts` (`esTipoCable`), que es la regla que YA usaba el Estado de Pago — el nombre del Tipo del Catálogo empieza con "Cable " (Cable ADSS, Cable ducto, Cable autosoportado). `epRepo.ts` pasó a usar el helper en vez de tener la comparación inline, para que no queden dos criterios que se puedan desincronizar. **Ojo**: NO se usa `tipo_tendido` como proxy — ese campo es la clave de búsqueda en `lpu_tendido_map`, se configura aparte y no todos los cables lo tienen.
   - `getTotalesMaterialPorProyecto` ahora trae el tipo por embed anidado (`materiales(material_tipos(nombre))`) y devuelve los 4 números.
