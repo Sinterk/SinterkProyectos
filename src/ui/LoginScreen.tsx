@@ -52,12 +52,28 @@ export function LoginScreen() {
           <p className="text-slate-400 text-sm mt-2">Gestión de proyectos de telecomunicaciones</p>
         </div>
 
+        {/*
+          Los `name`/`id` de los campos no son decorativos: los gestores de
+          contraseñas (Firefox, Chrome, Bitwarden…) guardan junto a la clave en
+          qué campo iba, identificándolo por `name` y usando `id` de respaldo.
+          Sin ninguno de los dos el login queda guardado con campos anónimos y
+          el autocompletado al cargar la página falla. `autoComplete` le dice
+          cuál es cuál; `type="submit"` dentro de un <form> real es lo que
+          dispara el "¿guardar contraseña?". No cambiar estos atributos sin
+          entender que rompe las claves ya guardadas de todos los usuarios.
+        */}
         <form onSubmit={handleSubmit} className="bg-slate-800 rounded-2xl border border-slate-700 p-6 space-y-4">
           <div className="space-y-1">
-            <label className="text-xs text-slate-500 font-medium">Usuario</label>
+            <label htmlFor="login-username" className="text-xs text-slate-500 font-medium">Usuario</label>
             <input
+              id="login-username"
+              name="username"
               type="email"
               autoComplete="username"
+              inputMode="email"
+              autoCapitalize="none"
+              autoCorrect="off"
+              spellCheck={false}
               value={email}
               onChange={(e) => setEmail(e.target.value)}
               placeholder="usuario@empresa.cl"
@@ -65,8 +81,10 @@ export function LoginScreen() {
             />
           </div>
           <div className="space-y-1">
-            <label className="text-xs text-slate-500 font-medium">Contraseña</label>
+            <label htmlFor="login-password" className="text-xs text-slate-500 font-medium">Contraseña</label>
             <input
+              id="login-password"
+              name="password"
               type="password"
               autoComplete="current-password"
               value={password}
