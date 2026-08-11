@@ -110,18 +110,37 @@ function RegistroCard({ registro, modo, puedeEditar, abierto, onToggle, onChange
       </button>
 
       {abierto && (
-        <div className="border-t border-slate-700 divide-y divide-slate-700/60">
-          {registro.lineas.map((l) => (
-            <LineaRegistro key={l.id} linea={l} puedeEditar={puedeEditar} onChanged={onChanged} />
-          ))}
+        // Mismo patrón de tabla que Movimientos/Bodega: el scroll horizontal
+        // vive en este contenedor, no en la página. Al ser una <table> de
+        // verdad, seleccionar y copiar pega con columnas en Excel/Sheets.
+        <div className="border-t border-slate-700 overflow-x-auto">
+          <table className="w-full text-xs border-collapse">
+            <thead>
+              <tr className="bg-slate-900/60 text-slate-400 text-left divide-x divide-slate-700">
+                <th className="px-2 py-1.5 font-medium whitespace-nowrap">SKU</th>
+                <th className="px-2 py-1.5 font-medium">Material</th>
+                {modo === 'asignaciones' && <th className="px-2 py-1.5 font-medium whitespace-nowrap">Tipo</th>}
+                <th className="px-2 py-1.5 font-medium whitespace-nowrap">Lote</th>
+                <th className="px-2 py-1.5 font-medium text-right whitespace-nowrap">Cantidad</th>
+                <th className="px-2 py-1.5 font-medium">Nota</th>
+                {puedeEditar && <th className="px-2 py-1.5 font-medium whitespace-nowrap">Acción</th>}
+              </tr>
+            </thead>
+            <tbody>
+              {registro.lineas.map((l) => (
+                <LineaRegistro key={l.id} linea={l} modo={modo} puedeEditar={puedeEditar} onChanged={onChanged} />
+              ))}
+            </tbody>
+          </table>
         </div>
       )}
     </div>
   )
 }
 
-function LineaRegistro({ linea, puedeEditar, onChanged }: {
+function LineaRegistro({ linea, modo, puedeEditar, onChanged }: {
   linea: Movimiento
+  modo: 'asignaciones' | 'entrada'
   puedeEditar: boolean
   onChanged: () => void
 }) {
@@ -178,72 +197,78 @@ function LineaRegistro({ linea, puedeEditar, onChanged }: {
     }
   }
 
-  const inputCls = 'bg-slate-700 text-white text-xs rounded-lg px-2 py-1.5 border border-slate-600 focus:border-brand-500 focus:outline-none w-full'
-
-  if (!editando) {
-    return (
-      <div className="p-3 flex items-start gap-2">
-        <div className="min-w-0 flex-1">
-          <p className="text-xs text-white truncate">
-            <span className="text-slate-400">{linea.materialSku}</span> · {linea.materialDescripcion}
-          </p>
-          <p className="text-[11px] text-slate-500">
-            {TIPO_LABELS[linea.tipo] ?? linea.tipo} · {linea.cantidad} ·{' '}
-            {linea.lote === LOTE_SIN_DEFINIR
-              ? <span className="text-amber-400">sin lote</span>
-              : <>lote {linea.lote}</>}
-            {linea.nota ? ` · ${linea.nota}` : ''}
-          </p>
-          {error && <p className="text-[11px] text-red-400 mt-1">{error}</p>}
-        </div>
-        {puedeEditar && (
-          <button type="button" onClick={abrirEdicion} className="text-[10px] text-brand-400 hover:text-brand-300 shrink-0">
-            ✎ Editar
-          </button>
-        )}
-      </div>
-    )
-  }
+  const inputCls = 'bg-slate-700 text-white text-xs rounded px-1.5 py-1 border border-slate-600 focus:border-brand-500 focus:outline-none w-full'
+  const tdCls = 'px-2 py-2 whitespace-nowrap'
+  // SKU, Material, Lote, Cantidad, Nota + las dos condicionales.
+  const totalCols = 5 + (modo === 'asignaciones' ? 1 : 0) + (puedeEditar ? 1 : 0)
 
   return (
-    <div className="p-3 space-y-2 bg-slate-900/40">
-      <p className="text-xs text-white truncate">
-        <span className="text-slate-400">{linea.materialSku}</span> · {linea.materialDescripcion}
-      </p>
-      <div className="grid grid-cols-2 gap-2">
-        <label className="block">
-          <span className="block text-[10px] text-slate-400 mb-0.5">Lote</span>
-          {/* Texto libre a propósito: el lote que hay que anotar acá muchas
-              veces todavía no existe en `stock`, así que un desplegable de
-              lotes conocidos (LoteSelect) no serviría. */}
-          <input value={lote} onChange={(e) => setLote(e.target.value)} placeholder="Sin lote" className={inputCls} />
-        </label>
-        <label className="block">
-          <span className="block text-[10px] text-slate-400 mb-0.5">Cantidad</span>
-          <input type="number" min="0" step="any" value={cantidad} onChange={(e) => setCantidad(e.target.value)} className={inputCls} />
-        </label>
-      </div>
-      <label className="block">
-        <span className="block text-[10px] text-slate-400 mb-0.5">Nota</span>
-        <input value={nota} onChange={(e) => setNota(e.target.value)} placeholder="Opcional" className={inputCls} />
-      </label>
+    <>
+      <tr className={`border-t border-slate-700 divide-x divide-slate-700 ${editando ? 'bg-slate-900/60' : 'bg-slate-800/60'}`}>
+        <td className={`${tdCls} text-slate-300`}>{linea.materialSku}</td>
+        <td className="px-2 py-2 max-w-[220px]"><p className="text-white truncate">{linea.materialDescripcion}</p></td>
+        {modo === 'asignaciones' && (
+          <td className={`${tdCls} text-slate-300`}>{TIPO_LABELS[linea.tipo] ?? linea.tipo}</td>
+        )}
 
-      {error && <p className="text-[11px] text-red-400">{error}</p>}
+        <td className={tdCls}>
+          {editando ? (
+            // Texto libre a propósito: el lote que hay que anotar acá muchas
+            // veces todavía no existe en `stock`, así que un desplegable de
+            // lotes conocidos (LoteSelect) no serviría justo para este caso.
+            <input value={lote} onChange={(e) => setLote(e.target.value)} placeholder="Sin lote"
+              autoFocus className={`${inputCls} min-w-[7rem]`} />
+          ) : linea.lote === LOTE_SIN_DEFINIR ? (
+            <span className="text-amber-400">sin lote</span>
+          ) : (
+            <span className="text-slate-300">{linea.lote}</span>
+          )}
+        </td>
 
-      <div className="flex items-center gap-2">
-        <button type="button" onClick={guardar} disabled={guardando}
-          className="flex-1 text-xs font-semibold py-1.5 rounded-lg bg-brand-600 hover:bg-brand-700 disabled:opacity-40 text-white">
-          {guardando ? 'Guardando…' : 'Guardar'}
-        </button>
-        <button type="button" onClick={() => setEditando(false)} disabled={guardando}
-          className="text-xs font-semibold py-1.5 px-3 rounded-lg bg-slate-700 hover:bg-slate-600 text-slate-200">
-          Cancelar
-        </button>
-        <button type="button" onClick={anular} disabled={guardando}
-          className="text-[10px] text-red-400 hover:text-red-300 disabled:opacity-40 px-2">
-          🗑 Anular
-        </button>
-      </div>
-    </div>
+        <td className={`${tdCls} text-right`}>
+          {editando ? (
+            <input type="number" min="0" step="any" value={cantidad} onChange={(e) => setCantidad(e.target.value)}
+              className={`${inputCls} text-right min-w-[4.5rem]`} />
+          ) : (
+            <span className="font-semibold text-white">{linea.cantidad}</span>
+          )}
+        </td>
+
+        <td className="px-2 py-2 max-w-[220px]">
+          {editando ? (
+            <input value={nota} onChange={(e) => setNota(e.target.value)} placeholder="Opcional"
+              className={`${inputCls} min-w-[8rem]`} />
+          ) : (
+            <p className="text-slate-400 truncate">{linea.nota || '—'}</p>
+          )}
+        </td>
+
+        {puedeEditar && (
+          <td className={tdCls}>
+            {editando ? (
+              <span className="inline-flex items-center gap-2">
+                <button type="button" onClick={guardar} disabled={guardando}
+                  className="text-[10px] font-semibold text-brand-400 hover:text-brand-300 disabled:opacity-40">
+                  {guardando ? '…' : '✓ Guardar'}
+                </button>
+                <button type="button" onClick={() => setEditando(false)} disabled={guardando}
+                  className="text-[10px] text-slate-500 hover:text-slate-300">✕</button>
+                <button type="button" onClick={anular} disabled={guardando}
+                  className="text-[10px] text-red-400 hover:text-red-300 disabled:opacity-40">🗑</button>
+              </span>
+            ) : (
+              <button type="button" onClick={abrirEdicion}
+                className="text-[10px] text-brand-400 hover:text-brand-300">✎ Editar</button>
+            )}
+          </td>
+        )}
+      </tr>
+
+      {error && (
+        <tr className="bg-slate-800/60">
+          <td colSpan={totalCols} className="px-2 pb-2 text-[11px] text-red-400">{error}</td>
+        </tr>
+      )}
+    </>
   )
 }
