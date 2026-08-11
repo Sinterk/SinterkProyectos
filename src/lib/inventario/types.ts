@@ -61,7 +61,7 @@ export interface StockRow {
 }
 
 /**
- * Tipo tal como lo elige el usuario en Entradas/Salidas. Se traduce a
+ * Tipo tal como lo elige el usuario en Inventario → Registro. Se traduce a
  * `movimientos.tipo` (entrada/salida/traslado/rebaja/solicitud/instalado/
  * merma/traslado_bodega) dentro de la función `registrar_movimiento` en la
  * base de datos — ver supabase/migrations/0005_registrar_movimiento.sql

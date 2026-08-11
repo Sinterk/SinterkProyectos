@@ -1,6 +1,6 @@
 // Formulario compartido de "Registrar movimiento", usado en 3 lugares:
 // pestaña Logística de ATT, pestaña Logística de Preventivos (con selector
-// de punto), y la ventana Inventario → Entradas/Salidas → Registro. La
+// de punto), y la ventana Inventario → Registro → Entrada. La
 // lógica de negocio vive en la función de BD `registrar_movimiento` (ver
 // supabase/migrations/0005_registrar_movimiento.sql y 0007 para el caso de
 // "Salida preventiva" sin proyecto); este componente solo arma el input y
@@ -29,7 +29,7 @@ const TIPO_LABELS: Record<MovimientoTipoUI, string> = {
   instalado: 'Instalado', devuelto: 'Devuelto', rebajado: 'Rebajado (SAP)', merma: 'Merma',
   traslado_bodega: 'Traspaso entre bodegas',
   // No seleccionable desde este formulario compartido (solo desde
-  // AsignacionesForm, en Inventario → Entradas/Salidas) — está acá solo
+  // AsignacionesForm, en Inventario → Registro → Asignaciones) — está acá solo
   // para que el Record<MovimientoTipoUI, string> quede exhaustivo.
   conteo: 'Conteo',
 }
@@ -64,8 +64,8 @@ interface Props {
   /** Si se pasa, oculta el selector Entrada/Salida y de tipo, dejándolo fijo (alta rápida de material por punto, siempre 'instalado'). */
   lockTipoUI?: MovimientoTipoUI
   /** Si se pasa, oculta el selector Entrada/Salida y deja el formulario fijo
-   *  en modo Entrada — usado desde Inventario → Entradas/Salidas, donde el
-   *  lado "Asignaciones" ahora lo maneja `AsignacionesForm` aparte. */
+   *  en modo Entrada — usado desde Inventario → Registro, donde la subpestaña
+   *  "Asignaciones" la maneja `AsignacionesForm` aparte. */
   soloEntrada?: boolean
   /** Se llama tras cada registro exitoso, para refrescar listas/resúmenes en el padre. */
   onRegistered?: () => void

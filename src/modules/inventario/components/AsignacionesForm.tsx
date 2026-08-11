@@ -1,5 +1,6 @@
 // "Asignaciones" — rediseño del antiguo lado "Salida" de Entradas/Salidas →
-// Registro (pedido explícito de Andrés, 05-08-2026). A diferencia del
+// Registro (pedido explícito de Andrés, 05-08-2026); hoy vive en
+// Inventario → Registro → Asignaciones. A diferencia del
 // formulario compartido `RegistrarMovimientoForm` (que sigue igual para
 // Entrada y para las pestañas Logística de ATT/Preventivos), acá ya no se
 // asigna material a un proyecto específico — solo a un técnico. Tres tipos:

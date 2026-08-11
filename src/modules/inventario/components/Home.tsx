@@ -35,7 +35,8 @@ import {
 import type { LpuCodigo, LpuMaterialMap, LpuTendidoMap } from '@/lib/lpu/types'
 import { ColumnHeader } from '@/ui/ColumnHeader'
 
-type MainTab = 'movimientos' | 'bodega' | 'proyecto' | 'tecnico' | 'conteo' | 'catalogo'
+type MainTab = 'registro' | 'stock' | 'conteo' | 'movimientos' | 'catalogo'
+type StockSubTab = 'bodega' | 'proyecto' | 'tecnico'
 
 const TIPO_LABELS_MOV: Record<string, string> = {
   entrada: 'Entrada', salida: 'Salida', traslado: 'Traslado/Devuelto',
@@ -46,7 +47,11 @@ const TIPO_LABELS_MOV: Record<string, string> = {
 const inputCls = 'bg-slate-800 text-white text-sm rounded-lg px-2 py-1.5 border border-slate-700 focus:border-brand-500 focus:outline-none'
 
 export function Home() {
-  const [tab, setTab] = useState<MainTab>('movimientos')
+  const [tab, setTab] = useState<MainTab>('registro')
+  // Registrar algo en Registro tiene que verse reflejado en Movimientos.
+  // Cuando las dos eran subpestañas del mismo componente el contador vivía
+  // ahí adentro; ahora que son pestañas principales hermanas, vive acá.
+  const [refreshKey, setRefreshKey] = useState(0)
 
   return (
     <div className="space-y-4">
@@ -56,19 +61,17 @@ export function Home() {
       </div>
 
       <div className="flex gap-1.5 overflow-x-auto pb-1">
-        <TabButton active={tab === 'movimientos'} onClick={() => setTab('movimientos')}>Entradas/Salidas</TabButton>
-        <TabButton active={tab === 'bodega'} onClick={() => setTab('bodega')}>Bodega</TabButton>
-        <TabButton active={tab === 'proyecto'} onClick={() => setTab('proyecto')}>Proyecto</TabButton>
-        <TabButton active={tab === 'tecnico'} onClick={() => setTab('tecnico')}>Técnico</TabButton>
+        <TabButton active={tab === 'registro'} onClick={() => setTab('registro')}>Registro</TabButton>
+        <TabButton active={tab === 'stock'} onClick={() => setTab('stock')}>Stock</TabButton>
         <TabButton active={tab === 'conteo'} onClick={() => setTab('conteo')}>Conteo</TabButton>
+        <TabButton active={tab === 'movimientos'} onClick={() => setTab('movimientos')}>Movimientos</TabButton>
         <TabButton active={tab === 'catalogo'} onClick={() => setTab('catalogo')}>Catálogo</TabButton>
       </div>
 
-      {tab === 'movimientos' && <EntradasSalidasTab />}
-      {tab === 'bodega' && <BodegaTab />}
-      {tab === 'proyecto' && <ProyectoTab />}
-      {tab === 'tecnico' && <TecnicoTab />}
+      {tab === 'registro' && <RegistroTab onRegistered={() => setRefreshKey((k) => k + 1)} />}
+      {tab === 'stock' && <StockTab />}
       {tab === 'conteo' && <ConteoTab />}
+      {tab === 'movimientos' && <MovimientosTab refreshKey={refreshKey} />}
       {tab === 'catalogo' && <CatalogoTab />}
     </div>
   )
@@ -83,42 +86,45 @@ function TabButton({ active, onClick, children }: { active: boolean; onClick: ()
   )
 }
 
-function EntradasSalidasTab() {
-  const [sub, setSub] = useState<'registro' | 'movimientos'>('registro')
-  const [registroTipo, setRegistroTipo] = useState<'entrada' | 'asignaciones'>('asignaciones')
-  const [refreshKey, setRefreshKey] = useState(0)
+/** Subpestaña (segundo nivel): ocupa el ancho a partes iguales, a diferencia del primer nivel que hace scroll horizontal. */
+function SubTabButton({ active, onClick, children }: { active: boolean; onClick: () => void; children: ReactNode }) {
+  return (
+    <button type="button" onClick={onClick}
+      className={`flex-1 text-xs font-semibold py-1.5 rounded-lg ${active ? 'bg-brand-600 text-white' : 'bg-slate-800 text-slate-400'}`}>
+      {children}
+    </button>
+  )
+}
+
+function RegistroTab({ onRegistered }: { onRegistered: () => void }) {
+  const [sub, setSub] = useState<'asignaciones' | 'entrada'>('asignaciones')
 
   return (
     <div className="space-y-3">
       <div className="flex gap-2">
-        <button type="button" onClick={() => setSub('registro')}
-          className={`flex-1 text-xs font-semibold py-1.5 rounded-lg ${sub === 'registro' ? 'bg-brand-600 text-white' : 'bg-slate-800 text-slate-400'}`}>
-          Registro
-        </button>
-        <button type="button" onClick={() => setSub('movimientos')}
-          className={`flex-1 text-xs font-semibold py-1.5 rounded-lg ${sub === 'movimientos' ? 'bg-brand-600 text-white' : 'bg-slate-800 text-slate-400'}`}>
-          Movimientos
-        </button>
+        <SubTabButton active={sub === 'asignaciones'} onClick={() => setSub('asignaciones')}>Asignaciones</SubTabButton>
+        <SubTabButton active={sub === 'entrada'} onClick={() => setSub('entrada')}>Entrada</SubTabButton>
       </div>
-      {sub === 'registro' ? (
-        <div className="space-y-3">
-          <div className="flex gap-2">
-            <button type="button" onClick={() => setRegistroTipo('asignaciones')}
-              className={`flex-1 text-xs font-semibold py-1.5 rounded-lg ${registroTipo === 'asignaciones' ? 'bg-brand-600 text-white' : 'bg-slate-700 text-slate-300'}`}>
-              Asignaciones
-            </button>
-            <button type="button" onClick={() => setRegistroTipo('entrada')}
-              className={`flex-1 text-xs font-semibold py-1.5 rounded-lg ${registroTipo === 'entrada' ? 'bg-brand-600 text-white' : 'bg-slate-700 text-slate-300'}`}>
-              Entrada
-            </button>
-          </div>
-          {registroTipo === 'asignaciones'
-            ? <AsignacionesForm onRegistered={() => setRefreshKey((k) => k + 1)} />
-            : <RegistrarMovimientoForm soloEntrada onRegistered={() => setRefreshKey((k) => k + 1)} />}
-        </div>
-      ) : (
-        <MovimientosTab refreshKey={refreshKey} />
-      )}
+      {sub === 'asignaciones'
+        ? <AsignacionesForm onRegistered={onRegistered} />
+        : <RegistrarMovimientoForm soloEntrada onRegistered={onRegistered} />}
+    </div>
+  )
+}
+
+function StockTab() {
+  const [sub, setSub] = useState<StockSubTab>('bodega')
+
+  return (
+    <div className="space-y-3">
+      <div className="flex gap-2">
+        <SubTabButton active={sub === 'bodega'} onClick={() => setSub('bodega')}>Bodega</SubTabButton>
+        <SubTabButton active={sub === 'proyecto'} onClick={() => setSub('proyecto')}>Proyecto</SubTabButton>
+        <SubTabButton active={sub === 'tecnico'} onClick={() => setSub('tecnico')}>Técnico</SubTabButton>
+      </div>
+      {sub === 'bodega' && <BodegaTab />}
+      {sub === 'proyecto' && <ProyectoTab />}
+      {sub === 'tecnico' && <TecnicoTab />}
     </div>
   )
 }
