@@ -329,6 +329,8 @@ export interface ListMovimientosFilters {
   projectId?: string
   usuarioId?: string
   tipo?: string
+  /** Varios tipos a la vez (una Asignación son tres: salida/traslado/ajuste). Se ignora si viene `tipo`. */
+  tipos?: string[]
   desde?: string
   hasta?: string
   limit?: number
@@ -346,6 +348,7 @@ export async function listMovimientos(filters?: ListMovimientosFilters): Promise
   if (filters?.projectId) query = query.eq('project_id', filters.projectId)
   if (filters?.usuarioId) query = query.eq('usuario_id', filters.usuarioId)
   if (filters?.tipo) query = query.eq('tipo', filters.tipo)
+  else if (filters?.tipos?.length) query = query.in('tipo', filters.tipos)
   if (filters?.desde) query = query.gte('fecha', filters.desde)
   if (filters?.hasta) query = query.lte('fecha', filters.hasta)
 
@@ -365,6 +368,120 @@ export async function listMovimientos(filters?: ListMovimientosFilters): Promise
 export async function anularMovimiento(movimientoId: string): Promise<void> {
   const { error } = await supabase.rpc('anular_movimiento', { p_movimiento_id: movimientoId })
   if (error) throw new Error(`movimientos.anular: ${error.message}`)
+}
+
+/**
+ * Corrige lote/cantidad/nota de un movimiento ya registrado, conservando su
+ * id y su fecha. Rehace el stock por dentro (revierte lo viejo, aplica lo
+ * nuevo) — ver 0059_corregir_movimiento.sql. Los campos que van `undefined`
+ * no se tocan.
+ *
+ * El caso principal es completar el lote: se registra la entrega/entrada el
+ * día que ocurre, y el lote real se sabe cuando Entel actualiza su stock.
+ */
+export async function corregirMovimiento(
+  movimientoId: string,
+  cambios: { lote?: string; cantidad?: number; nota?: string },
+): Promise<void> {
+  const { error } = await supabase.rpc('corregir_movimiento', {
+    p_movimiento_id: movimientoId,
+    p_lote: cambios.lote ?? null,
+    p_cantidad: cambios.cantidad ?? null,
+    p_nota: cambios.nota ?? null,
+  })
+  if (error) throw new Error(`movimientos.corregir: ${error.message}`)
+}
+
+// ---------------------------------------------------------------------------
+// Registros agrupados (Inventario → Registro, lista bajo el formulario)
+// ---------------------------------------------------------------------------
+
+/**
+ * Una tanda de registro: las N líneas que se guardaron juntas en un mismo
+ * envío del formulario.
+ *
+ * En la base NO existe una entidad "registro" — cada línea es su propia fila
+ * en `movimientos`. Lo que las une es el trío que `documentoAuto()` deja
+ * igual para todas las de un mismo envío: mismo `documento`, mismo día, y
+ * mismo destinatario (el técnico en Asignaciones, la bodega en Entrada).
+ * Ese trío es justamente lo que Andrés pidió mostrar para identificarlas,
+ * así que la clave de agrupación y lo que se ve en pantalla son lo mismo.
+ *
+ * Ojo con el día: dos entregas al mismo técnico el mismo día con el mismo
+ * código quedan en la misma tarjeta. Es el comportamiento correcto para
+ * `preventivos (11-08-2026)`, que por diseño es un código por día.
+ */
+export interface RegistroAgrupado {
+  key: string
+  /** ISO del movimiento más reciente del grupo — con esto se ordena la lista. */
+  fecha: string
+  /** `documento`: el código con que se registró la tanda. */
+  codigo: string | null
+  /** Asignaciones: el técnico. Entrada: null. */
+  tecnicoNombre: string | null
+  /** Entrada: la bodega. Asignaciones: null. */
+  bodegaNombre: string | null
+  lineas: Movimiento[]
+}
+
+/** Tipos de `movimientos.tipo` que produce cada subpestaña de Registro (ver 0047/0050). */
+const TIPOS_ASIGNACION = ['salida', 'traslado', 'ajuste']
+const TIPOS_ENTRADA = ['entrada']
+
+/** Una reasignación a preventivo comparte tipo 'traslado' con Devolución pero no es una asignación — ver 0058. */
+function esReasignacionPreventivo(m: Movimiento): boolean {
+  return m.tipo === 'traslado'
+    && (m.documento?.startsWith('PREVENTIVO - ') === true || m.nota === 'Reasignado a preventivo al cerrar proyecto')
+}
+
+/**
+ * Los tres tipos de una Asignación (salida/traslado/ajuste) NO son exclusivos
+ * del formulario de Asignaciones: resolver un evento de Conteo también los
+ * genera ("Ajuste por conteo — …", ver 0039/0042), y cerrar un conteo genera
+ * 'ajuste'. Esos son bookkeeping interno y no tienen por qué aparecer acá.
+ *
+ * El discriminador es `documento`: `AsignacionesForm` siempre manda uno
+ * calculado (`documentoAuto`), y ninguna de las funciones de conteo escribe
+ * esa columna. No hace falta el filtro equivalente en Entrada — ninguna
+ * resolución crea movimientos de tipo 'entrada' — y ahí `documento` es un
+ * campo libre que puede quedar vacío legítimamente.
+ */
+function esAsignacionRegistrada(m: Movimiento): boolean {
+  return !!m.documento?.trim() && !esReasignacionPreventivo(m)
+}
+
+export async function listRegistros(
+  modo: 'asignaciones' | 'entrada',
+  limit = 200,
+): Promise<RegistroAgrupado[]> {
+  const esAsignacion = modo === 'asignaciones'
+  const movs = await listMovimientos({ tipos: esAsignacion ? TIPOS_ASIGNACION : TIPOS_ENTRADA, limit })
+
+  const grupos = new Map<string, RegistroAgrupado>()
+  for (const m of movs) {
+    if (esAsignacion && !esAsignacionRegistrada(m)) continue
+    const dia = m.fecha.slice(0, 10)
+    const destinatarioId = esAsignacion ? (m.usuarioId ?? '') : m.ubicacionId
+    const key = `${dia}|${destinatarioId}|${m.documento ?? ''}`
+    const grupo = grupos.get(key)
+    if (grupo) {
+      grupo.lineas.push(m)
+      if (m.fecha > grupo.fecha) grupo.fecha = m.fecha
+    } else {
+      grupos.set(key, {
+        key,
+        fecha: m.fecha,
+        codigo: m.documento,
+        tecnicoNombre: esAsignacion ? m.usuarioNombre : null,
+        bodegaNombre: esAsignacion ? null : m.ubicacionNombre,
+        lineas: [m],
+      })
+    }
+  }
+
+  // `listMovimientos` ya viene por fecha desc, pero el grupo se ordena por su
+  // línea más reciente, que puede no ser la primera que se vio.
+  return [...grupos.values()].sort((a, b) => b.fecha.localeCompare(a.fecha))
 }
 
 // ---------------------------------------------------------------------------

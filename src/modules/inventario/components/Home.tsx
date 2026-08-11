@@ -9,6 +9,7 @@ import { LpuCodigoSelect } from '@/ui/LpuCodigoSelect'
 import { MaterialSelect } from '@/ui/MaterialSelect'
 import { RegistrarMovimientoForm } from '@/ui/RegistrarMovimientoForm'
 import { AsignacionesForm } from './AsignacionesForm'
+import { ListaRegistros } from './ListaRegistros'
 import { ResumenProyectoTable } from '@/ui/ResumenProyectoTable'
 import { UbicacionSelect } from '@/ui/UbicacionSelect'
 import { useFileDrop } from '@/ui/useFileDrop'
@@ -98,6 +99,13 @@ function SubTabButton({ active, onClick, children }: { active: boolean; onClick:
 
 function RegistroTab({ onRegistered }: { onRegistered: () => void }) {
   const [sub, setSub] = useState<'asignaciones' | 'entrada'>('asignaciones')
+  // Doble propósito: recarga la lista de abajo, y avisa al padre para que la
+  // pestaña Movimientos también quede al día.
+  const [refreshKey, setRefreshKey] = useState(0)
+  function registrado() {
+    setRefreshKey((k) => k + 1)
+    onRegistered()
+  }
 
   return (
     <div className="space-y-3">
@@ -106,8 +114,9 @@ function RegistroTab({ onRegistered }: { onRegistered: () => void }) {
         <SubTabButton active={sub === 'entrada'} onClick={() => setSub('entrada')}>Entrada</SubTabButton>
       </div>
       {sub === 'asignaciones'
-        ? <AsignacionesForm onRegistered={onRegistered} />
-        : <RegistrarMovimientoForm soloEntrada onRegistered={onRegistered} />}
+        ? <AsignacionesForm onRegistered={registrado} />
+        : <RegistrarMovimientoForm soloEntrada onRegistered={registrado} />}
+      <ListaRegistros modo={sub} refreshKey={refreshKey} />
     </div>
   )
 }
