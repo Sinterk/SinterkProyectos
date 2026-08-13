@@ -80,6 +80,10 @@ export function AsignacionesForm({ onRegistered }: { onRegistered?: () => void }
   const [bodegaDestinoId, setBodegaDestinoId] = useState('')
   const [stockTecnico, setStockTecnico] = useState<StockRow[] | null>(null)
   const [aDevolver, setADevolver] = useState<Record<string, string>>({})
+  // Bodega distinta para una fila puntual (clave `materialId|lote`). Vacío =
+  // usa la de arriba. Un técnico puede volver con material de varias bodegas
+  // en la misma devolución, y forzar una sola obligaba a registrar dos veces.
+  const [bodegaPorFila, setBodegaPorFila] = useState<Record<string, string>>({})
   const [devError, setDevError] = useState<string | null>(null)
   const [devSubmitting, setDevSubmitting] = useState(false)
   const [devResultados, setDevResultados] = useState<Record<string, { ok: boolean; texto: string }>>({})
@@ -106,6 +110,7 @@ export function AsignacionesForm({ onRegistered }: { onRegistered?: () => void }
     if (tipo !== 'devolucion') return
     setStockTecnico(null)
     setADevolver({})
+    setBodegaPorFila({})
     reloadStockTecnico()
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [tipo, tecnicoUbicacionId])
@@ -177,9 +182,14 @@ export function AsignacionesForm({ onRegistered }: { onRegistered?: () => void }
 
   async function submitDevolucion() {
     if (!tecnicoUserId) { setDevError('Falta elegir el técnico'); return }
-    if (!bodegaDestinoId) { setDevError('Falta elegir la bodega de destino'); return }
     const filas = (stockTecnico ?? []).filter((r) => Number(aDevolver[`${r.materialId}|${r.lote}`] || 0) > 0)
     if (filas.length === 0) { setDevError('Ingresa alguna cantidad a devolver'); return }
+    // La bodega de arriba ya no es obligatoria por sí sola: basta con que
+    // cada fila con cantidad tenga una, sea la suya o la heredada.
+    if (filas.some((r) => !(bodegaPorFila[`${r.materialId}|${r.lote}`] || bodegaDestinoId))) {
+      setDevError('Falta la bodega de destino en alguna línea')
+      return
+    }
 
     setDevError(null)
     setDevSubmitting(true)
@@ -205,7 +215,8 @@ export function AsignacionesForm({ onRegistered }: { onRegistered?: () => void }
         await registrarMovimiento({
           tipoUI: 'devuelto', materialId: r.materialId, cantidad: cantidadDevolver,
           lote: r.lote || undefined, fecha: fechaISO, nota: nota.trim() || undefined,
-          documento: documentoAuto('devolucion'), tecnicoUserId, ubicacionBodegaId: bodegaDestinoId,
+          documento: documentoAuto('devolucion'), tecnicoUserId,
+          ubicacionBodegaId: bodegaPorFila[key] || bodegaDestinoId,
         })
         nuevos[key] = { ok: true, texto: 'Devuelto' }
       } catch (e) {
@@ -215,6 +226,7 @@ export function AsignacionesForm({ onRegistered }: { onRegistered?: () => void }
     setDevResultados(nuevos)
     setDevSubmitting(false)
     setADevolver({})
+    setBodegaPorFila({})
     reloadStockTecnico()
     onRegistered?.()
   }
@@ -242,7 +254,7 @@ export function AsignacionesForm({ onRegistered }: { onRegistered?: () => void }
         </label>
         {tipo === 'devolucion' && (
           <label className="space-y-1 col-span-2">
-            <span className={labelCls}>Bodega destino</span>
+            <span className={labelCls}>Bodega destino (por defecto)</span>
             <UbicacionSelect value={bodegaDestinoId} onChange={setBodegaDestinoId} tipo="bodega"
               placeholder="Elegir bodega…" className={`${inputCls} w-full`} />
           </label>
@@ -276,6 +288,7 @@ export function AsignacionesForm({ onRegistered }: { onRegistered?: () => void }
                     <th className="px-2 py-1.5">Lote</th>
                     <th className="px-2 py-1.5 text-right">Asignado</th>
                     <th className="px-2 py-1.5 text-right">A devolver</th>
+                    <th className="px-2 py-1.5">Bodega destino</th>
                   </tr>
                 </thead>
                 <tbody>
@@ -283,18 +296,31 @@ export function AsignacionesForm({ onRegistered }: { onRegistered?: () => void }
                     const key = `${r.materialId}|${r.lote}`
                     const res = devResultados[key]
                     return (
-                      <tr key={key} className="border-t border-slate-800">
-                        <td className="px-2 py-1.5 text-slate-300 whitespace-nowrap">{r.materialSku}</td>
-                        <td className="px-2 py-1.5 text-slate-300">{r.materialDescripcion}</td>
-                        <td className="px-2 py-1.5 text-slate-400">{r.lote || '—'}</td>
-                        <td className="px-2 py-1.5 text-right text-white">{r.cantidadFisico}</td>
-                        <td className="px-2 py-1.5 text-right">
-                          <input type="number" min="0" step="any" placeholder="0" value={aDevolver[key] ?? ''}
-                            onChange={(e) => setADevolver((prev) => ({ ...prev, [key]: e.target.value }))}
-                            className={`${inputCls} w-20 text-right`} />
-                          {res && <p className={`mt-1 ${res.ok ? 'text-green-400' : 'text-red-400'}`}>{res.texto}</p>}
-                        </td>
-                      </tr>
+                      <Fragment key={key}>
+                        <tr className="border-t border-slate-800 divide-x divide-slate-800">
+                          <td className="px-2 py-1.5 text-slate-300 whitespace-nowrap">{r.materialSku}</td>
+                          <td className="px-2 py-1.5 text-slate-300">{r.materialDescripcion}</td>
+                          <td className="px-2 py-1.5 text-slate-400">{r.lote || '—'}</td>
+                          <td className="px-2 py-1.5 text-right text-white">{r.cantidadFisico}</td>
+                          <td className="px-2 py-1.5 text-right">
+                            <input type="number" min="0" step="any" placeholder="0" value={aDevolver[key] ?? ''}
+                              onChange={(e) => setADevolver((prev) => ({ ...prev, [key]: e.target.value }))}
+                              className={`${inputCls} w-20 text-right`} />
+                          </td>
+                          <td className="px-2 py-1.5 min-w-[10rem]">
+                            {/* Vacío hereda la bodega de arriba. El placeholder
+                                lo dice para que no parezca un campo sin llenar. */}
+                            <UbicacionSelect value={bodegaPorFila[key] ?? ''}
+                              onChange={(id) => setBodegaPorFila((prev) => ({ ...prev, [key]: id }))}
+                              tipo="bodega" placeholder="Usar la de arriba" className={`${inputCls} w-full`} />
+                          </td>
+                        </tr>
+                        {res && (
+                          <tr className="border-t border-slate-800">
+                            <td colSpan={6} className={`px-2 pb-1.5 text-xs ${res.ok ? 'text-green-400' : 'text-red-400'}`}>{res.texto}</td>
+                          </tr>
+                        )}
+                      </Fragment>
                     )
                   })}
                 </tbody>
