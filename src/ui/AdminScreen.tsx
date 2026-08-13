@@ -45,10 +45,7 @@ function UsersSection() {
   return (
     <div className="bg-slate-800 rounded-2xl border border-slate-700 p-4 space-y-3">
       <h2 className="text-xs font-semibold text-brand-400 uppercase tracking-wide">Usuarios</h2>
-      <p className="text-[11px] text-slate-500 leading-relaxed">
-        Para dar de alta un usuario nuevo: Supabase → Authentication → Add user (marcar <em>Auto Confirm</em>).
-        Aparecerá aquí con rol "Técnico" por defecto — edítalo abajo.
-      </p>
+      <NuevoUsuarioForm onCreated={reload} />
       {error && <p className="text-xs text-red-400">{error}</p>}
       {!profiles ? (
         <p className="text-xs text-slate-500">Cargando…</p>
@@ -59,6 +56,116 @@ function UsersSection() {
           ))}
         </div>
       )}
+    </div>
+  )
+}
+
+/**
+ * Alta de trabajador. Llama a la Edge Function `crear-usuario` — ver el
+ * comentario de `adminRepo.crearUsuario` para el porqué de que no sea un
+ * insert directo.
+ *
+ * La contraseña la escribe el admin y se la entrega a la persona; es
+ * temporal por convención, no por sistema (todavía no hay "forzar cambio en
+ * el primer ingreso" — la persona la cambia sola desde su menú de usuario).
+ */
+function NuevoUsuarioForm({ onCreated }: { onCreated: () => void }) {
+  const [abierto, setAbierto] = useState(false)
+  const [email, setEmail] = useState('')
+  const [password, setPassword] = useState('')
+  const [nombre, setNombre] = useState('')
+  const [rol, setRol] = useState<Profile['rol']>('tecnico')
+  const [area, setArea] = useState<Profile['area']>(null)
+  const [busy, setBusy] = useState(false)
+  const [error, setError] = useState<string | null>(null)
+  const [ok, setOk] = useState<string | null>(null)
+
+  const inputCls = 'w-full bg-slate-700 text-white text-sm rounded-lg px-2 py-1.5 border border-slate-600 focus:border-brand-500 focus:outline-none'
+  const labelCls = 'block text-[10px] text-slate-400 mb-0.5'
+
+  function limpiar() {
+    setEmail(''); setPassword(''); setNombre(''); setRol('tecnico'); setArea(null)
+  }
+
+  async function crear() {
+    setBusy(true)
+    setError(null)
+    setOk(null)
+    try {
+      await adminRepo.crearUsuario({ email, password, nombre, rol, area })
+      setOk(`${nombre} creado. Entrégale el correo y la contraseña para que entre.`)
+      limpiar()
+      onCreated()
+    } catch (err) {
+      setError(err instanceof Error ? err.message : String(err))
+    } finally {
+      setBusy(false)
+    }
+  }
+
+  if (!abierto) {
+    return (
+      <button type="button" onClick={() => { setAbierto(true); setOk(null) }}
+        className="w-full text-xs font-semibold py-2 rounded-xl bg-brand-600 hover:bg-brand-700 text-white">
+        ➕ Agregar trabajador
+      </button>
+    )
+  }
+
+  return (
+    <div className="bg-slate-900/60 rounded-xl border border-slate-700 p-3 space-y-2">
+      <div className="grid grid-cols-2 gap-2">
+        <label className="col-span-2">
+          <span className={labelCls}>Nombre</span>
+          <input value={nombre} onChange={(e) => setNombre(e.target.value)}
+            placeholder="Nombre y apellido" className={inputCls} />
+        </label>
+        <label className="col-span-2">
+          <span className={labelCls}>Correo</span>
+          <input type="email" value={email} onChange={(e) => setEmail(e.target.value)}
+            autoCapitalize="none" autoCorrect="off" spellCheck={false}
+            placeholder="usuario@sinterk.cl" className={inputCls} />
+        </label>
+        <label className="col-span-2">
+          <span className={labelCls}>Contraseña temporal</span>
+          {/* type="text" a propósito: el admin se la tiene que dictar a la
+              persona, y ocultarla acá solo obliga a escribirla dos veces.
+              autoComplete off para que el gestor no la guarde como propia. */}
+          <input value={password} onChange={(e) => setPassword(e.target.value)}
+            autoComplete="off" placeholder="Mínimo 6 caracteres" className={inputCls} />
+        </label>
+        <label>
+          <span className={labelCls}>Rol</span>
+          <select value={rol} onChange={(e) => setRol(e.target.value as Profile['rol'])} className={inputCls}>
+            <option value="tecnico">Técnico</option>
+            <option value="log">Logística</option>
+            <option value="jp">Jefe de proyecto</option>
+            <option value="admin">Administrador</option>
+          </select>
+        </label>
+        <label>
+          <span className={labelCls}>Área</span>
+          <select value={area ?? ''} onChange={(e) => setArea((e.target.value || null) as Profile['area'])} className={inputCls}>
+            <option value="">Sin área</option>
+            <option value="ATT">ATT</option>
+            <option value="OyM">OyM</option>
+          </select>
+        </label>
+      </div>
+
+      {error && <p className="text-xs text-red-400">{error}</p>}
+      {ok && <p className="text-xs text-green-400">{ok}</p>}
+
+      <div className="flex gap-2">
+        <button type="button" onClick={crear} disabled={busy || !nombre.trim() || !email.trim() || password.length < 6}
+          className="flex-1 text-xs font-semibold py-2 rounded-xl bg-brand-600 hover:bg-brand-700 disabled:opacity-40 text-white">
+          {busy ? 'Creando…' : 'Crear trabajador'}
+        </button>
+        <button type="button" onClick={() => { setAbierto(false); limpiar(); setError(null) }} disabled={busy}
+          className="text-xs font-semibold py-2 px-3 rounded-xl bg-slate-700 hover:bg-slate-600 text-slate-200">
+          Cerrar
+        </button>
+      </div>
     </div>
   )
 }

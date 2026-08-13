@@ -1,12 +1,32 @@
 // Capa de datos para la pantalla de administración: perfiles (rol/área/activo)
-// y equipo asignado por proyecto (project_members). La creación del login en
-// sí (auth.users) sigue siendo manual en el dashboard de Supabase — requiere
-// la service_role key, que no se expone en el bundle del cliente. El trigger
-// `handle_new_user` crea el `profiles` correspondiente automáticamente
-// (rol 'tecnico' por defecto); esta capa solo edita lo que ya existe.
+// y equipo asignado por proyecto (project_members).
+//
+// El alta de la cuenta en sí (auth.users) NO se hace desde acá: requiere la
+// service_role key, que salta todo el RLS y no puede ir en el bundle del
+// cliente, que es público. Vive en la Edge Function `crear-usuario`, y
+// `crearUsuario()` más abajo es quien la llama. El trigger `handle_new_user`
+// crea el `profiles` correspondiente automáticamente al aparecer la cuenta.
 
+import type { FunctionsHttpError } from '@supabase/supabase-js'
 import { supabase } from './supabaseClient'
 import type { Profile } from './auth'
+
+/**
+ * `functions.invoke` no lee el cuerpo cuando el status no es 2xx: tira un
+ * `FunctionsHttpError` con el mensaje genérico "non-2xx status code" y deja
+ * la respuesta sin consumir. El motivo real ("Ya existe un usuario con ese
+ * correo", "Solo un administrador…") está en ese cuerpo.
+ */
+async function leerErrorDeFuncion(error: Error): Promise<string> {
+  const contexto = (error as FunctionsHttpError).context
+  if (!(contexto instanceof Response)) return error.message
+  try {
+    const cuerpo = await contexto.json()
+    return typeof cuerpo?.error === 'string' ? cuerpo.error : error.message
+  } catch {
+    return error.message
+  }
+}
 
 export interface ProjectSummary {
   id: string
@@ -43,6 +63,37 @@ export const adminRepo = {
       .order('nombre', { ascending: true })
     if (error) throw new Error(`profiles.list: ${error.message}`)
     return data as Profile[]
+  },
+
+  /**
+   * Alta de un trabajador con cuenta de acceso.
+   *
+   * No es un insert a `profiles`: esa tabla tiene su `id` como FK a
+   * `auth.users`, así que primero tiene que existir la cuenta. Crear cuentas
+   * requiere la clave `service_role`, que salta todo el RLS y por eso NO
+   * puede estar en la app (el bundle es público). Vive en la Edge Function
+   * `crear-usuario`, que corre en el servidor de Supabase y verifica que
+   * quien llama sea admin antes de usarla. Ver `supabase/functions/`.
+   *
+   * La fila de `profiles` la crea el trigger `handle_new_user` (0001) leyendo
+   * el `user_metadata`; la función solo le completa el área después.
+   */
+  async crearUsuario(input: {
+    email: string
+    password: string
+    nombre: string
+    rol: Profile['rol']
+    area: Profile['area']
+  }): Promise<void> {
+    const { data, error } = await supabase.functions.invoke('crear-usuario', { body: input })
+    if (error) {
+      // `invoke` devuelve un Error genérico ("non-2xx status code") y deja el
+      // detalle en el cuerpo — sin esto, cualquier fallo se ve como "Edge
+      // Function returned a non-2xx status code" y no se puede diagnosticar.
+      const detalle = await leerErrorDeFuncion(error)
+      throw new Error(`usuarios.crear: ${detalle}`)
+    }
+    if (data?.error) throw new Error(`usuarios.crear: ${data.error}`)
   },
 
   /** Edita nombre/rol/área/activo/rut/cargo de un perfil existente. */
