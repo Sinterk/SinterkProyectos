@@ -6,7 +6,7 @@
 // "Salida preventiva" sin proyecto); este componente solo arma el input y
 // muestra resultado por línea.
 
-import { useEffect, useRef, useState } from 'react'
+import { Fragment, useEffect, useRef, useState } from 'react'
 import { nanoid } from '@/core/utils/nanoid'
 import { adminRepo } from '@/lib/adminRepo'
 import type { MemberProfile, ProjectSummary } from '@/lib/adminRepo'
@@ -365,37 +365,76 @@ export function RegistrarMovimientoForm({ fixedProject, puntos, lockTipoUI, solo
 
       <div className="space-y-2">
         <span className={labelCls}>Material</span>
-        {lineas.map((l) => {
-          const r = resultados[l.localId]
-          const ctx = loteContexto(l)
-          return (
-            <div key={l.localId} className="bg-slate-700/50 rounded-xl p-2 space-y-2">
-              <div className="grid grid-cols-6 gap-1.5">
-                <MaterialSelect materiales={materiales} value={l.materialId}
-                  onChange={(id) => updateLinea(l.localId, { materialId: id, lote: '' })}
-                  className="col-span-3" />
-                <input type="number" min="0" step="any" placeholder="Cant." value={l.cantidad}
-                  onChange={(e) => updateLinea(l.localId, { cantidad: e.target.value })} className={`${inputCls} col-span-1`} />
-                <LoteSelect materialId={l.materialId} ubicacionId={ctx.ubicacionId} naturaleza={ctx.naturaleza}
-                  checkAvailability={ctx.checkAvailability} value={l.lote}
-                  onChange={(lote) => updateLinea(l.localId, { lote })} className={`${inputCls} col-span-1`} />
-                <button type="button" onClick={() => removeLinea(l.localId)} disabled={lineas.length === 1}
-                  className="col-span-1 text-xs text-red-400 disabled:opacity-30">Quitar</button>
-              </div>
-              {necesitaBodegaPorLinea && (
-                <UbicacionSelect value={l.ubicacionBodegaId} onChange={(id) => updateLinea(l.localId, { ubicacionBodegaId: id, lote: '' })}
-                  tipo="bodega" placeholder={`Bodega de ${tipoUI === 'devuelto' ? 'destino' : 'origen'}…`}
-                  className={`${inputCls} w-full`} />
-              )}
-              {necesitaBodegaDestinoPorLinea && (
-                <UbicacionSelect value={l.ubicacionBodegaDestinoId} onChange={(id) => updateLinea(l.localId, { ubicacionBodegaDestinoId: id })}
-                  tipo="bodega" placeholder="Bodega de destino…"
-                  className={`${inputCls} w-full`} />
-              )}
-              {r && <p className={`text-xs ${r.ok ? 'text-green-400' : 'text-red-400'}`}>{r.texto}</p>}
-            </div>
-          )
-        })}
+        {/* Una fila por línea, mismo formato que Asignaciones. Las columnas de
+            bodega son condicionales: solo los tipos que la piden por línea la
+            muestran (Entrada la tiene una sola vez arriba, no por línea). */}
+        <div className="overflow-x-auto rounded-xl border border-slate-700">
+          <table className="w-full text-xs border-collapse">
+            <thead>
+              <tr className="bg-slate-900 text-slate-400 text-left divide-x divide-slate-700">
+                <th className="px-2 py-1.5 font-medium">Material</th>
+                {necesitaBodegaPorLinea && (
+                  <th className="px-2 py-1.5 font-medium">
+                    {tipoUI === 'devuelto' ? 'Bodega destino' : 'Bodega origen'}
+                  </th>
+                )}
+                {necesitaBodegaDestinoPorLinea && <th className="px-2 py-1.5 font-medium">Bodega destino</th>}
+                <th className="px-2 py-1.5 font-medium">Lote</th>
+                <th className="px-2 py-1.5 font-medium text-right">Cantidad</th>
+                <th className="px-2 py-1.5 font-medium" />
+              </tr>
+            </thead>
+            <tbody>
+              {lineas.map((l) => {
+                const r = resultados[l.localId]
+                const ctx = loteContexto(l)
+                const totalCols = 4 + (necesitaBodegaPorLinea ? 1 : 0) + (necesitaBodegaDestinoPorLinea ? 1 : 0)
+                return (
+                  <Fragment key={l.localId}>
+                    <tr className="border-t border-slate-800 divide-x divide-slate-800">
+                      <td className="px-2 py-1.5 min-w-[12rem]">
+                        <MaterialSelect materiales={materiales} value={l.materialId}
+                          onChange={(id) => updateLinea(l.localId, { materialId: id, lote: '' })} />
+                      </td>
+                      {necesitaBodegaPorLinea && (
+                        <td className="px-2 py-1.5 min-w-[10rem]">
+                          <UbicacionSelect value={l.ubicacionBodegaId} onChange={(id) => updateLinea(l.localId, { ubicacionBodegaId: id, lote: '' })}
+                            tipo="bodega" placeholder={`Bodega de ${tipoUI === 'devuelto' ? 'destino' : 'origen'}…`}
+                            className={`${inputCls} w-full`} />
+                        </td>
+                      )}
+                      {necesitaBodegaDestinoPorLinea && (
+                        <td className="px-2 py-1.5 min-w-[10rem]">
+                          <UbicacionSelect value={l.ubicacionBodegaDestinoId} onChange={(id) => updateLinea(l.localId, { ubicacionBodegaDestinoId: id })}
+                            tipo="bodega" placeholder="Bodega de destino…" className={`${inputCls} w-full`} />
+                        </td>
+                      )}
+                      <td className="px-2 py-1.5 min-w-[9rem]">
+                        <LoteSelect materialId={l.materialId} ubicacionId={ctx.ubicacionId} naturaleza={ctx.naturaleza}
+                          checkAvailability={ctx.checkAvailability} value={l.lote}
+                          onChange={(lote) => updateLinea(l.localId, { lote })} className={`${inputCls} w-full`} />
+                      </td>
+                      <td className="px-2 py-1.5">
+                        <input type="number" min="0" step="any" placeholder="0" value={l.cantidad}
+                          onChange={(e) => updateLinea(l.localId, { cantidad: e.target.value })}
+                          className={`${inputCls} w-20 text-right`} />
+                      </td>
+                      <td className="px-2 py-1.5 whitespace-nowrap">
+                        <button type="button" onClick={() => removeLinea(l.localId)} disabled={lineas.length === 1}
+                          className="text-xs text-red-400 disabled:opacity-30">Quitar</button>
+                      </td>
+                    </tr>
+                    {r && (
+                      <tr className="border-t border-slate-800">
+                        <td colSpan={totalCols} className={`px-2 pb-1.5 text-xs ${r.ok ? 'text-green-400' : 'text-red-400'}`}>{r.texto}</td>
+                      </tr>
+                    )}
+                  </Fragment>
+                )
+              })}
+            </tbody>
+          </table>
+        </div>
         <button type="button" onClick={addLinea} className="text-xs text-brand-400 font-semibold">+ Agregar línea</button>
       </div>
 

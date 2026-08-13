@@ -340,7 +340,12 @@ export async function listMovimientos(filters?: ListMovimientosFilters): Promise
   let query = supabase
     .from('movimientos')
     .select('*, materiales(sku,descripcion), origen:ubicaciones!ubicacion_id(nombre), destino:ubicaciones!ubicacion_destino_id(nombre), profiles(nombre,email), projects(ott)')
+    // `fecha` la elige el usuario en un <input type="date">, así que TODO lo
+    // registrado un mismo día queda con el mismo timestamp (medianoche) y no
+    // hay con qué desempatar. `created_at` (default now()) sí tiene la hora
+    // real de inserción: es lo que hace que lo último quede primero.
     .order('fecha', { ascending: false })
+    .order('created_at', { ascending: false })
     .limit(filters?.limit ?? 200)
 
   if (filters?.materialId) query = query.eq('material_id', filters.materialId)
@@ -413,8 +418,15 @@ export async function corregirMovimiento(
  */
 export interface RegistroAgrupado {
   key: string
-  /** ISO del movimiento más reciente del grupo — con esto se ordena la lista. */
+  /** La fecha que se eligió al registrar (sin hora — es un <input type="date">). Es la que se muestra. */
   fecha: string
+  /**
+   * Instante real de inserción del movimiento más nuevo del grupo.
+   * NO se muestra: existe para ordenar. Dos tandas del mismo día tienen la
+   * misma `fecha` exacta (medianoche) y sin esto el orden entre ellas es el
+   * que caiga — por eso "lo último hecho" no aparecía primero.
+   */
+  createdAt: string
   /** `documento`: el código con que se registró la tanda. */
   codigo: string | null
   /** Asignaciones: el técnico. Entrada: null. */
@@ -467,10 +479,12 @@ export async function listRegistros(
     if (grupo) {
       grupo.lineas.push(m)
       if (m.fecha > grupo.fecha) grupo.fecha = m.fecha
+      if (m.createdAt > grupo.createdAt) grupo.createdAt = m.createdAt
     } else {
       grupos.set(key, {
         key,
         fecha: m.fecha,
+        createdAt: m.createdAt,
         codigo: m.documento,
         tecnicoNombre: esAsignacion ? m.usuarioNombre : null,
         bodegaNombre: esAsignacion ? null : m.ubicacionNombre,
@@ -479,9 +493,13 @@ export async function listRegistros(
     }
   }
 
-  // `listMovimientos` ya viene por fecha desc, pero el grupo se ordena por su
-  // línea más reciente, que puede no ser la primera que se vio.
-  return [...grupos.values()].sort((a, b) => b.fecha.localeCompare(a.fecha))
+  // Por fecha y, dentro del mismo día, por hora real de registro. La `fecha`
+  // sola no alcanza: al venir de un <input type="date"> todas las tandas de
+  // un día valen exactamente lo mismo. Que mande la fecha y no `created_at`
+  // a secas es a propósito — una tanda registrada hoy con fecha de la semana
+  // pasada pertenece a esa semana, no al tope de la lista.
+  return [...grupos.values()].sort((a, b) =>
+    b.fecha.localeCompare(a.fecha) || b.createdAt.localeCompare(a.createdAt))
 }
 
 // ---------------------------------------------------------------------------

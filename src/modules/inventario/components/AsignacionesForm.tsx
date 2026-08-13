@@ -19,7 +19,7 @@
 // etiqueta automáticamente en el campo "N° documento" (antes libre, ahora
 // calculado) con el tipo + la fecha — ver `documentoAuto`.
 
-import { useEffect, useState } from 'react'
+import { Fragment, useEffect, useState } from 'react'
 import { nanoid } from '@/core/utils/nanoid'
 import { adminRepo } from '@/lib/adminRepo'
 import type { Profile } from '@/lib/auth'
@@ -310,33 +310,64 @@ export function AsignacionesForm({ onRegistered }: { onRegistered?: () => void }
       ) : (
         <div className="space-y-2">
           <span className={labelCls}>Material</span>
-          {lineas.map((l) => {
-            const r = resultados[l.localId]
-            return (
-              <div key={l.localId} className="bg-slate-700/50 rounded-xl p-2 space-y-2">
-                <div className="grid grid-cols-2 gap-1.5">
-                  <MaterialSelect materiales={materiales} value={l.materialId}
-                    onChange={(id) => updateLinea(l.localId, { materialId: id, lote: '' })} />
-                  <UbicacionSelect value={l.ubicacionBodegaId} onChange={(id) => updateLinea(l.localId, { ubicacionBodegaId: id, lote: '' })}
-                    tipo="bodega" placeholder="Bodega de origen…" className={`${inputCls} w-full`} />
-                </div>
-                <div className="grid grid-cols-6 gap-1.5">
-                  {/* Recién acá se conoce la bodega: LoteSelect ya puede
-                      mostrarse como desplegable con los lotes disponibles,
-                      en vez de caer al campo de texto libre (mismo
-                      comportamiento que en Logística/Registrar Movimiento). */}
-                  <LoteSelect materialId={l.materialId} ubicacionId={l.ubicacionBodegaId || null} naturaleza="fisico"
-                    checkAvailability={tipo === 'entrega'} value={l.lote}
-                    onChange={(lote) => updateLinea(l.localId, { lote })} className={`${inputCls} col-span-3`} />
-                  <input type="number" min="0" step="any" placeholder="Cant." value={l.cantidad}
-                    onChange={(e) => updateLinea(l.localId, { cantidad: e.target.value })} className={`${inputCls} col-span-2`} />
-                  <button type="button" onClick={() => removeLinea(l.localId)} disabled={lineas.length === 1}
-                    className="col-span-1 text-xs text-red-400 disabled:opacity-30">Quitar</button>
-                </div>
-                {r && <p className={`text-xs ${r.ok ? 'text-green-400' : 'text-red-400'}`}>{r.texto}</p>}
-              </div>
-            )
-          })}
+          {/* Mismo formato de tabla que Devolución, que ya era así: una fila
+              por línea, con las columnas alineadas entre sí. El scroll
+              horizontal vive en este contenedor, no en la página. */}
+          <div className="overflow-x-auto rounded-xl border border-slate-700">
+            <table className="w-full text-xs border-collapse">
+              <thead>
+                <tr className="bg-slate-900 text-slate-400 text-left divide-x divide-slate-700">
+                  <th className="px-2 py-1.5 font-medium">Material</th>
+                  <th className="px-2 py-1.5 font-medium">Bodega</th>
+                  <th className="px-2 py-1.5 font-medium">Lote</th>
+                  <th className="px-2 py-1.5 font-medium text-right">Cantidad</th>
+                  <th className="px-2 py-1.5 font-medium" />
+                </tr>
+              </thead>
+              <tbody>
+                {lineas.map((l) => {
+                  const r = resultados[l.localId]
+                  return (
+                    <Fragment key={l.localId}>
+                      <tr className="border-t border-slate-800 divide-x divide-slate-800">
+                        <td className="px-2 py-1.5 min-w-[12rem]">
+                          <MaterialSelect materiales={materiales} value={l.materialId}
+                            onChange={(id) => updateLinea(l.localId, { materialId: id, lote: '' })} />
+                        </td>
+                        <td className="px-2 py-1.5 min-w-[10rem]">
+                          <UbicacionSelect value={l.ubicacionBodegaId} onChange={(id) => updateLinea(l.localId, { ubicacionBodegaId: id, lote: '' })}
+                            tipo="bodega" placeholder="Bodega de origen…" className={`${inputCls} w-full`} />
+                        </td>
+                        <td className="px-2 py-1.5 min-w-[9rem]">
+                          {/* Recién acá se conoce la bodega: LoteSelect ya puede
+                              mostrarse como desplegable con los lotes disponibles,
+                              en vez de caer al campo de texto libre (mismo
+                              comportamiento que en Logística/Registrar Movimiento). */}
+                          <LoteSelect materialId={l.materialId} ubicacionId={l.ubicacionBodegaId || null} naturaleza="fisico"
+                            checkAvailability={tipo === 'entrega'} value={l.lote}
+                            onChange={(lote) => updateLinea(l.localId, { lote })} className={`${inputCls} w-full`} />
+                        </td>
+                        <td className="px-2 py-1.5">
+                          <input type="number" min="0" step="any" placeholder="0" value={l.cantidad}
+                            onChange={(e) => updateLinea(l.localId, { cantidad: e.target.value })}
+                            className={`${inputCls} w-20 text-right`} />
+                        </td>
+                        <td className="px-2 py-1.5 whitespace-nowrap">
+                          <button type="button" onClick={() => removeLinea(l.localId)} disabled={lineas.length === 1}
+                            className="text-xs text-red-400 disabled:opacity-30">Quitar</button>
+                        </td>
+                      </tr>
+                      {r && (
+                        <tr className="border-t border-slate-800">
+                          <td colSpan={5} className={`px-2 pb-1.5 text-xs ${r.ok ? 'text-green-400' : 'text-red-400'}`}>{r.texto}</td>
+                        </tr>
+                      )}
+                    </Fragment>
+                  )
+                })}
+              </tbody>
+            </table>
+          </div>
           <button type="button" onClick={addLinea} className="text-xs text-brand-400 font-semibold">+ Agregar línea</button>
           {resultados.__general__ && <p className="text-xs text-red-400">{resultados.__general__.texto}</p>}
           <button type="button" onClick={submitEntregaOConteo} disabled={submitting}
