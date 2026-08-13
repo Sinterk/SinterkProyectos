@@ -123,6 +123,23 @@ export async function updateMaterialTendido(materialId: string, valores: { tipoT
 }
 
 /** Nombre alternativo ("apodo") — el nombre con el que se conoce el material en terreno (ej. "CMIC" = ODF 12 fibras). Cadena vacía o null para quitarlo. */
+/**
+ * Descripción del Catálogo. Es la descripción SAP y normalmente llega por
+ * import, pero venía sin forma de arreglarla desde la app: un typo en el
+ * import quedaba fijo. A diferencia del apodo, esta es la que se ve en TODAS
+ * las tablas (movimientos, stock, resúmenes de proyecto), así que corregirla
+ * cambia lo que se lee en toda la app.
+ *
+ * No requiere migración: la política `mat_write` (0001) ya deja escribir la
+ * tabla `materiales` a admin/jp/log.
+ */
+export async function updateMaterialDescripcion(materialId: string, descripcion: string): Promise<void> {
+  const valor = descripcion.trim()
+  if (!valor) throw new Error('materiales.updateDescripcion: la descripción no puede quedar vacía')
+  const { error } = await supabase.from('materiales').update({ descripcion: valor }).eq('id', materialId)
+  if (error) throw new Error(`materiales.updateDescripcion: ${error.message}`)
+}
+
 export async function updateMaterialApodo(materialId: string, apodo: string | null): Promise<void> {
   const valor = apodo?.trim() || null
   const { error } = await supabase.from('materiales').update({ apodo: valor }).eq('id', materialId)

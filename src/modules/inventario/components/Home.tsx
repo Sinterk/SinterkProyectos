@@ -16,7 +16,7 @@ import { useFileDrop } from '@/ui/useFileDrop'
 import {
   getStock, getTecnicoLedger, listMovimientos, anularMovimiento, listMateriales, listUbicaciones,
   updateMaterialStockMinimo, updateMaterialComentario, updateMaterialTendido, crearMaterial,
-  listMaterialTipos, crearMaterialTipo, updateMaterialApodo, updateMaterialTipo,
+  listMaterialTipos, crearMaterialTipo, updateMaterialApodo, updateMaterialDescripcion, updateMaterialTipo,
   listProveedores, crearProveedor, updateMaterialProveedores,
   listConteos, getConteoLineas, abrirConteo, agregarLineaConteo, actualizarLineaConteo, cerrarConteo, descartarConteo,
   listEventosInventario, listEventosPorConteo, resolverEvento, importarFilasSapAConteo,
@@ -1928,6 +1928,7 @@ function CatalogoTab() {
               {filtrados.map((m) => (
                 <FilaCatalogoMaterial key={m.id} material={m} tipos={tipos} proveedoresCatalogo={proveedoresCatalogo}
                   onApodoChange={(apodo) => actualizarLocal(m.id, { apodo })}
+                  onDescripcionChange={(descripcion) => actualizarLocal(m.id, { descripcion })}
                   onMinimoSaved={reload}
                   onTipoChange={async (tipoId) => {
                     if (tipoId === NUEVO_TIPO) return
@@ -2111,11 +2112,12 @@ function NuevoMaterialForm({ tipos, proveedoresCatalogo, onCreated, onNuevoTipo,
   )
 }
 
-function FilaCatalogoMaterial({ material, tipos, proveedoresCatalogo, onApodoChange, onMinimoSaved, onTipoChange, onNuevoTipo, onNuevoProveedor, onProveedoresChange }: {
+function FilaCatalogoMaterial({ material, tipos, proveedoresCatalogo, onApodoChange, onDescripcionChange, onMinimoSaved, onTipoChange, onNuevoTipo, onNuevoProveedor, onProveedoresChange }: {
   material: Material
   tipos: MaterialTipo[]
   proveedoresCatalogo: Proveedor[]
   onApodoChange: (apodo: string | null) => void
+  onDescripcionChange: (descripcion: string) => void
   onMinimoSaved: () => void
   onTipoChange: (tipoId: string) => void
   onNuevoTipo: (nombre: string) => void
@@ -2123,16 +2125,39 @@ function FilaCatalogoMaterial({ material, tipos, proveedoresCatalogo, onApodoCha
   onProveedoresChange: (proveedores: Proveedor[]) => void
 }) {
   const [apodo, setApodo] = useState(material.apodo ?? '')
+  const [descripcion, setDescripcion] = useState(material.descripcion)
+  const [errorDescripcion, setErrorDescripcion] = useState<string | null>(null)
   const [creandoTipo, setCreandoTipo] = useState(false)
   const [nombreNuevoTipo, setNombreNuevoTipo] = useState('')
 
   useEffect(() => { setApodo(material.apodo ?? '') }, [material.apodo])
+  useEffect(() => { setDescripcion(material.descripcion) }, [material.descripcion])
 
   async function guardarApodo() {
     const valor = apodo.trim()
     if (valor === (material.apodo ?? '')) return
     await updateMaterialApodo(material.id, valor || null)
     onApodoChange(valor || null)
+  }
+
+  async function guardarDescripcion() {
+    const valor = descripcion.trim()
+    if (valor === material.descripcion) return
+    // Vacía no se acepta: es lo que identifica al material en todas las demás
+    // tablas. Se revierte a lo guardado en vez de dejar la celda en blanco.
+    if (!valor) {
+      setDescripcion(material.descripcion)
+      setErrorDescripcion(null)
+      return
+    }
+    setErrorDescripcion(null)
+    try {
+      await updateMaterialDescripcion(material.id, valor)
+      onDescripcionChange(valor)
+    } catch (err) {
+      setErrorDescripcion(err instanceof Error ? err.message : String(err))
+      setDescripcion(material.descripcion)
+    }
   }
 
   function elegirTipo(value: string) {
@@ -2154,7 +2179,13 @@ function FilaCatalogoMaterial({ material, tipos, proveedoresCatalogo, onApodoCha
   return (
     <tr className="border-t border-slate-800">
       <td className="px-2 py-1.5 text-slate-300 whitespace-nowrap">{material.sku}</td>
-      <td className="px-2 py-1.5 text-slate-300">{material.descripcion}</td>
+      <td className="px-2 py-1.5">
+        {/* Editable desde v1.54: la descripción SAP llega por import y un typo
+            quedaba fijo para siempre. Es la que se ve en todas las tablas. */}
+        <input value={descripcion} onChange={(e) => setDescripcion(e.target.value)} onBlur={guardarDescripcion}
+          className="w-full min-w-[14rem] bg-slate-700 text-white rounded px-1.5 py-1 border border-slate-600 focus:border-brand-500 focus:outline-none" />
+        {errorDescripcion && <p className="text-[10px] text-red-400 mt-0.5">{errorDescripcion}</p>}
+      </td>
       <td className="px-2 py-1.5">
         <input value={apodo} onChange={(e) => setApodo(e.target.value)} onBlur={guardarApodo}
           placeholder="—" className="w-full bg-slate-700 text-white rounded px-1.5 py-1 border border-slate-600 focus:border-brand-500 focus:outline-none" />
