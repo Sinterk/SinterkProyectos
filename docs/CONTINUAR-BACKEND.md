@@ -1,14 +1,29 @@
 # Continuar — Migración a backend Supabase
 
 > Documento de retomada — LEER ESTO PRIMERO si se retoma en otra máquina o
-> sesión nueva. Última actualización: 11-08-2026.
+> sesión nueva. Última actualización: 11-08-2026 (tarde).
 
 ## ⚡ Estado ahora mismo (11-08-2026)
-- **`main` va atrás a propósito**: `main` está en `af36764` (v1.47, solo el fix de login) y `backend-supabase` en `dcbe1fd` (v1.51). Los cambios de Inventario del 11-08 están esperando que Andrés los pruebe antes de subir. Árbol limpio.
-- **Migraciones**: todas corridas y confirmadas hasta `0059_corregir_movimiento.sql`. Ninguna pendiente.
+- **`main` va atrás a propósito**: `main` está en `3145bd3` (v1.54) y `backend-supabase` en `599bb86` + la migración de este momento (0060, ver abajo). La diferencia es UN commit: `599bb86` (alta de trabajadores, v1.55) requiere desplegar la Edge Function `crear-usuario` antes de subir a producción — ver pendiente (2). Si se sube algo nuevo a `main` sin ese commit, hace falta `cherry-pick`, no push directo.
+- **Migraciones**: corridas y confirmadas hasta `0059`. **`0060_cerrar_conteo_permite_negativo.sql` es NUEVA, sin correr todavía** — corrige el bug de "Stock físico insuficiente… se intentó restar 0" al cerrar un conteo digital (ver detalle abajo). Sin código de cliente asociado: es puro fix de función en la base.
 - **Para retomar en otra máquina**: `git clone` (o `git fetch` + `git checkout backend-supabase`; si el `main` local quedó viejo, `git branch -f main origin/main`), `npm install`, recrear el `.env` a mano (los nombres de variable están en `src/lib/supabaseClient.ts` y `src/lib/auth.ts`; los valores NO están en el repo, es público — Andrés los tiene), `npm run dev`.
-- **Pendientes de Andrés** (no bloquean nada): (1) probar lo del 11-08 (lista de registros con edición de lote) y decidir si sube a `main`; (2) pasar la tabla de texto de Corrección por cada uno de los ~22 hallazgos de Preventivos — `CORRECCIONES_POR_HALLAZGO` en `PuntoCard.tsx` sigue vacía; (3) corregir con el modo corrección los 2 "Asignado a técnico" que quedaron en la OTT de prueba; (4) decidir si se automatiza la reversión de resoluciones al anular (bloqueo conocido: `resolver_evento_parcial` no llena `movimientos.evento_resolucion_id`); (5) volver a guardar la contraseña en Firefox desde `about:logins` — las guardadas antes de v1.47 quedaron con campos anónimos y no se autocompletan (ver v1.47 abajo).
+- **Pendientes de Andrés** (no bloquean nada salvo lo marcado):
+  1. **Correr la migración 0060** — bloquea a cualquiera que esté cerrando conteos digitales/físicos con negativo cruzado (ver más abajo).
+  2. Desplegar la Edge Function de alta de usuarios: `supabase functions deploy crear-usuario` (requiere CLI de Supabase y el proyecto enlazado). Sin esto el botón "➕ Agregar trabajador" en Administración falla.
+  3. Pasar la tabla de texto de Corrección por cada uno de los ~22 hallazgos de Preventivos — `CORRECCIONES_POR_HALLAZGO` en `PuntoCard.tsx` sigue vacía.
+  4. Corregir con el modo corrección los 2 "Asignado a técnico" que quedaron en la OTT de prueba.
+  5. Decidir si se automatiza la reversión de resoluciones al anular (bloqueo conocido: `resolver_evento_parcial` no llena `movimientos.evento_resolucion_id`).
+  6. Volver a guardar la contraseña en Firefox desde `about:logins` — las guardadas antes de v1.47 quedaron con campos anónimos y no se autocompletan.
 - **Deploy**: sano. El desfase "producción en v1.28 con `main` en v1.44" que figuraba acá como sin resolver era un error de Andrés al mirar, no un problema del workflow — confirmado el 11-08. `.github/workflows/deploy.yml` publica bien en cada push a `main`.
+
+## Bug recién corregido (11-08-2026) — cerrar un conteo revienta con "Stock físico insuficiente… se intentó restar 0"
+Reportado por Andrés al subir una planilla para actualizar el stock **digital** de C088. El mensaje no tenía sentido a primera vista — un conteo digital no debería tocar stock físico — pero es el mismo bug de fondo que 0055 corrigió en otras dos funciones: `adjust_stock` valida el SALDO RESULTANTE de las dos naturalezas, no si el delta de esa llamada es 0. `cerrar_conteo` (0010) nunca recibió el `p_permitir_negativo => true` que 0055 sí les dio a `registrar_movimiento`/`anular_movimiento` — quedó fuera a propósito ("tiene su propia semántica"), pero esa exclusión era un error para este caso.
+
+Mecanismo exacto: si un material/lote ya tenía stock **físico** negativo (acá, por entregas de OTRO material —51024— registradas sin stock), cerrar un conteo **digital** de C088 llama `adjust_stock(…, 0, diferencia)` — delta físico 0 — pero la guarda evalúa igual `v_fisico + 0 < 0` y revienta, aunque ese cierre no tenga nada que ver con lo físico. "Se intentó restar 0" es la pista: no se restó nada, el saldo ya estaba negativo de antes.
+
+Agravante: el `for` de `cerrar_conteo` no tiene manejo de excepción por línea — al reventar en una, se pierden TODAS las del conteo, no solo la mala. Con una planilla de decenas de líneas, una sola con negativo cruzado tumbaba el cierre completo.
+
+**Fix — `0060_cerrar_conteo_permite_negativo.sql`**: mismo criterio de 0050/0055 (el negativo se permite, se ve en rojo en Bodega, se reconcilia por Conteo — que es justo lo que esta función hace). `p_permitir_negativo => true` en las dos llamadas a `adjust_stock`. Sin cambios de cliente.
 
 ## Estado anterior (10-08-2026)
 - **v1.51 — la edición de una tanda es de todas sus líneas a la vez** (pedido de Andrés). "Editar líneas" abre todas las filas del registro y un solo "Guardar cambios" manda las que cambiaron. El caso real lo pide: cuando llega el lote de una entrega suele aplicar a varias líneas juntas.
