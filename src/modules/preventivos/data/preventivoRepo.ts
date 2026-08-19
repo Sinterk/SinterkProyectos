@@ -216,8 +216,19 @@ function recordToInformeRow(r: Preventivo, projectId: string) {
  * efectivamente quitó (id ya no presente en `puntos`); el resto se upsertea
  * conservando su id, así el material/comentarios ya colgados de un punto
  * sobreviven al siguiente guardado. Solo persiste fotos ya subidas.
+ *
+ * `puntos.id` es uuid en la BD y este upsert manda el id del cliente tal
+ * cual (a diferencia del informe, un punto no tiene rekey posterior). Si
+ * alguno no es un UUID válido (visto una vez con un ZIP importado de una
+ * versión vieja del sitio), el filtro `.not('id','in', ...)` de abajo
+ * revienta con un casteo de Postgres que no dice cuál punto es el problema
+ * — se valida antes para dar un error que sí lo diga.
  */
 async function replacePuntos(informeId: string, puntos: Punto[]): Promise<void> {
+  const invalido = puntos.find((p) => !isUuid(p.id))
+  if (invalido) {
+    throw new Error(`puntos: id inválido "${invalido.id}" en el punto "${invalido.nombre || '(sin nombre)'}" — no es un UUID`)
+  }
   const idsActuales = puntos.map((p) => p.id)
   let delQuery = supabase.from('puntos').delete().eq('informe_id', informeId)
   if (idsActuales.length > 0) delQuery = delQuery.not('id', 'in', `(${idsActuales.join(',')})`)

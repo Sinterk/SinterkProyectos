@@ -1,11 +1,11 @@
 # Continuar — Migración a backend Supabase
 
 > Documento de retomada — LEER ESTO PRIMERO si se retoma en otra máquina o
-> sesión nueva. Última actualización: 11-08-2026 (noche, tarde).
+> sesión nueva. Última actualización: 11-08-2026 (noche, tarde-2).
 
 ## ⚡ Estado ahora mismo (11-08-2026)
-- **`main` va atrás a propósito**: `main` está en `3145bd3` (v1.54) y `backend-supabase` en v1.58, con el commit `599bb86` (alta de trabajadores, v1.55) de por medio. Ese commit requiere desplegar la Edge Function `crear-usuario` antes de subir a producción — ver pendiente (1). Si se sube algo nuevo a `main` sin ese commit, hace falta `cherry-pick`, no push directo.
-- **Migraciones**: corridas y confirmadas hasta `0062` (Andrés confirmó "sql 60 y 61 corridos. Funciona." y luego "sql 62 corrido" el 11-08). Ninguna pendiente.
+- **`main` va atrás a propósito**: `main` está en `3145bd3` (v1.54) y `backend-supabase` en v1.59, con el commit `599bb86` (alta de trabajadores, v1.55) de por medio. Ese commit requiere desplegar la Edge Function `crear-usuario` antes de subir a producción — ver pendiente (1). Si se sube algo nuevo a `main` sin ese commit, hace falta `cherry-pick`, no push directo.
+- **Migraciones**: corridas y confirmadas hasta `0062`. Ninguna pendiente.
 - **Para retomar en otra máquina**: `git clone` (o `git fetch` + `git checkout backend-supabase`; si el `main` local quedó viejo, `git branch -f main origin/main`), `npm install`, recrear el `.env` a mano (los nombres de variable están en `src/lib/supabaseClient.ts` y `src/lib/auth.ts`; los valores NO están en el repo, es público — Andrés los tiene), `npm run dev`.
 - **Pendientes de Andrés** (no bloquean nada salvo lo marcado):
   1. Desplegar la Edge Function de alta de usuarios: `supabase functions deploy crear-usuario` (requiere CLI de Supabase y el proyecto enlazado). Sin esto el botón "➕ Agregar trabajador" en Administración falla.
@@ -14,7 +14,23 @@
   4. Decidir si se automatiza la reversión de resoluciones al anular (bloqueo conocido: `resolver_evento_parcial` no llena `movimientos.evento_resolucion_id`).
   5. Volver a guardar la contraseña en Firefox desde `about:logins` — las guardadas antes de v1.47 quedaron con campos anónimos y no se autocompletan.
   6. **Falta un historial global de eventos resueltos** (ver la entrada del 11-08 sobre "Ignorar" más abajo) — decidir si vale la pena una pantalla nueva para eso o basta con lo que ya hay por conteo.
+  7. **Recuperar el levantamiento del colega** (ver entrada v1.59 abajo) — el ZIP le creó un informe vacío en el servidor (0 puntos). Con el fix ya arriba, borrar ese levantamiento local (o el registro server-side si ya no está en el store local de nadie) y volver a importar el mismo ZIP.
 - **Deploy**: sano. El desfase "producción en v1.28 con `main` en v1.44" que figuraba acá como sin resolver era un error de Andrés al mirar, no un problema del workflow — confirmado el 11-08. `.github/workflows/deploy.yml` publica bien en cada push a `main`.
+
+## v1.59 — ZIP de una versión vieja del sitio: "puntos.delete: invalid input syntax for type uuid"
+Reportado por Andrés: subió un ZIP de un cuadrante hecho por un colega en la versión vieja del sitio (otro PC) y obtuvo ese error al guardar — pero el levantamiento "sí se subió" (a medias).
+
+**Causa exacta.** `puntos.id` es `uuid` en la BD y no tiene rekey posterior (a diferencia del informe/proyecto, que sí lo tiene vía `client_local_id` — ver `insertProjectIdempotente`): el cliente manda su propio id tal cual en cada upsert. `ImportZip.tsx` confiaba ciegamente en `pt.id` del JSON del ZIP y, si faltaba, generaba el fallback con `nanoid()` — un formato de id que NUNCA es válido para esa columna (los puntos se crean normalmente con `crypto.randomUUID()`, ver `store.ts` `addPunto`). El ZIP del colega, exportado desde una versión vieja, trajo justamente eso: un `pt.id` no-UUID (o ausente).
+
+**Por qué "sí se sube pero falla".** `preventivoRepo.save()` hace, en orden: (1) upsert de `projects`, (2) upsert de `informes_preventivo`, (3) `replacePuntos()`. Los pasos 1-2 ya habían confirmado en el servidor cuando `replacePuntos` revienta en su primera línea (el DELETE con el filtro `.not('id','in', (…))`, que intenta castear TODOS los ids de la lista a uuid y falla entero si uno solo no lo es) — antes de llegar al `upsert` de los puntos. Resultado: existe un `informes_preventivo` en el servidor con el cuadrante completo pero CERO puntos.
+
+**Por qué reintentar (autoguardado) no lo arregla solo.** Como `save()` lanza la excepción, `persistToServer()` nunca llega a `rekey()` — el registro local se queda con el mismo id de siempre. Cada autoguardado repite exactamente los mismos tres pasos, encuentra el mismo `project` vía `client_local_id` (por eso no duplica), y vuelve a reventar en el mismo punto. Sin el fix, esto no se arregla solo ni reintentando.
+
+**Fix — dos capas:**
+1. `ImportZip.tsx`: solo reusa `pt.id` si `isUuid(pt.id)`; si no, genera `crypto.randomUUID()` — el mismo generador que usa la creación normal de puntos.
+2. `replacePuntos()` en `preventivoRepo.ts`: valida los ids ANTES del delete y, si hay uno inválido, lanza un error legible con el nombre del punto — defensa en profundidad, para que si esto vuelve a pasar por otra vía el error diga qué punto es, no un casteo críptico de Postgres.
+
+**Recuperar el levantamiento ya importado**: el fix solo previene el problema en NUEVOS imports — el registro que Andrés ya importó sigue con el id malo guardado localmente (persist de Zustand). Camino más simple: borrar ese levantamiento del store local (nadie más lo tiene, y en el servidor solo hay un informe vacío sin puntos que perder) y volver a importar el mismo ZIP una vez que este fix esté desplegado — `insertProjectIdempotente` va a reconocer el mismo `client_local_id` y reusar el `project`/`informe` ya creado, esta vez completando los puntos con UUIDs válidos.
 
 ## v1.58 — la corrección autocompletada parte en minúscula
 Pedido de Andrés: en el informe, la corrección se concatena después de otro texto (`generarInformeEntel.ts`: `"Observación: " + [dirección, corrección].join(', ')`), así que un "Se regula…" con mayúscula quedaba leyéndose como el inicio de una frase nueva en medio de la oración. Fix en `PuntoCard.tsx` (`minusculaInicial`), aplicado en el momento del autocompletado (`handleHallazgoChange`) — no toca los 20 textos guardados en `correcciones_hallazgo` (esos se ven bien como oraciones sueltas en el editor de Administración) ni el texto ya autocompletado en puntos existentes, solo lo que se autocompleta de ahora en adelante. Cubre siglas: si la segunda letra también es mayúscula (CTO, DC) no la toca — evita "cTO".
