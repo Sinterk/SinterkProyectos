@@ -3,6 +3,7 @@ import JSZip from 'jszip'
 import { usePreventivoStore } from '../store'
 import { savePhotoBlob } from '@/core/offline/photoStore'
 import { nanoid } from '@/core/utils/nanoid'
+import { isUuid } from '../data/preventivoRepo'
 import type { Preventivo, FotoEntry } from '../types'
 import { useFileDrop } from '@/ui/useFileDrop'
 
@@ -34,7 +35,14 @@ export function ImportZip({ onImported }: Props) {
       const p: Preventivo = {
         id: lev.id||nanoid(), createdAt:lev.createdAt||now, updatedAt:now, estado: 'activo',
         cuadrante: { cuadrante:lev.cuadrante.cuadrante||'', comuna:lev.cuadrante.comuna||'', grupo:lev.cuadrante.grupo||'', fecha:lev.cuadrante.fecha||'', semana:lev.cuadrante.semana||'', semestre:lev.cuadrante.semestre||'', nombreCuadrante:lev.cuadrante.nombreCuadrante||'', direccion:lev.cuadrante.direccion||'', zona:lev.cuadrante.zona||'', responsable:lev.cuadrante.responsable||'', fotoPlano:await loadFoto(lev.cuadrante.fotoPlano) },
-        puntos: await Promise.all((lev.puntos||[]).map(async (pt: any) => ({ id:pt.id||nanoid(), nombre:pt.nombre||'', descripcion:pt.descripcion||'', direccion:pt.direccion||'', correccion:pt.correccion||'', hallazgo:pt.hallazgo||'', resuelto:!!pt.resuelto, fotoLevantamiento:await loadFoto(pt.fotos?.levantamiento), fotoAntes:await loadFoto(pt.fotos?.antes), fotoDespues:await loadFoto(pt.fotos?.despues) })))
+        // `puntos.id` es uuid en la BD (sin rekey posterior como el informe:
+        // `replacePuntos` sube el id del cliente tal cual). Un ZIP de una
+        // versión vieja del sitio (o de un punto que en su día se creó con
+        // otro esquema de id) puede traer algo que no sea un UUID — usarlo
+        // igual revienta recién al guardar, con un error de casteo en el
+        // DELETE de `replacePuntos` que no dice nada sobre el punto real.
+        // Mejor generar uno nuevo acá, igual que `addPunto` en el store.
+        puntos: await Promise.all((lev.puntos||[]).map(async (pt: any) => ({ id: (pt.id && isUuid(pt.id)) ? pt.id : crypto.randomUUID(), nombre:pt.nombre||'', descripcion:pt.descripcion||'', direccion:pt.direccion||'', correccion:pt.correccion||'', hallazgo:pt.hallazgo||'', resuelto:!!pt.resuelto, fotoLevantamiento:await loadFoto(pt.fotos?.levantamiento), fotoAntes:await loadFoto(pt.fotos?.antes), fotoDespues:await loadFoto(pt.fotos?.despues) })))
       }
       upsert(p)
       // Guardar en el servidor de inmediato: antes quedaba solo en el store
