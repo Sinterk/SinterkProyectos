@@ -10,6 +10,23 @@ import { isPuntoCerrado } from '../utils/puntoEstado'
 import { HALLAZGOS } from '../hallazgos'
 import type { Punto, FotoKey } from '../types'
 
+/**
+ * Minúscula solo en la primera letra. La corrección autocompletada se
+ * concatena después de otro texto al generar el informe ("Observación:
+ * <dirección>, <corrección>" — ver generarInformeEntel.ts), así que tiene
+ * que leerse como continuación de esa frase, no como el inicio de una nueva.
+ *
+ * Si la segunda letra también es mayúscula se asume sigla (CTO, DC) y no se
+ * toca — "cTO" quedaría peor que "CTO". Los 20 textos que llegaron de
+ * Administración empiezan todos con "Se ...", así que hoy esta rama nunca
+ * se activa, pero cubre un texto futuro que empiece con una sigla.
+ */
+function minusculaInicial(texto: string): string {
+  if (!texto) return texto
+  if (/[A-ZÁÉÍÓÚÑ]/.test(texto[1] ?? '')) return texto
+  return texto[0].toLocaleLowerCase('es') + texto.slice(1)
+}
+
 interface Props {
   preventivoId: string
   punto: Punto
@@ -38,7 +55,7 @@ export function PuntoCard({ preventivoId, punto, index, total, editable = true, 
   function handleHallazgoChange(hallazgo: string) {
     updatePunto(preventivoId, punto.id, {
       hallazgo,
-      correccion: correccionesPorHallazgo[hallazgo] ?? '',
+      correccion: minusculaInicial(correccionesPorHallazgo[hallazgo] ?? ''),
       resuelto: false,
     })
   }
