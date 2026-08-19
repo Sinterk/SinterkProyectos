@@ -1,22 +1,36 @@
 # Continuar — Migración a backend Supabase
 
 > Documento de retomada — LEER ESTO PRIMERO si se retoma en otra máquina o
-> sesión nueva. Última actualización: 11-08-2026 (tarde).
+> sesión nueva. Última actualización: 11-08-2026 (noche).
 
 ## ⚡ Estado ahora mismo (11-08-2026)
-- **`main` va atrás a propósito**: `main` está en `3145bd3` (v1.54) y `backend-supabase` en `599bb86` + la migración de este momento (0060, ver abajo). La diferencia es UN commit: `599bb86` (alta de trabajadores, v1.55) requiere desplegar la Edge Function `crear-usuario` antes de subir a producción — ver pendiente (2). Si se sube algo nuevo a `main` sin ese commit, hace falta `cherry-pick`, no push directo.
-- **Migraciones**: corridas y confirmadas hasta `0059`. **`0060_cerrar_conteo_permite_negativo.sql` es NUEVA, sin correr todavía** — corrige el bug de "Stock físico insuficiente… se intentó restar 0" al cerrar un conteo digital (ver detalle abajo). Sin código de cliente asociado: es puro fix de función en la base.
+- **`main` va atrás a propósito**: `main` está en `3145bd3` (v1.54) y `backend-supabase` en `599bb86` + dos migraciones fix (0060, 0061) + el commit de "Ignorar" (ver abajo). La diferencia con `main` es el commit `599bb86` (alta de trabajadores, v1.55), que requiere desplegar la Edge Function `crear-usuario` antes de subir a producción — ver pendiente (2). Si se sube algo nuevo a `main` sin ese commit, hace falta `cherry-pick`, no push directo.
+- **Migraciones**: corridas y confirmadas hasta `0059`. **`0060` y `0061` son NUEVAS, sin correr todavía**:
+  - `0060_cerrar_conteo_permite_negativo.sql` — corrige "Stock físico insuficiente… se intentó restar 0" al cerrar un conteo (ver detalle abajo). Sin código de cliente asociado.
+  - `0061_ignorar_evento.sql` — agrega el tipo de resolución "Ignorar" a eventos de inventario (ver detalle abajo). Si se corre 0060 antes que 0061, ambas parten del mismo `create or replace`, no hay conflicto de orden real, pero conviene correrlas en orden de todos modos.
 - **Para retomar en otra máquina**: `git clone` (o `git fetch` + `git checkout backend-supabase`; si el `main` local quedó viejo, `git branch -f main origin/main`), `npm install`, recrear el `.env` a mano (los nombres de variable están en `src/lib/supabaseClient.ts` y `src/lib/auth.ts`; los valores NO están en el repo, es público — Andrés los tiene), `npm run dev`.
 - **Pendientes de Andrés** (no bloquean nada salvo lo marcado):
-  1. **Correr la migración 0060** — bloquea a cualquiera que esté cerrando conteos digitales/físicos con negativo cruzado (ver más abajo).
+  1. **Correr las migraciones 0060 y 0061** — 0060 bloquea a cualquiera que esté cerrando conteos con negativo cruzado; 0061 hace falta para que el botón "Ignorar" (recién agregado a la UI) no falle al usarse.
   2. Desplegar la Edge Function de alta de usuarios: `supabase functions deploy crear-usuario` (requiere CLI de Supabase y el proyecto enlazado). Sin esto el botón "➕ Agregar trabajador" en Administración falla.
   3. Pasar la tabla de texto de Corrección por cada uno de los ~22 hallazgos de Preventivos — `CORRECCIONES_POR_HALLAZGO` en `PuntoCard.tsx` sigue vacía.
   4. Corregir con el modo corrección los 2 "Asignado a técnico" que quedaron en la OTT de prueba.
   5. Decidir si se automatiza la reversión de resoluciones al anular (bloqueo conocido: `resolver_evento_parcial` no llena `movimientos.evento_resolucion_id`).
   6. Volver a guardar la contraseña en Firefox desde `about:logins` — las guardadas antes de v1.47 quedaron con campos anónimos y no se autocompletan.
+  7. **Falta un historial global de eventos resueltos** (ver nota abajo) — decidir si vale la pena una pantalla nueva para eso o basta con lo que ya hay por conteo.
 - **Deploy**: sano. El desfase "producción en v1.28 con `main` en v1.44" que figuraba acá como sin resolver era un error de Andrés al mirar, no un problema del workflow — confirmado el 11-08. `.github/workflows/deploy.yml` publica bien en cada push a `main`.
 
-## Bug recién corregido (11-08-2026) — cerrar un conteo revienta con "Stock físico insuficiente… se intentó restar 0"
+## Nuevo — "Ignorar" en eventos de inventario + estado del historial de cerrados (11-08-2026)
+Pedido de Andrés: una sexta forma de resolver un evento (además de Consumo/Devolución/Traspaso/Reasignación/Agregar) que **no mueve stock**, solo cierra el evento y deja constancia con una nota — para las diferencias que no vale la pena perseguir. A diferencia de las otras cinco, `nota` es obligatoria (es la única documentación que queda) y no tiene restricción por signo de diferencia ni por tipo de ubicación (aplica a cualquier evento).
+
+Migración `0061_ignorar_evento.sql`: agrega `'ignorar'` al check de `eventos_inventario_resoluciones.tipo` y a `resolver_evento_parcial`, con una rama que no llama `adjust_stock` ni inserta `movimientos` — solo el `insert` genérico en `eventos_inventario_resoluciones` que ya hacían las otras cinco. Cliente: `ResolucionTipo` (types.ts), `TIPO_RESOLUCION_LABELS`, `tiposDisponibles` en `ResolverEventoForm` (Home.tsx) y `ResolucionRow`.
+
+**Bug encontrado y corregido de paso**: el `tecnicoUserId` que arma `submit()` en `ResolverEventoForm` tenía un `else` genérico (`: modo === 'tecnico' ? tecnicoId : undefined`) que originalmente nunca se disparaba con `tecnicoId` vacío porque los únicos tipos que caían ahí (`devolucion`/`traspaso`) ya validaban que hubiera técnico elegido antes de llegar a `submit()`. "Ignorar" no tiene esa validación ni ese selector, así que sin el fix habría mandado `tecnicoUserId: ''` (string vacío, no `undefined`) al RPC — que intenta castearlo a `uuid` y revienta con un error de Postgres crudo, no el mensaje de validación esperado. Se agregó `tipo === 'ignorar'` a la rama que fuerza `undefined`.
+
+**Pregunta de Andrés: ¿existe un registro de eventos cerrados?** Sí, parcialmente:
+- Dentro de `ConteoDetail`, `EventosDelConteoSection` ya muestra TODOS los eventos de ese conteo — abiertos y resueltos juntos, con sus resoluciones (`ResolucionRow`) — así que el historial por conteo existe y no hace falta agregarlo.
+- **Gap real**: los eventos de técnico (instalación forzada, sin conteo asociado) NO tienen ese mismo lugar. `TecnicoTab` solo llama `listEventosInventario({estado:'abierto'})` — en cuanto un evento de técnico queda resuelto, desaparece de la vista y no hay ninguna otra pantalla que lo muestre. `listEventosInventario` sí soporta filtrar por `estado:'resuelto'`, así que técnicamente se puede consultar — falta la pantalla. No se construyó sin que Andrés lo pidiera explícitamente: es una pantalla nueva (dónde va en la IA, si se filtra por técnico/fecha/tipo) y no una corrección de bug.
+
+## Bug corregido (11-08-2026, tarde) — cerrar un conteo revienta con "Stock físico insuficiente… se intentó restar 0"
 Reportado por Andrés al subir una planilla para actualizar el stock **digital** de C088. El mensaje no tenía sentido a primera vista — un conteo digital no debería tocar stock físico — pero es el mismo bug de fondo que 0055 corrigió en otras dos funciones: `adjust_stock` valida el SALDO RESULTANTE de las dos naturalezas, no si el delta de esa llamada es 0. `cerrar_conteo` (0010) nunca recibió el `p_permitir_negativo => true` que 0055 sí les dio a `registrar_movimiento`/`anular_movimiento` — quedó fuera a propósito ("tiene su propia semántica"), pero esa exclusión era un error para este caso.
 
 Mecanismo exacto: si un material/lote ya tenía stock **físico** negativo (acá, por entregas de OTRO material —51024— registradas sin stock), cerrar un conteo **digital** de C088 llama `adjust_stock(…, 0, diferencia)` — delta físico 0 — pero la guarda evalúa igual `v_fisico + 0 < 0` y revienta, aunque ese cierre no tenga nada que ver con lo físico. "Se intentó restar 0" es la pista: no se restó nada, el saldo ya estaba negativo de antes.

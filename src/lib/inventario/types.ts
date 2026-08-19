@@ -224,7 +224,7 @@ export interface Observacion {
  * - agregar: solo eventos de técnico — se le suma directo al técnico, sin
  *   restarle a nadie (ya lo tenía físicamente, no estaba contabilizado).
  */
-export type ResolucionTipo = 'consumo' | 'devolucion' | 'traspaso' | 'reasignacion' | 'agregar'
+export type ResolucionTipo = 'consumo' | 'devolucion' | 'traspaso' | 'reasignacion' | 'agregar' | 'ignorar'
 export type ConsumoArea = 'ott' | 'inc' | 'preventivos' | 'perdida'
 
 /** El movimiento exacto que causó un evento de "instalación forzada" — null en eventos de Conteo (no nacen de un solo movimiento). */

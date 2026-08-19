@@ -1010,7 +1010,7 @@ const AREA_LABELS: Record<ConsumoArea, string> = {
 }
 const TIPO_RESOLUCION_LABELS: Record<ResolucionTipo, string> = {
   consumo: 'Consumo', devolucion: 'Devolución', traspaso: 'Traspaso', reasignacion: 'Reasignar a técnico',
-  agregar: 'Agregar',
+  agregar: 'Agregar', ignorar: 'Ignorar',
 }
 
 /**
@@ -1244,6 +1244,8 @@ function ResolucionRow({ r }: { r: EventoResolucion }) {
     ? (r.area === 'perdida' ? 'Pérdida' : `${AREA_LABELS[r.area ?? 'perdida']} · ${r.projectOtt ?? '—'}${r.tecnicoNombre ? ` · ${r.tecnicoNombre}` : ''}`)
     : r.tipo === 'agregar'
     ? 'Sumado directo (sin origen) — ya lo tenía sin contabilizar'
+    : r.tipo === 'ignorar'
+    ? 'Sin efecto sobre el stock'
     : (r.tecnicoNombre ? `Técnico: ${r.tecnicoNombre}` : `Bodega: ${r.ubicacionNombre}`)
   return (
     <p className="text-[11px] text-slate-400">
@@ -1260,9 +1262,12 @@ function ResolverEventoForm({ evento, restante, onDone, onCancel }: {
   // nunca Traspaso (el material ya se instaló, no está "por encontrar" en
   // otro lado). De bodega (conteo): igual que siempre, según el signo de la
   // diferencia (Agregar no aplica ahí — ver 0042_agregar_stock_tecnico.sql).
+  // Ignorar va al final de las dos listas a propósito: no cambia cuál tipo
+  // queda seleccionado por defecto (tiposDisponibles[0]), que sigue siendo
+  // el más común para cada caso.
   const tiposDisponibles: ResolucionTipo[] = evento.ubicacionTipo === 'tecnico'
-    ? ['consumo', 'devolucion', 'reasignacion', 'agregar']
-    : (evento.diferencia < 0 ? ['consumo', 'traspaso'] : ['devolucion'])
+    ? ['consumo', 'devolucion', 'reasignacion', 'agregar', 'ignorar']
+    : (evento.diferencia < 0 ? ['consumo', 'traspaso', 'ignorar'] : ['devolucion', 'ignorar'])
   const [tipo, setTipo] = useState<ResolucionTipo>(tiposDisponibles[0])
   const [cantidad, setCantidad] = useState(String(restante))
   const [nota, setNota] = useState('')
@@ -1314,6 +1319,9 @@ function ResolverEventoForm({ evento, restante, onDone, onCancel }: {
     if ((tipo === 'devolucion' || tipo === 'traspaso') && modo === 'tecnico' && !tecnicoId) { setError('Falta elegir el técnico'); return }
     if ((tipo === 'devolucion' || tipo === 'traspaso') && modo === 'bodega' && !ubicacionId) { setError('Falta elegir la bodega'); return }
     if (tipo === 'reasignacion' && !tecnicoReasignarId) { setError('Falta elegir el técnico correcto'); return }
+    // A diferencia de las demás, acá la nota es toda la documentación que
+    // queda — sin campos de proyecto/técnico/bodega que expliquen qué pasó.
+    if (tipo === 'ignorar' && !nota.trim()) { setError('Ignorar requiere una nota explicando por qué'); return }
 
     setBusy(true)
     setError(null)
@@ -1324,7 +1332,7 @@ function ResolverEventoForm({ evento, restante, onDone, onCancel }: {
         projectId: tipo === 'consumo' && !soloPerdida && area !== 'perdida' ? projectId : undefined,
         tecnicoUserId: tipo === 'consumo' ? (tecnicoId || undefined)
           : tipo === 'reasignacion' ? tecnicoReasignarId
-          : tipo === 'agregar' ? undefined
+          : tipo === 'agregar' || tipo === 'ignorar' ? undefined
           : modo === 'tecnico' ? tecnicoId : undefined,
         ubicacionId: (tipo === 'devolucion' || tipo === 'traspaso') && modo === 'bodega' ? ubicacionId : undefined,
       })
@@ -1442,7 +1450,15 @@ function ResolverEventoForm({ evento, restante, onDone, onCancel }: {
         </p>
       )}
 
-      <input value={nota} onChange={(e) => setNota(e.target.value)} placeholder="Nota (opcional)" className={selectCls} />
+      {tipo === 'ignorar' && (
+        <p className="text-[11px] text-slate-400 italic">
+          No mueve stock — el número que dejó el conteo (o la instalación forzada) se queda tal cual. Usar cuando no vale la pena perseguir esta diferencia; la nota es la única constancia que queda.
+        </p>
+      )}
+
+      <input value={nota} onChange={(e) => setNota(e.target.value)}
+        placeholder={tipo === 'ignorar' ? 'Nota (obligatoria) — por qué se ignora' : 'Nota (opcional)'}
+        className={selectCls} />
 
       {error && <p className="text-xs text-red-400">{error}</p>}
       <div className="flex gap-2">
