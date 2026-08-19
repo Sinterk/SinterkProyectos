@@ -20,6 +20,7 @@ import { ExportZipButton } from './ExportZipButton'
 import { ExportLevButton } from './ExportLevButton'
 import { ExportInformeButton } from './ExportInformeButton'
 import { useAuth } from '@/lib/auth'
+import { listCorreccionesHallazgo } from '@/lib/correccionesRepo'
 import type { FotoKey } from '../types'
 
 export function Editor() {
@@ -30,6 +31,17 @@ export function Editor() {
   const { addPunto, movePunto, syncOne, setEstado } = usePreventivoStore()
   useRestorePhotoPreviews()
   useResolvePhotoUrls()
+
+  // Se carga una sola vez para todos los puntos, no por PuntoCard — son 22
+  // filas como mucho y no cambian mientras se edita el levantamiento. Si
+  // falla (ej. sin conexión) el mapa queda vacío: la Corrección simplemente
+  // no se autocompleta, sigue siendo editable a mano como siempre.
+  const [correccionesPorHallazgo, setCorreccionesPorHallazgo] = useState<Record<string, string>>({})
+  useEffect(() => {
+    listCorreccionesHallazgo()
+      .then((filas) => setCorreccionesPorHallazgo(Object.fromEntries(filas.map((f) => [f.hallazgo, f.correccion]))))
+      .catch(() => {})
+  }, [])
 
   const { status: saveStatus, errorMessage: saveError, retryNow } = usePreventivoAutosave(
     id ?? '',
@@ -151,6 +163,7 @@ export function Editor() {
                   <PuntoCard key={punto.id} preventivoId={record.id} punto={punto} index={i} total={puntos.length}
                     editable={true}
                     soloFotos={isTecnico}
+                    correccionesPorHallazgo={correccionesPorHallazgo}
                     onSave={async () => {}}
                     onMove={(from, to) => movePunto(record.id, from, to)}
                     onPhotoCapture={(file: File, key: FotoKey) => processPhoto(file, punto.id, key)} />

@@ -7,6 +7,7 @@ import { PhotoCapture } from './PhotoCapture'
 import { PuntoMaterialSection } from './PuntoMaterialSection'
 import { usePreventivoStore } from '../store'
 import { isPuntoCerrado } from '../utils/puntoEstado'
+import { HALLAZGOS } from '../hallazgos'
 import type { Punto, FotoKey } from '../types'
 
 interface Props {
@@ -17,43 +18,14 @@ interface Props {
   editable?: boolean
   /** Rol técnico: puede agregar/quitar las 3 fotos del punto, pero no tocar nombre/descripción/dirección/hallazgo ni reordenar/eliminar el punto. */
   soloFotos?: boolean
+  /** Texto de Corrección por hallazgo, editable desde Administración (ver correccionesRepo.ts) — lo carga el Editor una sola vez para todos los puntos. */
+  correccionesPorHallazgo: Record<string, string>
   onSave: () => Promise<void>
   onMove: (from: number, to: number) => void
   onPhotoCapture: (file: File, key: FotoKey) => Promise<void>
 }
 
-const HALLAZGOS: string[] = [
-  'Altura de cable Cruce de calles "4,5 mts"',
-  'Atenuación fuera de norma sin afectar servicio',
-  'CTO sin potencia y sin clientes',
-  'Mufa en el suelo',
-  'Cámara sin tapa',
-  'Cámara Abierta / Sin soldar',
-  'Mufa o cable colgando en cruce de calle',
-  'Mufa en mal estado',
-  'Gestión ante quien corresponda por el Estado Postes/ postación dañada',
-  'Baja distancia a Red BT/AT',
-  'Bajada Lateral sin fleje',
-  'CTO con tapa abierta o sin tapa',
-  'Falla en estructura o sellos de cámara',
-  'Bandeja de Emergencia / Mufa sin Cúpula',
-  'Altura Cable Vano sin riesgo',
-  'Vano sobrecargado',
-  'Rotulado de Mufas, cables, gabinetes, DC',
-  'Rotulado de CTO',
-  'Entrada sin sello cable / Mufa',
-  'Falta cruceta o Cruceta Dañada',
-  'Falta Planimetria',
-  'CTO en condición insegura o no autorizada',
-]
-
-// Texto de Corrección que se autocompleta al elegir cada hallazgo (mismo
-// patrón que RESPONSABLES_POR_ZONA en CuadranteSection) — queda editable
-// después. PENDIENTE: falta que Andrés pase el texto real de cada uno;
-// por ahora autocompleta vacío (el campo sigue funcionando manual).
-const CORRECCIONES_POR_HALLAZGO: Record<string, string> = {}
-
-export function PuntoCard({ preventivoId, punto, index, total, editable = true, soloFotos = false, onMove, onPhotoCapture }: Props) {
+export function PuntoCard({ preventivoId, punto, index, total, editable = true, soloFotos = false, correccionesPorHallazgo, onMove, onPhotoCapture }: Props) {
   const { updatePunto, removePunto, removeFoto } = usePreventivoStore()
   const [expanded, setExpanded] = useState(true)
 
@@ -66,7 +38,7 @@ export function PuntoCard({ preventivoId, punto, index, total, editable = true, 
   function handleHallazgoChange(hallazgo: string) {
     updatePunto(preventivoId, punto.id, {
       hallazgo,
-      correccion: CORRECCIONES_POR_HALLAZGO[hallazgo] ?? '',
+      correccion: correccionesPorHallazgo[hallazgo] ?? '',
       resuelto: false,
     })
   }

@@ -1,25 +1,32 @@
 # Continuar — Migración a backend Supabase
 
 > Documento de retomada — LEER ESTO PRIMERO si se retoma en otra máquina o
-> sesión nueva. Última actualización: 11-08-2026 (noche).
+> sesión nueva. Última actualización: 11-08-2026 (noche, tarde).
 
 ## ⚡ Estado ahora mismo (11-08-2026)
-- **`main` va atrás a propósito**: `main` está en `3145bd3` (v1.54) y `backend-supabase` en `599bb86` + dos migraciones fix (0060, 0061) + el commit de "Ignorar" (ver abajo). La diferencia con `main` es el commit `599bb86` (alta de trabajadores, v1.55), que requiere desplegar la Edge Function `crear-usuario` antes de subir a producción — ver pendiente (2). Si se sube algo nuevo a `main` sin ese commit, hace falta `cherry-pick`, no push directo.
-- **Migraciones**: corridas y confirmadas hasta `0059`. **`0060` y `0061` son NUEVAS, sin correr todavía**:
-  - `0060_cerrar_conteo_permite_negativo.sql` — corrige "Stock físico insuficiente… se intentó restar 0" al cerrar un conteo (ver detalle abajo). Sin código de cliente asociado.
-  - `0061_ignorar_evento.sql` — agrega el tipo de resolución "Ignorar" a eventos de inventario (ver detalle abajo). Si se corre 0060 antes que 0061, ambas parten del mismo `create or replace`, no hay conflicto de orden real, pero conviene correrlas en orden de todos modos.
+- **`main` va atrás a propósito**: `main` está en `3145bd3` (v1.54) y `backend-supabase` en v1.57, con el commit `599bb86` (alta de trabajadores, v1.55) de por medio. Ese commit requiere desplegar la Edge Function `crear-usuario` antes de subir a producción — ver pendiente (1). Si se sube algo nuevo a `main` sin ese commit, hace falta `cherry-pick`, no push directo.
+- **Migraciones**: corridas y confirmadas hasta `0061` (Andrés confirmó "sql 60 y 61 corridos. Funciona." el 11-08). **`0062_correcciones_hallazgo.sql` es NUEVA, sin correr todavía** — crea la tabla de correcciones por hallazgo editable desde Administración (ver detalle abajo). Sin ella el editor de Administración carga vacío y guardar falla.
 - **Para retomar en otra máquina**: `git clone` (o `git fetch` + `git checkout backend-supabase`; si el `main` local quedó viejo, `git branch -f main origin/main`), `npm install`, recrear el `.env` a mano (los nombres de variable están en `src/lib/supabaseClient.ts` y `src/lib/auth.ts`; los valores NO están en el repo, es público — Andrés los tiene), `npm run dev`.
 - **Pendientes de Andrés** (no bloquean nada salvo lo marcado):
-  1. **Correr las migraciones 0060 y 0061** — 0060 bloquea a cualquiera que esté cerrando conteos con negativo cruzado; 0061 hace falta para que el botón "Ignorar" (recién agregado a la UI) no falle al usarse.
-  2. Desplegar la Edge Function de alta de usuarios: `supabase functions deploy crear-usuario` (requiere CLI de Supabase y el proyecto enlazado). Sin esto el botón "➕ Agregar trabajador" en Administración falla.
-  3. Pasar la tabla de texto de Corrección por cada uno de los ~22 hallazgos de Preventivos — `CORRECCIONES_POR_HALLAZGO` en `PuntoCard.tsx` sigue vacía.
+  1. Desplegar la Edge Function de alta de usuarios: `supabase functions deploy crear-usuario` (requiere CLI de Supabase y el proyecto enlazado). Sin esto el botón "➕ Agregar trabajador" en Administración falla.
+  2. **Correr la migración 0062** — sin ella, Administración → Correcciones por hallazgo no carga ni guarda.
+  3. Completar en Administración el texto de Corrección de los 2 hallazgos que llegaron sin definir ("Falta Planimetria" y "CTO en condición insegura o no autorizada") — ya no es tarea de código, es editar el campo ahí mismo.
   4. Corregir con el modo corrección los 2 "Asignado a técnico" que quedaron en la OTT de prueba.
   5. Decidir si se automatiza la reversión de resoluciones al anular (bloqueo conocido: `resolver_evento_parcial` no llena `movimientos.evento_resolucion_id`).
   6. Volver a guardar la contraseña en Firefox desde `about:logins` — las guardadas antes de v1.47 quedaron con campos anónimos y no se autocompletan.
-  7. **Falta un historial global de eventos resueltos** (ver nota abajo) — decidir si vale la pena una pantalla nueva para eso o basta con lo que ya hay por conteo.
+  7. **Falta un historial global de eventos resueltos** (ver la entrada del 11-08 sobre "Ignorar" más abajo) — decidir si vale la pena una pantalla nueva para eso o basta con lo que ya hay por conteo.
 - **Deploy**: sano. El desfase "producción en v1.28 con `main` en v1.44" que figuraba acá como sin resolver era un error de Andrés al mirar, no un problema del workflow — confirmado el 11-08. `.github/workflows/deploy.yml` publica bien en cada push a `main`.
 
-## Nuevo — "Ignorar" en eventos de inventario + estado del historial de cerrados (11-08-2026)
+## Nuevo — Correcciones por hallazgo editables desde Administración (11-08-2026, noche)
+Pedido de Andrés: el texto de "Corrección" que se autocompleta en Preventivos al elegir un hallazgo (pendiente desde el 07-08, `CORRECCIONES_POR_HALLAZGO` vacío) — ahora editable desde Administración, por si llega feedback más adelante y hay que ajustarlo sin pedir un cambio de código. Andrés pasó el texto de 20 de los 22 hallazgos (archivo `Arreglos por hallazgo.txt`, mapeo posicional a la lista `HALLAZGOS` verificado por correlación de contenido antes de sembrarlo).
+
+- **Tabla nueva `correcciones_hallazgo`** (`hallazgo` texto como PK, `correccion`, `updated_at`) — migración `0062_correcciones_hallazgo.sql`, sembrada con los 20 textos. Lectura para cualquier logueado (técnicos la necesitan para el autocompletado), escritura solo `is_admin()`.
+- **`HALLAZGOS` se extrajo** de `PuntoCard.tsx` a `src/modules/preventivos/hallazgos.ts` — Administración necesitaba la misma lista, en el mismo orden, para no duplicarla y arriesgar que se desalineen.
+- **`src/lib/correccionesRepo.ts`** — `listCorreccionesHallazgo` / `guardarCorreccionHallazgo` (upsert, porque un hallazgo puede no tener fila sembrada).
+- **`Editor.tsx`** de Preventivos carga el mapa UNA VEZ (no por `PuntoCard`, son ≤22 filas) y lo pasa como prop; si falla (sin conexión) el mapa queda vacío y Corrección sigue editable a mano, como antes de este cambio.
+- **`AdminScreen.tsx`** — nueva sección `CorreccionesHallazgoSection`, mismo patrón de edición en la celda que ya usaba la descripción del Catálogo (guarda al salir del campo).
+
+## "Ignorar" en eventos de inventario + estado del historial de cerrados (11-08-2026, tarde)
 Pedido de Andrés: una sexta forma de resolver un evento (además de Consumo/Devolución/Traspaso/Reasignación/Agregar) que **no mueve stock**, solo cierra el evento y deja constancia con una nota — para las diferencias que no vale la pena perseguir. A diferencia de las otras cinco, `nota` es obligatoria (es la única documentación que queda) y no tiene restricción por signo de diferencia ni por tipo de ubicación (aplica a cualquier evento).
 
 Migración `0061_ignorar_evento.sql`: agrega `'ignorar'` al check de `eventos_inventario_resoluciones.tipo` y a `resolver_evento_parcial`, con una rama que no llama `adjust_stock` ni inserta `movimientos` — solo el `insert` genérico en `eventos_inventario_resoluciones` que ya hacían las otras cinco. Cliente: `ResolucionTipo` (types.ts), `TIPO_RESOLUCION_LABELS`, `tiposDisponibles` en `ResolverEventoForm` (Home.tsx) y `ResolucionRow`.
