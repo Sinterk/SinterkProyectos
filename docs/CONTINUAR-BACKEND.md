@@ -4,18 +4,20 @@
 > sesión nueva. Última actualización: 11-08-2026 (noche, tarde).
 
 ## ⚡ Estado ahora mismo (11-08-2026)
-- **`main` va atrás a propósito**: `main` está en `3145bd3` (v1.54) y `backend-supabase` en v1.57, con el commit `599bb86` (alta de trabajadores, v1.55) de por medio. Ese commit requiere desplegar la Edge Function `crear-usuario` antes de subir a producción — ver pendiente (1). Si se sube algo nuevo a `main` sin ese commit, hace falta `cherry-pick`, no push directo.
-- **Migraciones**: corridas y confirmadas hasta `0061` (Andrés confirmó "sql 60 y 61 corridos. Funciona." el 11-08). **`0062_correcciones_hallazgo.sql` es NUEVA, sin correr todavía** — crea la tabla de correcciones por hallazgo editable desde Administración (ver detalle abajo). Sin ella el editor de Administración carga vacío y guardar falla.
+- **`main` va atrás a propósito**: `main` está en `3145bd3` (v1.54) y `backend-supabase` en v1.58, con el commit `599bb86` (alta de trabajadores, v1.55) de por medio. Ese commit requiere desplegar la Edge Function `crear-usuario` antes de subir a producción — ver pendiente (1). Si se sube algo nuevo a `main` sin ese commit, hace falta `cherry-pick`, no push directo.
+- **Migraciones**: corridas y confirmadas hasta `0062` (Andrés confirmó "sql 60 y 61 corridos. Funciona." y luego "sql 62 corrido" el 11-08). Ninguna pendiente.
 - **Para retomar en otra máquina**: `git clone` (o `git fetch` + `git checkout backend-supabase`; si el `main` local quedó viejo, `git branch -f main origin/main`), `npm install`, recrear el `.env` a mano (los nombres de variable están en `src/lib/supabaseClient.ts` y `src/lib/auth.ts`; los valores NO están en el repo, es público — Andrés los tiene), `npm run dev`.
 - **Pendientes de Andrés** (no bloquean nada salvo lo marcado):
   1. Desplegar la Edge Function de alta de usuarios: `supabase functions deploy crear-usuario` (requiere CLI de Supabase y el proyecto enlazado). Sin esto el botón "➕ Agregar trabajador" en Administración falla.
-  2. **Correr la migración 0062** — sin ella, Administración → Correcciones por hallazgo no carga ni guarda.
-  3. Completar en Administración el texto de Corrección de los 2 hallazgos que llegaron sin definir ("Falta Planimetria" y "CTO en condición insegura o no autorizada") — ya no es tarea de código, es editar el campo ahí mismo.
-  4. Corregir con el modo corrección los 2 "Asignado a técnico" que quedaron en la OTT de prueba.
-  5. Decidir si se automatiza la reversión de resoluciones al anular (bloqueo conocido: `resolver_evento_parcial` no llena `movimientos.evento_resolucion_id`).
-  6. Volver a guardar la contraseña en Firefox desde `about:logins` — las guardadas antes de v1.47 quedaron con campos anónimos y no se autocompletan.
-  7. **Falta un historial global de eventos resueltos** (ver la entrada del 11-08 sobre "Ignorar" más abajo) — decidir si vale la pena una pantalla nueva para eso o basta con lo que ya hay por conteo.
+  2. Completar en Administración el texto de Corrección de los 2 hallazgos que llegaron sin definir ("Falta Planimetria" y "CTO en condición insegura o no autorizada") — ya no es tarea de código, es editar el campo ahí mismo.
+  3. Corregir con el modo corrección los 2 "Asignado a técnico" que quedaron en la OTT de prueba.
+  4. Decidir si se automatiza la reversión de resoluciones al anular (bloqueo conocido: `resolver_evento_parcial` no llena `movimientos.evento_resolucion_id`).
+  5. Volver a guardar la contraseña en Firefox desde `about:logins` — las guardadas antes de v1.47 quedaron con campos anónimos y no se autocompletan.
+  6. **Falta un historial global de eventos resueltos** (ver la entrada del 11-08 sobre "Ignorar" más abajo) — decidir si vale la pena una pantalla nueva para eso o basta con lo que ya hay por conteo.
 - **Deploy**: sano. El desfase "producción en v1.28 con `main` en v1.44" que figuraba acá como sin resolver era un error de Andrés al mirar, no un problema del workflow — confirmado el 11-08. `.github/workflows/deploy.yml` publica bien en cada push a `main`.
+
+## v1.58 — la corrección autocompletada parte en minúscula
+Pedido de Andrés: en el informe, la corrección se concatena después de otro texto (`generarInformeEntel.ts`: `"Observación: " + [dirección, corrección].join(', ')`), así que un "Se regula…" con mayúscula quedaba leyéndose como el inicio de una frase nueva en medio de la oración. Fix en `PuntoCard.tsx` (`minusculaInicial`), aplicado en el momento del autocompletado (`handleHallazgoChange`) — no toca los 20 textos guardados en `correcciones_hallazgo` (esos se ven bien como oraciones sueltas en el editor de Administración) ni el texto ya autocompletado en puntos existentes, solo lo que se autocompleta de ahora en adelante. Cubre siglas: si la segunda letra también es mayúscula (CTO, DC) no la toca — evita "cTO".
 
 ## Nuevo — Correcciones por hallazgo editables desde Administración (11-08-2026, noche)
 Pedido de Andrés: el texto de "Corrección" que se autocompleta en Preventivos al elegir un hallazgo (pendiente desde el 07-08, `CORRECCIONES_POR_HALLAZGO` vacío) — ahora editable desde Administración, por si llega feedback más adelante y hay que ajustarlo sin pedir un cambio de código. Andrés pasó el texto de 20 de los 22 hallazgos (archivo `Arreglos por hallazgo.txt`, mapeo posicional a la lista `HALLAZGOS` verificado por correlación de contenido antes de sembrarlo).
