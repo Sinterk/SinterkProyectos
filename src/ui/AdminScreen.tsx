@@ -3,6 +3,8 @@ import { useAuth, ROL_LABELS } from '@/lib/auth'
 import type { Rol, Profile } from '@/lib/auth'
 import { adminRepo } from '@/lib/adminRepo'
 import type { ProjectSummary, MemberProfile } from '@/lib/adminRepo'
+import { listCorreccionesHallazgo, guardarCorreccionHallazgo } from '@/lib/correccionesRepo'
+import { HALLAZGOS } from '@/modules/preventivos/hallazgos'
 
 const ROLES: Rol[] = ['admin', 'jp', 'tecnico', 'log']
 const AREAS = ['ATT', 'OyM'] as const
@@ -27,6 +29,7 @@ export function AdminScreen() {
       </div>
       <UsersSection />
       <TeamsSection />
+      <CorreccionesHallazgoSection />
     </div>
   )
 }
@@ -371,6 +374,85 @@ function TeamsSection() {
           )}
         </>
       )}
+    </div>
+  )
+}
+
+/**
+ * Texto de "Corrección" que se autocompleta al elegir un hallazgo en
+ * Preventivos (PuntoCard.tsx) — editable acá por si llega feedback más
+ * adelante y hay que ajustarlo sin pedir un cambio de código.
+ *
+ * Se recorre `HALLAZGOS` (la lista fija del <select>), no las filas de la
+ * tabla: así un hallazgo sin fila sembrada todavía aparece igual, con su
+ * campo vacío listo para completar, en vez de faltar de la lista.
+ */
+function CorreccionesHallazgoSection() {
+  const [correcciones, setCorrecciones] = useState<Record<string, string> | null>(null)
+  const [error, setError] = useState<string | null>(null)
+
+  async function reload() {
+    try {
+      const filas = await listCorreccionesHallazgo()
+      setCorrecciones(Object.fromEntries(filas.map((f) => [f.hallazgo, f.correccion])))
+    } catch (err) {
+      setError(err instanceof Error ? err.message : String(err))
+    }
+  }
+  useEffect(() => { reload() }, [])
+
+  return (
+    <div className="bg-slate-800 rounded-2xl border border-slate-700 p-4 space-y-3">
+      <h2 className="text-xs font-semibold text-brand-400 uppercase tracking-wide">Correcciones por hallazgo</h2>
+      <p className="text-[11px] text-slate-500 leading-relaxed">
+        Texto que se autocompleta en Preventivos al elegir cada tipo de hallazgo. Sigue siendo editable a mano en cada punto — esto solo cambia el valor por defecto.
+      </p>
+      {error && <p className="text-xs text-red-400">{error}</p>}
+      {!correcciones ? (
+        <p className="text-xs text-slate-500">Cargando…</p>
+      ) : (
+        <div className="space-y-2">
+          {HALLAZGOS.map((hallazgo) => (
+            <CorreccionHallazgoRow key={hallazgo} hallazgo={hallazgo}
+              value={correcciones[hallazgo] ?? ''} onSaved={reload} />
+          ))}
+        </div>
+      )}
+    </div>
+  )
+}
+
+function CorreccionHallazgoRow({ hallazgo, value, onSaved }: { hallazgo: string; value: string; onSaved: () => void }) {
+  const [draft, setDraft] = useState(value)
+  const [saving, setSaving] = useState(false)
+  const [error, setError] = useState<string | null>(null)
+
+  useEffect(() => { setDraft(value) }, [value])
+
+  async function guardar() {
+    if (draft.trim() === value) return
+    setSaving(true)
+    setError(null)
+    try {
+      await guardarCorreccionHallazgo(hallazgo, draft)
+      onSaved()
+    } catch (err) {
+      setError(err instanceof Error ? err.message : String(err))
+    } finally {
+      setSaving(false)
+    }
+  }
+
+  return (
+    <div className="space-y-1">
+      <p className="text-xs text-slate-300">{hallazgo}</p>
+      <div className="flex items-center gap-2">
+        <input value={draft} onChange={(e) => setDraft(e.target.value)} onBlur={guardar}
+          placeholder="Sin corrección definida — se guardará como texto vacío"
+          className="flex-1 bg-slate-700 text-white text-sm rounded-lg px-2 py-1.5 border border-slate-600 focus:border-brand-500 focus:outline-none" />
+        {saving && <span className="text-[10px] text-slate-500 shrink-0">Guardando…</span>}
+      </div>
+      {error && <p className="text-[11px] text-red-400">{error}</p>}
     </div>
   )
 }
