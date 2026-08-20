@@ -1,10 +1,10 @@
 # Continuar — Migración a backend Supabase
 
 > Documento de retomada — LEER ESTO PRIMERO si se retoma en otra máquina o
-> sesión nueva. Última actualización: 11-08-2026 (noche, tarde-9).
+> sesión nueva. Última actualización: 11-08-2026 (noche, tarde-10).
 
 ## ⚡ Estado ahora mismo (11-08-2026)
-- **`main` va atrás a propósito**: `main` está en `97b097a` (v1.59) y `backend-supabase` en v1.66, con el commit `599bb86` (alta de trabajadores, v1.55) de por medio — ver pendiente (1).
+- **`main` va atrás a propósito**: `main` está en `97b097a` (v1.59) y `backend-supabase` en v1.67, con el commit `599bb86` (alta de trabajadores, v1.55) de por medio — ver pendiente (1).
 - **Migraciones**: corridas y confirmadas hasta `0064`. Ninguna pendiente.
 - **Para retomar en otra máquina**: `git clone` (o `git fetch` + `git checkout backend-supabase`; si el `main` local quedó viejo, `git branch -f main origin/main`), `npm install`, recrear el `.env` a mano (los nombres de variable están en `src/lib/supabaseClient.ts` y `src/lib/auth.ts`; los valores NO están en el repo, es público — Andrés los tiene), `npm run dev`.
 - **Pendientes de Andrés** (no bloquean nada salvo lo marcado):
@@ -14,9 +14,23 @@
   4. Decidir si se automatiza la reversión de resoluciones al anular (bloqueo conocido: `resolver_evento_parcial` no llena `movimientos.evento_resolucion_id`).
   5. Volver a guardar la contraseña en Firefox desde `about:logins` — las guardadas antes de v1.47 quedaron con campos anónimos y no se autocompletan.
   6. **Falta un historial global de eventos resueltos** (ver la entrada sobre "Ignorar" más abajo) — decidir si vale la pena una pantalla nueva para eso o basta con lo que ya hay por conteo.
-  7. **Probar Ferretería sin lote físico + rebaja sugerida** (v1.62-v1.66, ver entradas abajo) — sin probar todavía en el navegador esta sesión.
+  7. **Probar Ferretería sin lote físico + rebaja sugerida** (v1.62-v1.67, ver entradas abajo) — sin probar todavía en el navegador esta sesión.
   8. **Pendiente para la semana (sin fecha fija)**: reescribir el texto de advertencia de "Corregir errores de tipeo" en Resumen de Proyecto — hoy dice "para arreglar un error de tipeo" y eso confunde con el caso real de "anoté 6, eran 5, ya hubo un movimiento real de 6". Corrección NUNCA revierte el movimiento ni el stock, solo pisa el número que se ve en la tabla — si el movimiento real fue mal registrado, hay que anularlo y volver a registrar con la cantidad correcta, o el stock queda mintiendo (técnico con más de lo que en verdad tiene). Andrés pidió dejarlo pendiente, no implementarlo ahora.
 - **Deploy**: sano. El desfase "producción en v1.28 con `main` en v1.44" que figuraba acá como sin resolver era un error de Andrés al mirar, no un problema del workflow — confirmado el 11-08. `.github/workflows/deploy.yml` publica bien en cada push a `main`.
+
+## v1.67 — copiado como TSV puro + fecha en formato Excel real
+Andrés aclaró lo pedido en v1.64/v1.66 sobre "formato Excel": no bastaba con que las columnas calzaran — pidió que el TIPO de cada celda calce (no se vean "fuera de lugar" al pegar), y notó que pegar con formato vs. "pegar sin formato" pegaba distinto.
+
+**Causa de las dos cosas:**
+- Copiar una `<table>` HTML deja DOS versiones en el portapapeles: una con el HTML (fuente/colores/bordes de esta app, que se ven fuera de lugar en una planilla Excel) y una de texto plano derivada de ella. "Pegar normal" en Excel prefiere la versión HTML; "pegar sin formato" fuerza la de texto plano — son dos rutas de parseo distintas dentro de Excel, así que un mismo dato puede terminar tipado distinto según cuál uses (una fecha reconocida como fecha real por un lado, como texto suelto por el otro).
+- La fecha de instalación se pasaba en `yyyy-mm-dd` (formato de un `<input type="date">`). El Excel de Entel usa `dd.mm.yyyy` — Excel no reconoce `2026-01-20` como fecha bajo ese formato, así que quedaba como texto plano: sin alinear a la derecha, sin ordenar ni calcular como el resto de la columna. Ahí estaba el "fuera de lugar".
+
+**Fix — `TablaDigital` y `RebajaPendienteSection`:**
+- Botón nuevo "📋 Copiar tabla" en las dos, escribiendo el portapapeles con `navigator.clipboard.writeText()` — TSV puro, SIN HTML. Al no existir una versión con estilos, "pegar" y "pegar sin formato" quedan idénticos: no hay dos rutas de parseo entre las que Excel tenga que elegir.
+- Sin fila de encabezado — se pega al final de las filas que ya existen en el control de Entel, no las repite.
+- Nuevo `formatFechaExcel()`: `yyyy-mm-dd` → `dd.mm.yyyy`, aplicado tanto en lo que se ve en pantalla como en lo que se copia — mismo string en los dos lados, para que lo que ves sea justo lo que se pega.
+
+No hay forma de forzar que Excel trate un valor pegado como texto plano EXACTAMENTE como un tipo de celda nativo de Excel (eso solo lo logra un copiado Excel→Excel real, vía su portapapeles OLE propio) — lo que sí se puede, y se hizo, es dejar el string en un formato que el parser de Excel reconoce de forma confiable como el tipo correcto.
 
 ## v1.66 — cable no se reparte entre lotes + "Rebaja pendiente" con formato Excel
 Dos ajustes de Andrés sobre `sugerirRebaja()`/`RebajaPendienteSection` de v1.64-v1.65:

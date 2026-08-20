@@ -935,7 +935,7 @@ export function ResumenProyectoTable({ projectId, area, puntos, refreshKey = 0, 
               sugiriendo={sugiriendo}
               ott={ott}
               direccion={direccion}
-              fechaInstalacion={fechaInicio}
+              fechaInstalacion={formatFechaExcel(fechaInicio)}
               onSugerir={sugerirRebaja}
               onAgregarManual={agregarLineaRebajaManual}
               onActualizar={actualizarLineaRebaja}
@@ -948,7 +948,7 @@ export function ResumenProyectoTable({ projectId, area, puntos, refreshKey = 0, 
             rowKey={rowKey}
             ott={ott}
             direccion={direccion}
-            fechaInstalacion={fechaInicio}
+            fechaInstalacion={formatFechaExcel(fechaInicio)}
             modoCorreccion={modoCorreccion}
             corrections={corrections}
             onCorrection={setCorrection}
@@ -1009,6 +1009,31 @@ const RUT_EMPRESA = '76.512.898-6'
 const DIRECCION_EMPRESA = 'Primero de Mayo 3425'
 
 /**
+ * `yyyy-mm-dd` (lo que da `fechaInicioDe`, formato de un `<input
+ * type="date">`) → `dd.mm.yyyy`, el formato de fecha real que usa el
+ * control de rebajas de Entel. No es cosmético: Excel reconoce una fecha
+ * como fecha (alineada a la derecha, ordenable, calculable) o la trata como
+ * texto suelto según si el string calza con el formato que espera — pegar
+ * `2026-01-20` ahí queda como texto plano, "fuera de lugar" entre fechas
+ * reales; `20.01.2026` sí lo reconoce.
+ */
+function formatFechaExcel(iso: string | undefined): string {
+  if (!iso) return ''
+  const [y, m, d] = iso.split('-')
+  if (!y || !m || !d) return iso
+  return `${d}.${m}.${y}`
+}
+
+/**
+ * Limpia lo que va a un TSV para copiar/pegar: tab y salto de línea rompen
+ * el formato de celda-por-celda (mismo problema que ya resolvió `celda()` en
+ * EstadoPagoTab.tsx).
+ */
+function celdaTsv(v: string | number | null | undefined): string {
+  return String(v ?? '').replace(/[\t\r\n]+/g, ' ').trim()
+}
+
+/**
  * Tabla DIGITAL del proyecto (baja contable en SAP). Muestra lo YA
  * rebajado — comparte filas con la física de arriba (mismo SKU y lote de
  * `proyecto_materiales`), así que una fila cargada allá aparece sola acá,
@@ -1044,16 +1069,40 @@ function TablaDigital({
   // Solo lo que de verdad se rebajó — esto es un log de rebajas confirmadas,
   // no el inventario completo del proyecto (ese es la tabla física).
   const filas = rows.filter((r) => r.cantRebajada > 0)
+  const [copyMsg, setCopyMsg] = useState<string | null>(null)
+
+  function copiarTabla() {
+    // Sin encabezado: se pega al final de las filas que ya existen en el
+    // control de Entel, no reemplaza ni repite ese encabezado. TSV puro
+    // (writeText, sin HTML) — así "pegar" y "pegar sin formato" quedan
+    // exactamente igual, no hay una versión con estilos que Excel prefiera
+    // sobre la otra.
+    const texto = filas.map((row) => [
+      celdaTsv(ott), celdaTsv(direccion), celdaTsv(fechaInstalacion), celdaTsv(RUT_EMPRESA), celdaTsv(DIRECCION_EMPRESA),
+      celdaTsv(row.materialSku), celdaTsv(row.materialDescripcion), celdaTsv(row.lote), row.cantRebajada,
+    ].join('\t')).join('\n')
+    navigator.clipboard.writeText(texto)
+      .then(() => setCopyMsg(`${filas.length} fila(s) copiada(s) — pega al final del control de rebajas.`))
+      .catch(() => setCopyMsg('No se pudo copiar al portapapeles.'))
+  }
+
   if (filas.length === 0) return null
 
   return (
     <div className="space-y-2">
-      <div>
-        <h3 className="text-xs font-semibold text-brand-400 uppercase tracking-wide">Material digital (SAP)</h3>
-        <p className="text-[11px] text-slate-500 leading-relaxed mt-1">
-          Baja contable en SAP, sin movimiento físico. Formato listo para copiar y pegar en el control de rebajas de Entel.
-        </p>
+      <div className="flex items-center justify-between gap-2 flex-wrap">
+        <div>
+          <h3 className="text-xs font-semibold text-brand-400 uppercase tracking-wide">Material digital (SAP)</h3>
+          <p className="text-[11px] text-slate-500 leading-relaxed mt-1">
+            Baja contable en SAP, sin movimiento físico. Formato listo para copiar y pegar en el control de rebajas de Entel.
+          </p>
+        </div>
+        <button type="button" onClick={copiarTabla}
+          className="text-xs font-semibold px-3 py-1.5 rounded-lg bg-slate-700 hover:bg-slate-600 text-white shrink-0">
+          📋 Copiar tabla
+        </button>
       </div>
+      {copyMsg && <p className="text-[11px] text-green-400">{copyMsg}</p>}
       <div className="overflow-x-auto rounded-xl border border-slate-700">
         <table className="w-full text-xs border-collapse">
           <thead>
@@ -1138,6 +1187,22 @@ function RebajaPendienteSection({
   onQuitar: (localId: string) => void
 }) {
   const selectCls = 'bg-slate-700 text-white text-xs rounded-lg px-2 py-1 border border-slate-600 focus:border-brand-500 focus:outline-none'
+  const [copyMsg, setCopyMsg] = useState<string | null>(null)
+
+  function copiarTabla() {
+    // Solo líneas con material y cantidad puestos — una fila manual a medio
+    // llenar no sirve para pegar en ningún lado. Mismo TSV puro que
+    // TablaDigital, sin encabezado (se pega al final de las filas que ya
+    // existen en el control de Entel).
+    const listas = lineas.filter((l) => l.materialId && Number(l.cantidad) > 0)
+    const texto = listas.map((l) => [
+      celdaTsv(ott), celdaTsv(direccion), celdaTsv(fechaInstalacion), celdaTsv(RUT_EMPRESA), celdaTsv(DIRECCION_EMPRESA),
+      celdaTsv(l.materialSku), celdaTsv(l.materialDescripcion), celdaTsv(l.lote), l.cantidad,
+    ].join('\t')).join('\n')
+    navigator.clipboard.writeText(texto)
+      .then(() => setCopyMsg(`${listas.length} fila(s) copiada(s) — pega al final del control de rebajas.`))
+      .catch(() => setCopyMsg('No se pudo copiar al portapapeles.'))
+  }
 
   return (
     <div className="space-y-2">
@@ -1148,11 +1213,20 @@ function RebajaPendienteSection({
             Registra nueva baja SAP. "Sugerir" propone lote y cantidad a partir de lo instalado, priorizando la bodega del área — revisa y ajusta antes de guardar. Formato listo para copiar y pegar en el control de rebajas de Entel, igual que "Material digital". Cable nunca se reparte entre lotes: usa el mismo lote físico si ya se conoce, o uno solo que alcance completo.
           </p>
         </div>
-        <button type="button" disabled={sugiriendo || saving} onClick={onSugerir}
-          className="text-xs font-semibold px-3 py-1.5 rounded-lg bg-brand-600 hover:bg-brand-700 disabled:opacity-40 text-white shrink-0">
-          {sugiriendo ? 'Calculando…' : '↻ Sugerir rebaja'}
-        </button>
+        <div className="flex items-center gap-2 shrink-0">
+          {lineas.length > 0 && (
+            <button type="button" onClick={copiarTabla}
+              className="text-xs font-semibold px-3 py-1.5 rounded-lg bg-slate-700 hover:bg-slate-600 text-white">
+              📋 Copiar tabla
+            </button>
+          )}
+          <button type="button" disabled={sugiriendo || saving} onClick={onSugerir}
+            className="text-xs font-semibold px-3 py-1.5 rounded-lg bg-brand-600 hover:bg-brand-700 disabled:opacity-40 text-white">
+            {sugiriendo ? 'Calculando…' : '↻ Sugerir rebaja'}
+          </button>
+        </div>
       </div>
+      {copyMsg && <p className="text-[11px] text-green-400">{copyMsg}</p>}
 
       {lineas.length > 0 && (
         <div className="overflow-x-auto rounded-xl border border-slate-700">
