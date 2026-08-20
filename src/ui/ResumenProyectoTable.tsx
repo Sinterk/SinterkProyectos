@@ -167,6 +167,12 @@ interface LineaRebaja {
 
 export function ResumenProyectoTable({ projectId, area, puntos, refreshKey = 0, membersVersion = 0, ott, direccion, fechaInicio }: Props) {
   const rol = useAuth((s) => s.profile?.rol)
+  // registrar_movimiento exige técnico para tipoUI='rebajado' (0005) — no
+  // afecta stock de nadie ahí, es solo quién queda como usuario_id del
+  // movimiento para trazabilidad. Una rebaja SAP la registra oficina/JP, no
+  // un técnico puntual, así que se usa quien está guardando — sin pedirlo
+  // en un selector aparte en RebajaPendienteSection.
+  const currentUserId = useAuth((s) => s.session?.user.id)
   const puedeCorregir = rol === 'admin' || rol === 'jp' || rol === 'log'
   // El técnico solo reporta lo que instaló/devolvió — entregado/rebajado los
   // registra oficina (entrega física, rebaja SAP), y solicitado no es un
@@ -538,6 +544,7 @@ export function ResumenProyectoTable({ projectId, area, puntos, refreshKey = 0, 
         await registrarMovimiento({
           tipoUI: 'rebajado', materialId: linea.materialId, cantidad: n,
           lote: linea.lote.trim() || undefined, projectId, ubicacionBodegaId: linea.ubicacionBodegaId,
+          tecnicoUserId: currentUserId,
         })
         // Éxito: la línea se descarta — tras el reload() el material rebajado
         // ya aparece con su número actualizado en la tabla digital de arriba.
