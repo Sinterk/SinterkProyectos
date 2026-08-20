@@ -1,20 +1,30 @@
 # Continuar — Migración a backend Supabase
 
 > Documento de retomada — LEER ESTO PRIMERO si se retoma en otra máquina o
-> sesión nueva. Última actualización: 11-08-2026 (noche, tarde-4).
+> sesión nueva. Última actualización: 11-08-2026 (noche, tarde-5).
 
 ## ⚡ Estado ahora mismo (11-08-2026)
-- **`main` va atrás a propósito**: `main` está en `97b097a` (v1.59) y `backend-supabase` en v1.61, con el commit `599bb86` (alta de trabajadores, v1.55) de por medio — ver pendiente (1).
-- **Migraciones**: corridas y confirmadas hasta `0063` (Andrés confirmó "ahora sí parece estar bien" el 11-08, tras correrla). Ninguna pendiente.
+- **`main` va atrás a propósito**: `main` está en `97b097a` (v1.59) y `backend-supabase` en v1.62, con el commit `599bb86` (alta de trabajadores, v1.55) de por medio — ver pendiente (2).
+- **Migraciones**: corridas y confirmadas hasta `0063`. **`0064_ferreteria_traspaso_lote.sql` es NUEVA, sin correr todavía** — ver detalle abajo. Sin ella, reclasificar un material a Ferretería no traspasa su `SinDefinir` a `Físico`, pero el resto de la feature (sin lote en movimientos físicos, rebaja sugerida) funciona igual.
 - **Para retomar en otra máquina**: `git clone` (o `git fetch` + `git checkout backend-supabase`; si el `main` local quedó viejo, `git branch -f main origin/main`), `npm install`, recrear el `.env` a mano (los nombres de variable están en `src/lib/supabaseClient.ts` y `src/lib/auth.ts`; los valores NO están en el repo, es público — Andrés los tiene), `npm run dev`.
 - **Pendientes de Andrés** (no bloquean nada salvo lo marcado):
-  1. Desplegar la Edge Function de alta de usuarios: `supabase functions deploy crear-usuario` (requiere CLI de Supabase y el proyecto enlazado). Sin esto el botón "➕ Agregar trabajador" en Administración falla.
-  2. Completar en Administración el texto de Corrección de los 2 hallazgos que llegaron sin definir ("Falta Planimetria" y "CTO en condición insegura o no autorizada") — ya no es tarea de código, es editar el campo ahí mismo.
-  3. Corregir con el modo corrección los 2 "Asignado a técnico" que quedaron en la OTT de prueba.
-  4. Decidir si se automatiza la reversión de resoluciones al anular (bloqueo conocido: `resolver_evento_parcial` no llena `movimientos.evento_resolucion_id`).
-  5. Volver a guardar la contraseña en Firefox desde `about:logins` — las guardadas antes de v1.47 quedaron con campos anónimos y no se autocompletan.
-  6. **Falta un historial global de eventos resueltos** (ver la entrada sobre "Ignorar" más abajo) — decidir si vale la pena una pantalla nueva para eso o basta con lo que ya hay por conteo.
+  1. **Correr la migración 0064** — sin ella, el traspaso automático SinDefinir→Físico al reclasificar un material a Ferretería no ocurre (ni para lo ya clasificado hoy, ni hacia adelante).
+  2. Desplegar la Edge Function de alta de usuarios: `supabase functions deploy crear-usuario` (requiere CLI de Supabase y el proyecto enlazado). Sin esto el botón "➕ Agregar trabajador" en Administración falla.
+  3. Completar en Administración el texto de Corrección de los 2 hallazgos que llegaron sin definir ("Falta Planimetria" y "CTO en condición insegura o no autorizada") — ya no es tarea de código, es editar el campo ahí mismo.
+  4. Corregir con el modo corrección los 2 "Asignado a técnico" que quedaron en la OTT de prueba.
+  5. Decidir si se automatiza la reversión de resoluciones al anular (bloqueo conocido: `resolver_evento_parcial` no llena `movimientos.evento_resolucion_id`).
+  6. Volver a guardar la contraseña en Firefox desde `about:logins` — las guardadas antes de v1.47 quedaron con campos anónimos y no se autocompletan.
+  7. **Falta un historial global de eventos resueltos** (ver la entrada sobre "Ignorar" más abajo) — decidir si vale la pena una pantalla nueva para eso o basta con lo que ya hay por conteo.
 - **Deploy**: sano. El desfase "producción en v1.28 con `main` en v1.44" que figuraba acá como sin resolver era un error de Andrés al mirar, no un problema del workflow — confirmado el 11-08. `.github/workflows/deploy.yml` publica bien en cada push a `main`.
+
+## v1.62 — Ferretería sin lote físico + rebaja sugerida
+Pedido de Andrés, con plan aprobado en la conversación (ver el mensaje "Plan:" del 11-08). Problema real: materiales como cruceta/tornillería no tienen lote físico distinguible — obligar a elegir "cualquier lote disponible" en cada Entrega/Instalado generaba descuadre.
+
+**Parte 1 — sin lote en movimientos físicos.** Nuevo `src/lib/inventario/esFerreteria.ts` (`esTipoFerreteria`, mismo patrón que `esCable.ts`: por nombre del Tipo del Catálogo, no por id) y `LOTE_FISICO_FERRETERIA = 'Físico'`. En los 3 sitios reales donde se elige lote físico (`AsignacionesForm.tsx` Entrega/Conteo, `RegistrarMovimientoForm.tsx` Entrada, `ResumenProyectoTable.tsx` filas físicas nueva/existente), si el material es Ferretería no se muestra `LoteSelect` — se fija `'Físico'` directo. El valor real guardado en `lote` pasa a ser ese string, así que fluye solo a Bodega/Movimientos/Técnico sin tocar esas pantallas. La rama `naturaleza='digital'` de `RegistrarMovimientoForm` (rebajado) queda intacta a propósito — ahí el lote real sigue importando (hoy es código muerto de todos modos: el único render real de ese componente es `soloEntrada`, ver `Home.tsx:118`).
+
+**Parte 2 — migración `0064_ferreteria_traspaso_lote.sql`.** Decisión de Andrés: traspasar lo histórico Y que el traspaso ocurra solo hacia adelante. Trigger `after update of tipo_id on materiales` — si el tipo nuevo resuelve a Ferretería y el anterior no, llama `traspasar_lote_sindefinir_a_fisico(material_id)`, que renombra `lote='SinDefinir'` → `'Físico'` en `stock`/`movimientos`/`proyecto_materiales`. En `stock` y `proyecto_materiales` (con unique constraint sobre lote) usa upsert-con-suma para no reventar si ya existiera una fila `'Físico'` con saldo propio — un cruce ahí "se cuadra a mano con Conteo después" (palabras de Andrés), no hay lógica de merge más fina. Retroactivo para lo ya clasificado hoy vía un `do` block (no por el trigger — `tipo_id` no cambia, así que "antes no lo era" sería falso).
+
+**Parte 3 — rediseño de "Material digital (SAP)" en `ResumenProyectoTable.tsx`.** `TablaDigital` se simplifica a SOLO mostrar/corregir lo YA rebajado (se le sacó bodega/disponible/el "+" de edición libre — ya no hace falta, ver abajo). Nueva sección `RebajaPendienteSection`: botón "↻ Sugerir rebaja" (mismo patrón que "Regenerar avance" del EP, `EstadoPagoTab.tsx:62`) calcula por material `necesario = instalado total − ya rebajado`, y reparte esa cantidad entre los lotes digitales disponibles en la bodega elegida ordenados de MENOR a MAYOR — vacía primero el lote más chico, sigue con el siguiente, hasta cubrir lo necesario (algoritmo confirmado con Andrés: "vaciar el lote más vacío y luego empezar a consumir el 2do con menos unidades"). Si ni sumando todo alcanza, la línea final queda con el faltante y sin lote, marcada en ámbar. Las líneas quedan editables (lote/bodega/cantidad) y se puede agregar una suelta a mano ("+ Agregar línea de rebaja"); nada se guarda hasta el mismo botón "Guardar cambios" que ya existía para el resto de la tabla — no hizo falta un mecanismo de borrador nuevo, ya estaba.
 
 ## v1.61 — terreno (técnico) puede agregar y editar puntos de Preventivos
 Pedido de Andrés: terreno no debe poder cambiar la info del proyecto (cuadrante/zona/responsable/etc.), pero SÍ debe poder agregar puntos y editarlos por completo — antes ni siquiera veía el botón "Agregar punto".

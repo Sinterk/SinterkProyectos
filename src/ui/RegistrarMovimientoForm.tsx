@@ -13,6 +13,7 @@ import type { MemberProfile, ProjectSummary } from '@/lib/adminRepo'
 import { useAuth } from '@/lib/auth'
 import type { Profile } from '@/lib/auth'
 import { BODEGA_DEFECTO_POR_AREA } from '@/lib/inventario/defaults'
+import { esTipoFerreteria, LOTE_FISICO_FERRETERIA } from '@/lib/inventario/esFerreteria'
 import { listMateriales, listUbicaciones, registrarMovimiento } from '@/lib/inventario/inventarioRepo'
 import type { Material, MovimientoTipoUI, Ubicacion } from '@/lib/inventario/types'
 import { LoteSelect } from './LoteSelect'
@@ -389,16 +390,24 @@ export function RegistrarMovimientoForm({ fixedProject, puntos, lockTipoUI, solo
                 const r = resultados[l.localId]
                 const ctx = loteContexto(l)
                 const totalCols = 4 + (necesitaBodegaPorLinea ? 1 : 0) + (necesitaBodegaDestinoPorLinea ? 1 : 0)
+                // Ferretería no tiene lote físico distinguible — se omite el
+                // selector SOLO del lado físico. En 'rebajado' (digital, SAP)
+                // el lote sigue importando y el selector se mantiene siempre.
+                const esFerreteriaFisico = ctx.naturaleza === 'fisico'
+                  && esTipoFerreteria(materiales.find((m) => m.id === l.materialId)?.tipo?.nombre)
+                const loteReset = (materialId: string) =>
+                  esTipoFerreteria(materiales.find((m) => m.id === materialId)?.tipo?.nombre) ? LOTE_FISICO_FERRETERIA : ''
                 return (
                   <Fragment key={l.localId}>
                     <tr className="border-t border-slate-800 divide-x divide-slate-800">
                       <td className="px-2 py-1.5 min-w-[12rem]">
                         <MaterialSelect materiales={materiales} value={l.materialId}
-                          onChange={(id) => updateLinea(l.localId, { materialId: id, lote: '' })} />
+                          onChange={(id) => updateLinea(l.localId, { materialId: id, lote: loteReset(id) })} />
                       </td>
                       {necesitaBodegaPorLinea && (
                         <td className="px-2 py-1.5 min-w-[10rem]">
-                          <UbicacionSelect value={l.ubicacionBodegaId} onChange={(id) => updateLinea(l.localId, { ubicacionBodegaId: id, lote: '' })}
+                          <UbicacionSelect value={l.ubicacionBodegaId}
+                            onChange={(id) => updateLinea(l.localId, { ubicacionBodegaId: id, lote: loteReset(l.materialId) })}
                             tipo="bodega" placeholder={`Bodega de ${tipoUI === 'devuelto' ? 'destino' : 'origen'}…`}
                             className={`${inputCls} w-full`} />
                         </td>
@@ -410,9 +419,13 @@ export function RegistrarMovimientoForm({ fixedProject, puntos, lockTipoUI, solo
                         </td>
                       )}
                       <td className="px-2 py-1.5 min-w-[9rem]">
-                        <LoteSelect materialId={l.materialId} ubicacionId={ctx.ubicacionId} naturaleza={ctx.naturaleza}
-                          checkAvailability={ctx.checkAvailability} value={l.lote}
-                          onChange={(lote) => updateLinea(l.localId, { lote })} className={`${inputCls} w-full`} />
+                        {esFerreteriaFisico ? (
+                          <span className="text-slate-400 text-xs">Físico</span>
+                        ) : (
+                          <LoteSelect materialId={l.materialId} ubicacionId={ctx.ubicacionId} naturaleza={ctx.naturaleza}
+                            checkAvailability={ctx.checkAvailability} value={l.lote}
+                            onChange={(lote) => updateLinea(l.localId, { lote })} className={`${inputCls} w-full`} />
+                        )}
                       </td>
                       <td className="px-2 py-1.5">
                         <input type="number" min="0" step="any" placeholder="0" value={l.cantidad}

@@ -26,6 +26,7 @@ import type { MemberProfile } from '@/lib/adminRepo'
 import { useAuth } from '@/lib/auth'
 import { nanoid } from '@/core/utils/nanoid'
 import { BODEGA_DEFECTO_POR_AREA } from '@/lib/inventario/defaults'
+import { esTipoFerreteria, LOTE_FISICO_FERRETERIA } from '@/lib/inventario/esFerreteria'
 import {
   corregirProyectoMaterial, getResumenProyecto, getStock, listMateriales, listUbicaciones,
   reasignarTransitoAPreventivo, registrarMovimiento,
@@ -142,6 +143,24 @@ function filaVacia(tecnicoUserId: string, ubicacionBodegaId: string): NuevaFila 
   return { localId: nanoid(8), materialId: '', lote: '', puntoId: null, tecnicoUserId, ubicacionBodegaId, nota: '', edits: {} }
 }
 
+/**
+ * Una línea de rebaja pendiente (nueva, sin guardar todavía) — ver
+ * `RebajaPendienteSection`. No está ligada a una fila física existente:
+ * a diferencia del resto de la tabla, acá SÍ importa el lote real (SAP), así
+ * que una sola necesidad de rebaja puede terminar en varias líneas (una por
+ * lote consumido, ver `sugerirRebaja`).
+ */
+interface LineaRebaja {
+  localId: string
+  materialId: string
+  materialSku: string
+  materialDescripcion: string
+  lote: string
+  ubicacionBodegaId: string
+  cantidad: string
+  origen: 'auto' | 'manual'
+}
+
 export function ResumenProyectoTable({ projectId, area, puntos, refreshKey = 0, membersVersion = 0 }: Props) {
   const rol = useAuth((s) => s.profile?.rol)
   const puedeCorregir = rol === 'admin' || rol === 'jp' || rol === 'log'
@@ -197,9 +216,6 @@ export function ResumenProyectoTable({ projectId, area, puntos, refreshKey = 0, 
   // bodega quedó en negativo porque nunca hubo forma de corregir de cuál
   // bodega salía por fila. Mismo patrón que lote/técnico: override por fila.
   const [rowBodegaOverride, setRowBodegaOverride] = useState<Record<string, string>>({})
-  /** Bodega por fila de la tabla DIGITAL — separada de la física: la baja de
-   *  SAP no tiene por qué salir de la misma bodega que el movimiento físico. */
-  const [rowBodegaDigitalOverride, setRowBodegaDigitalOverride] = useState<Record<string, string>>({})
   /** Nota libre por fila — se copia a cada movimiento que registre esa fila
    *  al guardar. Antes la nota solo se podía escribir desde "Registrar
    *  movimiento" en Inventario, no desde la tabla de la OTT, aunque la
@@ -253,12 +269,6 @@ export function ResumenProyectoTable({ projectId, area, puntos, refreshKey = 0, 
   function getRowBodega(key: string): string {
     return rowBodegaOverride[key] || bodegaEdicion
   }
-  function getRowBodegaDigital(key: string): string {
-    return rowBodegaDigitalOverride[key] || bodegaEdicion
-  }
-  function setRowBodegaDigital(key: string, ubicacionBodegaId: string) {
-    setRowBodegaDigitalOverride((prev) => ({ ...prev, [key]: ubicacionBodegaId }))
-  }
   function setRowBodega(key: string, ubicacionBodegaId: string) {
     setRowBodegaOverride((prev) => ({ ...prev, [key]: ubicacionBodegaId }))
     // La bodega elegida gobierna qué lotes hay disponibles — un lote ya
@@ -285,7 +295,10 @@ export function ResumenProyectoTable({ projectId, area, puntos, refreshKey = 0, 
   // generando negativos falsos. Se corrige buscando dónde el material
   // realmente tiene stock y saltando la bodega de la fila para allá.
   async function handleMaterialSeleccionado(fila: NuevaFila, materialId: string) {
-    actualizarFilaNueva(fila.localId, { materialId, lote: '' })
+    // Ferretería no tiene lote físico distinguible — se fija directo, sin
+    // pasar por el selector (ver esFerreteria.ts).
+    const esFerreteria = esTipoFerreteria(materiales.find((m) => m.id === materialId)?.tipo?.nombre)
+    actualizarFilaNueva(fila.localId, { materialId, lote: esFerreteria ? LOTE_FISICO_FERRETERIA : '' })
     if (!materialId) return
     try {
       const stockRows = await getStock({ materialId })
@@ -308,10 +321,95 @@ export function ResumenProyectoTable({ projectId, area, puntos, refreshKey = 0, 
     setNuevasFilas((prev) => prev.filter((f) => f.localId !== localId))
   }
 
+  // Rebaja pendiente (Material digital / SAP) — ver RebajaPendienteSection.
+  const [lineasRebaja, setLineasRebaja] = useState<LineaRebaja[]>([])
+  const [sugiriendo, setSugiriendo] = useState(false)
+
+  function agregarLineaRebajaManual() {
+    setLineasRebaja((prev) => [...prev, {
+      localId: nanoid(8), materialId: '', materialSku: '', materialDescripcion: '',
+      lote: '', ubicacionBodegaId: bodegaEdicion, cantidad: '', origen: 'manual',
+    }])
+  }
+  function actualizarLineaRebaja(localId: string, patch: Partial<LineaRebaja>) {
+    setLineasRebaja((prev) => prev.map((l) => (l.localId === localId ? { ...l, ...patch } : l)))
+  }
+  function quitarLineaRebaja(localId: string) {
+    setLineasRebaja((prev) => prev.filter((l) => l.localId !== localId))
+  }
+
+  /**
+   * Recalcula las líneas `origen:'auto'` de rebaja pendiente, preservando
+   * las `manual` que ya se hayan agregado (mismo patrón que "Regenerar
+   * avance" del Estado de Pago: botón, no automático).
+   *
+   * Por material: necesario = Instalado total (sumado entre lotes físicos y
+   * puntos) − ya rebajado. Con eso > 0, se reparte entre los lotes DIGITALES
+   * disponibles en la bodega elegida, de MENOR a MAYOR cantidad — vacía
+   * primero el lote más chico, sigue con el siguiente, hasta cubrir lo
+   * necesario (pedido explícito de Andrés: "vaciar el lote más vacío y
+   * luego empezar a consumir el 2do con menos unidades"). Si ni sumando
+   * todo alcanza, la línea final queda con el faltante y SIN lote — nunca
+   * se inventa un lote que no tiene stock real, se marca para que se
+   * complete a mano o se elija otra bodega.
+   */
+  async function sugerirRebaja() {
+    if (!bodegaEdicion) { setError('Elige una bodega (en la barra de abajo) antes de sugerir rebaja'); return }
+    setError(null)
+    setSugiriendo(true)
+    try {
+      const stockBodega = await getStock({ ubicacionId: bodegaEdicion })
+      const disponiblePorMaterial = new Map<string, { lote: string; disponible: number }[]>()
+      for (const s of stockBodega) {
+        if (s.cantidadDigital <= 0) continue
+        const lista = disponiblePorMaterial.get(s.materialId) ?? []
+        lista.push({ lote: s.lote, disponible: s.cantidadDigital })
+        disponiblePorMaterial.set(s.materialId, lista)
+      }
+      for (const lista of disponiblePorMaterial.values()) lista.sort((a, b) => a.disponible - b.disponible)
+
+      const necesarioPorMaterial = new Map<string, { sku: string; descripcion: string; necesario: number }>()
+      for (const row of displayRows) {
+        const acc = necesarioPorMaterial.get(row.materialId) ?? { sku: row.materialSku, descripcion: row.materialDescripcion, necesario: 0 }
+        acc.necesario += row.cantInstalada - row.cantRebajada
+        necesarioPorMaterial.set(row.materialId, acc)
+      }
+
+      const auto: LineaRebaja[] = []
+      for (const [materialId, info] of necesarioPorMaterial) {
+        let restante = Math.round(info.necesario * 100) / 100
+        if (restante <= 0) continue
+        for (const l of disponiblePorMaterial.get(materialId) ?? []) {
+          if (restante <= 0) break
+          const usar = Math.min(l.disponible, restante)
+          auto.push({
+            localId: nanoid(8), materialId, materialSku: info.sku, materialDescripcion: info.descripcion,
+            lote: l.lote, ubicacionBodegaId: bodegaEdicion, cantidad: String(usar), origen: 'auto',
+          })
+          restante -= usar
+        }
+        if (restante > 0) {
+          // Sin lote que cubra el resto — se deja explícito, en vez de
+          // inventar uno, para que se complete a mano o se cambie de bodega.
+          auto.push({
+            localId: nanoid(8), materialId, materialSku: info.sku, materialDescripcion: info.descripcion,
+            lote: '', ubicacionBodegaId: bodegaEdicion, cantidad: String(restante), origen: 'auto',
+          })
+        }
+      }
+      setLineasRebaja((prev) => [...auto, ...prev.filter((l) => l.origen === 'manual')])
+    } catch (err) {
+      setError(err instanceof Error ? err.message : String(err))
+    } finally {
+      setSugiriendo(false)
+    }
+  }
+
   const pendientesExistentes = Object.values(edits).flatMap((byCampo) =>
     Object.values(byCampo).filter((v) => v && Number(v) > 0))
   const pendientesNuevas = nuevasFilas.flatMap((f) => Object.values(f.edits).filter((v) => v && Number(v) > 0))
-  const pendientes = [...pendientesExistentes, ...pendientesNuevas]
+  const pendientesRebaja = lineasRebaja.flatMap((l) => (l.cantidad && Number(l.cantidad) > 0 ? [l.cantidad] : []))
+  const pendientes = [...pendientesExistentes, ...pendientesNuevas, ...pendientesRebaja]
   const hayPendientes = pendientes.length > 0
 
   async function guardarCambios() {
@@ -327,20 +425,20 @@ export function ResumenProyectoTable({ projectId, area, puntos, refreshKey = 0, 
       const loteFila = getRowLote(row)
       const tecnicoFila = getRowTecnico(key)
       if (!tecnicoFila) {
-        for (const campo of CAMPOS) {
+        for (const campo of CAMPOS_FISICOS) {
           const raw = byCampo[campo]
           if (raw && Number(raw) > 0) nextEdits[key] = { ...nextEdits[key], [campo]: raw }
         }
         if (nextEdits[key]) nextErrors[`${key}|__tecnico__`] = 'Elige un técnico antes de guardar'
         continue
       }
-      for (const campo of CAMPOS) {
+      // CAMPO_DIGITAL (cantRebajada) queda afuera a propósito: registrar
+      // nueva rebaja ya no pasa por esta tabla, ver RebajaPendienteSection.
+      for (const campo of CAMPOS_FISICOS) {
         const raw = byCampo[campo]
         const n = Number(raw)
         if (!raw || !(n > 0)) continue
-        // La fila digital (Rebajado) tiene su propia bodega, distinta de la
-        // de la fila física — ver `rowBodegaDigitalOverride`.
-        const bodegaFila = campo === CAMPO_DIGITAL ? getRowBodegaDigital(key) : getRowBodega(key)
+        const bodegaFila = getRowBodega(key)
         if (CAMPO_NECESITA_BODEGA.includes(campo) && !bodegaFila) {
           nextErrors[`${key}|${campo}`] = 'Falta elegir bodega'
           nextEdits[key] = { ...nextEdits[key], [campo]: raw }
@@ -421,6 +519,34 @@ export function ResumenProyectoTable({ projectId, area, puntos, refreshKey = 0, 
       // si quedó sin edits pendientes, el material ya aparece como fila real tras el reload() — se descarta el borrador.
     }
 
+    const nextLineasRebaja: LineaRebaja[] = []
+    for (const linea of lineasRebaja) {
+      const n = Number(linea.cantidad)
+      if (!linea.cantidad || !(n > 0)) { nextLineasRebaja.push(linea); continue }
+      if (!linea.materialId) {
+        nextErrors[`${linea.localId}|__material__`] = 'Elige un material'
+        nextLineasRebaja.push(linea)
+        continue
+      }
+      if (!linea.ubicacionBodegaId) {
+        nextErrors[`${linea.localId}|__bodega__`] = 'Falta elegir bodega'
+        nextLineasRebaja.push(linea)
+        continue
+      }
+      try {
+        await registrarMovimiento({
+          tipoUI: 'rebajado', materialId: linea.materialId, cantidad: n,
+          lote: linea.lote.trim() || undefined, projectId, ubicacionBodegaId: linea.ubicacionBodegaId,
+        })
+        // Éxito: la línea se descarta — tras el reload() el material rebajado
+        // ya aparece con su número actualizado en la tabla digital de arriba.
+      } catch (err) {
+        nextErrors[`${linea.localId}|__cantidad__`] = err instanceof Error ? err.message : String(err)
+        nextLineasRebaja.push(linea)
+      }
+    }
+    setLineasRebaja(nextLineasRebaja)
+
     setEdits(nextEdits)
     setNuevasFilas(nextNuevasFilas)
     setCellErrors(nextErrors)
@@ -441,6 +567,7 @@ export function ResumenProyectoTable({ projectId, area, puntos, refreshKey = 0, 
     setEdits({})
     setCellErrors({})
     setNuevasFilas((prev) => prev.map((f) => ({ ...f, edits: {} })))
+    setLineasRebaja([])
   }
 
   function setCorrection(key: string, campo: Campo, v: string) {
@@ -576,6 +703,7 @@ export function ResumenProyectoTable({ projectId, area, puntos, refreshKey = 0, 
                 {nuevasFilas.map((fila) => {
                   const errMaterial = cellErrors[`${fila.localId}|__material__`]
                   const errTecnico = cellErrors[`${fila.localId}|__tecnico__`]
+                  const esFerreteriaFila = esTipoFerreteria(materiales.find((m) => m.id === fila.materialId)?.tipo?.nombre)
                   return (
                     <tr key={fila.localId} className="border-t border-slate-700 divide-x divide-slate-700 bg-brand-950/20">
                       <td className="px-2 py-2 align-top">
@@ -594,10 +722,14 @@ export function ResumenProyectoTable({ projectId, area, puntos, refreshKey = 0, 
                         {errMaterial && <p className="text-[9px] text-red-400 mt-0.5">{errMaterial}</p>}
                       </td>
                       <td className="px-2 py-2 align-top space-y-1">
-                        <LoteSelect materialId={fila.materialId} ubicacionId={fila.ubicacionBodegaId || null} naturaleza="fisico"
-                          checkAvailability={false} value={fila.lote}
-                          onChange={(lote) => actualizarFilaNueva(fila.localId, { lote })}
-                          className="w-24 bg-slate-700 text-white text-xs rounded px-1.5 py-1 border border-slate-600 focus:border-brand-500 focus:outline-none" />
+                        {esFerreteriaFila ? (
+                          <span className="text-slate-400 text-xs">Físico</span>
+                        ) : (
+                          <LoteSelect materialId={fila.materialId} ubicacionId={fila.ubicacionBodegaId || null} naturaleza="fisico"
+                            checkAvailability={false} value={fila.lote}
+                            onChange={(lote) => actualizarFilaNueva(fila.localId, { lote })}
+                            className="w-24 bg-slate-700 text-white text-xs rounded px-1.5 py-1 border border-slate-600 focus:border-brand-500 focus:outline-none" />
+                        )}
                         {puntos && (
                           <select value={fila.puntoId ?? NINGUN_PUNTO}
                             onChange={(e) => actualizarFilaNueva(fila.localId, { puntoId: e.target.value || null })}
@@ -609,7 +741,7 @@ export function ResumenProyectoTable({ projectId, area, puntos, refreshKey = 0, 
                       </td>
                       <td className="px-2 py-2 align-top">
                         <select value={fila.ubicacionBodegaId}
-                          onChange={(e) => actualizarFilaNueva(fila.localId, { ubicacionBodegaId: e.target.value, lote: '' })}
+                          onChange={(e) => actualizarFilaNueva(fila.localId, { ubicacionBodegaId: e.target.value, lote: esFerreteriaFila ? LOTE_FISICO_FERRETERIA : '' })}
                           className="w-24 bg-slate-700 text-white text-xs rounded px-1.5 py-1 border border-slate-600 focus:border-brand-500 focus:outline-none">
                           <option value="">Bodega…</option>
                           {bodegas.map((b) => <option key={b.id} value={b.id}>{b.nombre}</option>)}
@@ -648,6 +780,7 @@ export function ResumenProyectoTable({ projectId, area, puntos, refreshKey = 0, 
                   const draft = edits[key] ?? {}
                   const correctionDraft = corrections[key] ?? {}
                   const errTecnicoFila = cellErrors[`${key}|__tecnico__`]
+                  const esFerreteriaFila = esTipoFerreteria(materiales.find((m) => m.id === row.materialId)?.tipo?.nombre)
                   return (
                     <tr key={key} className="border-t border-slate-700 divide-x divide-slate-700 bg-slate-800/60">
                       <td className="px-2 py-2 align-top">
@@ -660,10 +793,14 @@ export function ResumenProyectoTable({ projectId, area, puntos, refreshKey = 0, 
                       </td>
                       <td className="px-2 py-2 text-slate-300 whitespace-nowrap">{row.materialSku}</td>
                       <td className="px-2 py-2 align-top space-y-1">
-                        <LoteSelect materialId={row.materialId} ubicacionId={getRowBodega(key) || null} naturaleza="fisico"
-                          checkAvailability={false} value={getRowLote(row)}
-                          onChange={(lote) => setRowLote(key, lote)}
-                          className="w-24 bg-slate-700 text-white text-xs rounded px-1.5 py-1 border border-slate-600 focus:border-brand-500 focus:outline-none" />
+                        {esFerreteriaFila ? (
+                          <span className="text-slate-400 text-xs">Físico</span>
+                        ) : (
+                          <LoteSelect materialId={row.materialId} ubicacionId={getRowBodega(key) || null} naturaleza="fisico"
+                            checkAvailability={false} value={getRowLote(row)}
+                            onChange={(lote) => setRowLote(key, lote)}
+                            className="w-24 bg-slate-700 text-white text-xs rounded px-1.5 py-1 border border-slate-600 focus:border-brand-500 focus:outline-none" />
+                        )}
                       </td>
                       <td className="px-2 py-2 align-top">
                         <select value={getRowBodega(key)} onChange={(e) => setRowBodega(key, e.target.value)}
@@ -729,18 +866,27 @@ export function ResumenProyectoTable({ projectId, area, puntos, refreshKey = 0, 
           <TablaDigital
             rows={displayRows}
             rowKey={rowKey}
-            edits={edits}
-            onDraft={setDraft}
-            cellErrors={cellErrors}
             modoCorreccion={modoCorreccion}
             corrections={corrections}
             onCorrection={setCorrection}
             correctionErrors={correctionErrors}
-            bodegas={bodegas}
-            getBodega={getRowBodegaDigital}
-            onBodegaChange={setRowBodegaDigital}
             editable={editableCampos.includes(CAMPO_DIGITAL)}
           />
+
+          {editableCampos.includes(CAMPO_DIGITAL) && (
+            <RebajaPendienteSection
+              lineas={lineasRebaja}
+              materiales={materiales}
+              bodegas={bodegas}
+              cellErrors={cellErrors}
+              saving={saving}
+              sugiriendo={sugiriendo}
+              onSugerir={sugerirRebaja}
+              onAgregarManual={agregarLineaRebajaManual}
+              onActualizar={actualizarLineaRebaja}
+              onQuitar={quitarLineaRebaja}
+            />
+          )}
 
           {hayPendientes && (
             <div className="bg-slate-700/40 rounded-xl border border-dashed border-slate-600 p-3 space-y-2">
@@ -788,57 +934,28 @@ export function ResumenProyectoTable({ projectId, area, puntos, refreshKey = 0, 
 }
 
 /**
- * Tabla DIGITAL del proyecto (baja contable en SAP). Comparte filas y estado
- * con la física de arriba: son las mismas filas de `proyecto_materiales`
- * (mismo SKU y lote), así que una fila cargada allá aparece sola acá — no
- * hay que darla de alta dos veces. La única columna editable es Cantidad
- * (`cantRebajada`), con la misma mecánica aditiva del resto de la app: lo
- * tecleado se registra como un movimiento `rebajado` al guardar, no
- * sobreescribe el número. "Disponible" es el stock DIGITAL de esa bodega
- * para ese material+lote, de solo lectura.
+ * Tabla DIGITAL del proyecto (baja contable en SAP). Muestra lo YA
+ * rebajado — comparte filas con la física de arriba (mismo SKU y lote de
+ * `proyecto_materiales`), así que una fila cargada allá aparece sola acá,
+ * sin darla de alta dos veces. Solo lectura salvo en modo corrección (ajusta
+ * el número sin mover stock, para arreglar un error de tipeo — igual que el
+ * resto de columnas corregibles).
+ *
+ * Registrar NUEVA rebaja ya no se hace en esta tabla — vive en
+ * `RebajaPendienteSection`, más abajo, con sugerencia automática de lote.
  */
 function TablaDigital({
-  rows, rowKey, edits, onDraft, cellErrors,
-  modoCorreccion, corrections, onCorrection, correctionErrors,
-  bodegas, getBodega, onBodegaChange, editable,
+  rows, rowKey,
+  modoCorreccion, corrections, onCorrection, correctionErrors, editable,
 }: {
   rows: ResumenMaterialProyecto[]
   rowKey: (r: ResumenMaterialProyecto) => string
-  edits: Record<string, Partial<Record<Campo, string>>>
-  onDraft: (key: string, campo: Campo, v: string) => void
-  cellErrors: Record<string, string>
   modoCorreccion: boolean
   corrections: Record<string, Partial<Record<Campo, string>>>
   onCorrection: (key: string, campo: Campo, v: string) => void
   correctionErrors: Record<string, string>
-  bodegas: Ubicacion[]
-  getBodega: (key: string) => string
-  onBodegaChange: (key: string, ubicacionBodegaId: string) => void
   editable: boolean
 }) {
-  // Stock digital disponible por bodega+material+lote. Se pide una vez por
-  // cada bodega distinta que haya elegida entre las filas (no una por fila).
-  const [disponible, setDisponible] = useState<Record<string, number>>({})
-
-  const bodegasEnUso = [...new Set(rows.map((r) => getBodega(rowKey(r))).filter(Boolean))].sort().join(',')
-
-  useEffect(() => {
-    const ids = bodegasEnUso ? bodegasEnUso.split(',') : []
-    if (ids.length === 0) { setDisponible({}); return }
-    let cancelado = false
-    Promise.all(ids.map((ubicacionId) => getStock({ ubicacionId })))
-      .then((listas) => {
-        if (cancelado) return
-        const mapa: Record<string, number> = {}
-        for (const filas of listas) {
-          for (const s of filas) mapa[`${s.ubicacionId}|${s.materialId}|${s.lote}`] = s.cantidadDigital
-        }
-        setDisponible(mapa)
-      })
-      .catch(() => { if (!cancelado) setDisponible({}) })
-    return () => { cancelado = true }
-  }, [bodegasEnUso])
-
   if (rows.length === 0) return null
 
   return (
@@ -855,30 +972,18 @@ function TablaDigital({
             <tr className="bg-slate-900/60 text-slate-400 text-left divide-x divide-slate-700">
               <th className="px-2 py-2 font-medium whitespace-nowrap">SKU</th>
               <th className="px-2 py-2 font-medium whitespace-nowrap">Lote</th>
-              <th className="px-2 py-2 font-medium whitespace-nowrap">Bodega</th>
-              <th className="px-2 py-2 font-medium text-center whitespace-nowrap">Cantidad</th>
-              <th className="px-2 py-2 font-medium text-center whitespace-nowrap">Disponible</th>
+              <th className="px-2 py-2 font-medium text-center whitespace-nowrap">Cantidad rebajada</th>
             </tr>
           </thead>
           <tbody>
             {rows.map((row) => {
               const key = rowKey(row)
-              const bodegaId = getBodega(key)
-              const disp = bodegaId ? disponible[`${bodegaId}|${row.materialId}|${row.lote}`] : undefined
-              const err = cellErrors[`${key}|${CAMPO_DIGITAL}`]
               const errCorreccion = correctionErrors[`${key}|${CAMPO_DIGITAL}`]
               const esCorregible = modoCorreccion && editable
               return (
                 <tr key={key} className="border-t border-slate-700 divide-x divide-slate-700 bg-slate-800/60">
                   <td className="px-2 py-2 text-slate-300 whitespace-nowrap">{row.materialSku}</td>
                   <td className="px-2 py-2 text-slate-400 whitespace-nowrap">{row.lote || '—'}</td>
-                  <td className="px-2 py-2 align-top">
-                    <select value={bodegaId} onChange={(e) => onBodegaChange(key, e.target.value)}
-                      className="w-24 bg-slate-700 text-white text-xs rounded px-1.5 py-1 border border-slate-600 focus:border-brand-500 focus:outline-none">
-                      <option value="">Bodega…</option>
-                      {bodegas.map((b) => <option key={b.id} value={b.id}>{b.nombre}</option>)}
-                    </select>
-                  </td>
                   <td className="px-2 py-2 text-center whitespace-nowrap align-top">
                     {esCorregible ? (
                       <>
@@ -892,30 +997,7 @@ function TablaDigital({
                         {errCorreccion && <p className="text-[9px] text-red-400 mt-0.5">{errCorreccion}</p>}
                       </>
                     ) : (
-                      <>
-                        <div className="flex items-center justify-center gap-1">
-                          <span className="text-white font-medium">{row.cantRebajada}</span>
-                          {editable && (
-                            <>
-                              <span className="text-slate-500 text-[10px]">+</span>
-                              <input type="number" min="0" step="any" placeholder="0"
-                                value={edits[key]?.[CAMPO_DIGITAL] ?? ''}
-                                onChange={(e) => onDraft(key, CAMPO_DIGITAL, e.target.value)}
-                                className="w-12 bg-slate-700 text-white text-xs rounded px-1 py-0.5 border border-slate-600 focus:border-brand-500 focus:outline-none text-center" />
-                            </>
-                          )}
-                        </div>
-                        {err && <p className="text-[9px] text-red-400 mt-0.5">{err}</p>}
-                      </>
-                    )}
-                  </td>
-                  <td className="px-2 py-2 text-center whitespace-nowrap">
-                    {!bodegaId ? (
-                      <span className="text-slate-600">—</span>
-                    ) : disp === undefined ? (
-                      <span className="text-slate-600">…</span>
-                    ) : (
-                      <span className={disp <= 0 ? 'text-red-400 font-medium' : 'text-white'}>{disp}</span>
+                      <span className="text-white font-medium">{row.cantRebajada}</span>
                     )}
                   </td>
                 </tr>
@@ -924,6 +1006,125 @@ function TablaDigital({
           </tbody>
         </table>
       </div>
+    </div>
+  )
+}
+
+/**
+ * Rebaja PENDIENTE — registrar nueva baja SAP, separado de `TablaDigital`
+ * (que solo muestra/corrige lo ya rebajado). "↻ Sugerir rebaja" calcula
+ * cuánto falta por material (Instalado − ya rebajado) y arma las líneas con
+ * el algoritmo de reparto de `sugerirRebaja` en el padre — acá solo se
+ * renderizan y se editan. Nada se guarda hasta "Guardar cambios" (mismo
+ * botón/mecanismo que el resto de la tabla, ver `guardarCambios`).
+ */
+function RebajaPendienteSection({
+  lineas, materiales, bodegas, cellErrors, saving, sugiriendo,
+  onSugerir, onAgregarManual, onActualizar, onQuitar,
+}: {
+  lineas: LineaRebaja[]
+  materiales: Material[]
+  bodegas: Ubicacion[]
+  cellErrors: Record<string, string>
+  saving: boolean
+  sugiriendo: boolean
+  onSugerir: () => Promise<void>
+  onAgregarManual: () => void
+  onActualizar: (localId: string, patch: Partial<LineaRebaja>) => void
+  onQuitar: (localId: string) => void
+}) {
+  const selectCls = 'bg-slate-700 text-white text-xs rounded-lg px-2 py-1 border border-slate-600 focus:border-brand-500 focus:outline-none'
+
+  return (
+    <div className="space-y-2">
+      <div className="flex items-center justify-between gap-2 flex-wrap">
+        <div>
+          <h3 className="text-xs font-semibold text-brand-400 uppercase tracking-wide">Rebaja pendiente</h3>
+          <p className="text-[11px] text-slate-500 leading-relaxed mt-1">
+            Registra nueva baja SAP. "Sugerir" propone lote y cantidad a partir de lo instalado — revisa y ajusta antes de guardar.
+          </p>
+        </div>
+        <button type="button" disabled={sugiriendo || saving} onClick={onSugerir}
+          className="text-xs font-semibold px-3 py-1.5 rounded-lg bg-brand-600 hover:bg-brand-700 disabled:opacity-40 text-white shrink-0">
+          {sugiriendo ? 'Calculando…' : '↻ Sugerir rebaja'}
+        </button>
+      </div>
+
+      {lineas.length > 0 && (
+        <div className="overflow-x-auto rounded-xl border border-slate-700">
+          <table className="w-full text-xs border-collapse">
+            <thead>
+              <tr className="bg-slate-900/60 text-slate-400 text-left divide-x divide-slate-700">
+                <th className="px-2 py-2 font-medium whitespace-nowrap">Material</th>
+                <th className="px-2 py-2 font-medium whitespace-nowrap">Lote</th>
+                <th className="px-2 py-2 font-medium whitespace-nowrap">Bodega</th>
+                <th className="px-2 py-2 font-medium text-center whitespace-nowrap">Cantidad</th>
+                <th className="px-2 py-2 font-medium whitespace-nowrap">Origen</th>
+                <th className="px-2 py-2 font-medium" />
+              </tr>
+            </thead>
+            <tbody>
+              {lineas.map((l) => {
+                const errMaterial = cellErrors[`${l.localId}|__material__`]
+                const errBodega = cellErrors[`${l.localId}|__bodega__`]
+                const errCantidad = cellErrors[`${l.localId}|__cantidad__`]
+                const sinLote = l.origen === 'auto' && !l.lote
+                return (
+                  <tr key={l.localId} className={`border-t border-slate-700 divide-x divide-slate-700 ${sinLote ? 'bg-amber-950/30' : 'bg-slate-800/60'}`}>
+                    <td className="px-2 py-2 align-top">
+                      {l.materialId ? (
+                        <span className="text-slate-300 whitespace-nowrap">{l.materialSku}</span>
+                      ) : (
+                        <MaterialSelect materiales={materiales} value={l.materialId}
+                          onChange={(id) => {
+                            const m = materiales.find((mm) => mm.id === id)
+                            onActualizar(l.localId, { materialId: id, materialSku: m?.sku ?? '', materialDescripcion: m?.descripcion ?? '', lote: '' })
+                          }}
+                          className="w-36" />
+                      )}
+                      {errMaterial && <p className="text-[9px] text-red-400 mt-0.5">{errMaterial}</p>}
+                    </td>
+                    <td className="px-2 py-2 align-top">
+                      <LoteSelect materialId={l.materialId} ubicacionId={l.ubicacionBodegaId || null} naturaleza="digital"
+                        checkAvailability={false} value={l.lote}
+                        onChange={(lote) => onActualizar(l.localId, { lote })}
+                        className="w-24 bg-slate-700 text-white text-xs rounded px-1.5 py-1 border border-slate-600 focus:border-brand-500 focus:outline-none" />
+                      {sinLote && <p className="text-[9px] text-amber-400 mt-0.5">Sin lote con stock suficiente</p>}
+                    </td>
+                    <td className="px-2 py-2 align-top">
+                      <select value={l.ubicacionBodegaId} onChange={(e) => onActualizar(l.localId, { ubicacionBodegaId: e.target.value, lote: '' })}
+                        className={selectCls}>
+                        <option value="">Bodega…</option>
+                        {bodegas.map((b) => <option key={b.id} value={b.id}>{b.nombre}</option>)}
+                      </select>
+                      {errBodega && <p className="text-[9px] text-red-400 mt-0.5">{errBodega}</p>}
+                    </td>
+                    <td className="px-2 py-2 text-center align-top">
+                      <input type="number" min="0" step="any" value={l.cantidad}
+                        onChange={(e) => onActualizar(l.localId, { cantidad: e.target.value })}
+                        className="w-16 bg-slate-700 text-white text-xs rounded px-1 py-0.5 border border-slate-600 focus:border-brand-500 focus:outline-none text-center" />
+                      {errCantidad && <p className="text-[9px] text-red-400 mt-0.5">{errCantidad}</p>}
+                    </td>
+                    <td className="px-2 py-2 whitespace-nowrap align-top">
+                      <span className={`text-[10px] font-semibold px-2 py-0.5 rounded-full ${l.origen === 'auto' ? 'bg-blue-900/50 text-blue-300' : 'bg-slate-700 text-slate-300'}`}>
+                        {l.origen === 'auto' ? 'Auto' : 'Manual'}
+                      </span>
+                    </td>
+                    <td className="px-2 py-2 align-top">
+                      <button type="button" onClick={() => onQuitar(l.localId)} className="text-[10px] text-slate-500 hover:text-red-400">✕</button>
+                    </td>
+                  </tr>
+                )
+              })}
+            </tbody>
+          </table>
+        </div>
+      )}
+
+      <button type="button" onClick={onAgregarManual}
+        className="text-[10px] font-semibold px-2 py-1 rounded-lg text-brand-400 hover:bg-slate-700">
+        + Agregar línea de rebaja
+      </button>
     </div>
   )
 }
