@@ -681,6 +681,7 @@ export function ResumenProyectoTable({ projectId, area, puntos, refreshKey = 0, 
                 <tr className="bg-slate-900/60 text-slate-400 text-left divide-x divide-slate-700">
                   <th className="px-2 py-2 font-medium whitespace-nowrap">Técnico</th>
                   <th className="px-2 py-2 font-medium whitespace-nowrap">SKU</th>
+                  <th className="px-2 py-2 font-medium">Descripción</th>
                   <th className="px-2 py-2 font-medium whitespace-nowrap">Lote</th>
                   <th className="px-2 py-2 font-medium whitespace-nowrap">Bodega</th>
                   <th className="px-2 py-2 font-medium text-center whitespace-nowrap">Solicitado</th>
@@ -720,6 +721,9 @@ export function ResumenProyectoTable({ projectId, area, puntos, refreshKey = 0, 
                           onChange={(id) => { handleMaterialSeleccionado(fila, id).catch(() => {}) }}
                           className="w-36" />
                         {errMaterial && <p className="text-[9px] text-red-400 mt-0.5">{errMaterial}</p>}
+                      </td>
+                      <td className="px-2 py-2 max-w-[200px] align-top">
+                        <p className="text-slate-400 truncate">{materiales.find((m) => m.id === fila.materialId)?.descripcion ?? ''}</p>
                       </td>
                       <td className="px-2 py-2 align-top space-y-1">
                         {esFerreteriaFila ? (
@@ -792,6 +796,7 @@ export function ResumenProyectoTable({ projectId, area, puntos, refreshKey = 0, 
                         {errTecnicoFila && <p className="text-[9px] text-red-400 mt-0.5">{errTecnicoFila}</p>}
                       </td>
                       <td className="px-2 py-2 text-slate-300 whitespace-nowrap">{row.materialSku}</td>
+                      <td className="px-2 py-2 max-w-[200px]"><p className="text-white truncate">{row.materialDescripcion}</p></td>
                       <td className="px-2 py-2 align-top space-y-1">
                         {esFerreteriaFila ? (
                           <span className="text-slate-400 text-xs">Físico</span>
