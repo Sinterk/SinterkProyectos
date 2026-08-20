@@ -1,10 +1,10 @@
 # Continuar — Migración a backend Supabase
 
 > Documento de retomada — LEER ESTO PRIMERO si se retoma en otra máquina o
-> sesión nueva. Última actualización: 11-08-2026 (noche, tarde-8).
+> sesión nueva. Última actualización: 11-08-2026 (noche, tarde-9).
 
 ## ⚡ Estado ahora mismo (11-08-2026)
-- **`main` va atrás a propósito**: `main` está en `97b097a` (v1.59) y `backend-supabase` en v1.65, con el commit `599bb86` (alta de trabajadores, v1.55) de por medio — ver pendiente (1).
+- **`main` va atrás a propósito**: `main` está en `97b097a` (v1.59) y `backend-supabase` en v1.66, con el commit `599bb86` (alta de trabajadores, v1.55) de por medio — ver pendiente (1).
 - **Migraciones**: corridas y confirmadas hasta `0064`. Ninguna pendiente.
 - **Para retomar en otra máquina**: `git clone` (o `git fetch` + `git checkout backend-supabase`; si el `main` local quedó viejo, `git branch -f main origin/main`), `npm install`, recrear el `.env` a mano (los nombres de variable están en `src/lib/supabaseClient.ts` y `src/lib/auth.ts`; los valores NO están en el repo, es público — Andrés los tiene), `npm run dev`.
 - **Pendientes de Andrés** (no bloquean nada salvo lo marcado):
@@ -14,9 +14,20 @@
   4. Decidir si se automatiza la reversión de resoluciones al anular (bloqueo conocido: `resolver_evento_parcial` no llena `movimientos.evento_resolucion_id`).
   5. Volver a guardar la contraseña en Firefox desde `about:logins` — las guardadas antes de v1.47 quedaron con campos anónimos y no se autocompletan.
   6. **Falta un historial global de eventos resueltos** (ver la entrada sobre "Ignorar" más abajo) — decidir si vale la pena una pantalla nueva para eso o basta con lo que ya hay por conteo.
-  7. **Probar Ferretería sin lote físico + rebaja sugerida** (v1.62-v1.65, ver entradas abajo) — sin probar todavía en el navegador esta sesión.
+  7. **Probar Ferretería sin lote físico + rebaja sugerida** (v1.62-v1.66, ver entradas abajo) — sin probar todavía en el navegador esta sesión.
   8. **Pendiente para la semana (sin fecha fija)**: reescribir el texto de advertencia de "Corregir errores de tipeo" en Resumen de Proyecto — hoy dice "para arreglar un error de tipeo" y eso confunde con el caso real de "anoté 6, eran 5, ya hubo un movimiento real de 6". Corrección NUNCA revierte el movimiento ni el stock, solo pisa el número que se ve en la tabla — si el movimiento real fue mal registrado, hay que anularlo y volver a registrar con la cantidad correcta, o el stock queda mintiendo (técnico con más de lo que en verdad tiene). Andrés pidió dejarlo pendiente, no implementarlo ahora.
 - **Deploy**: sano. El desfase "producción en v1.28 con `main` en v1.44" que figuraba acá como sin resolver era un error de Andrés al mirar, no un problema del workflow — confirmado el 11-08. `.github/workflows/deploy.yml` publica bien en cada push a `main`.
+
+## v1.66 — cable no se reparte entre lotes + "Rebaja pendiente" con formato Excel
+Dos ajustes de Andrés sobre `sugerirRebaja()`/`RebajaPendienteSection` de v1.64-v1.65:
+
+**1. Cable es un caso aparte en la sugerencia.** El resto de materiales sigue repartiéndose entre varios lotes digitales (menor a mayor cantidad) si hace falta — cable NUNCA se fracciona:
+  - Si el físico ya tiene un lote real conocido (no `'SinDefinir'`) — el caso normal, cable siempre se instala de un lote específico — la rebaja va contra ESE MISMO lote, siempre, sin comparar disponible ni buscar otro. El digital ya permite quedar negativo (0055), así que no hace falta que "alcance".
+  - Solo si el físico todavía no tiene lote (`'SinDefinir'`) se busca un lote digital — pero UNO SOLO que cubra toda la cantidad (filtro `cantidadDigital >= necesario`, no `> 0`), priorizando igual la bodega del área y, entre los que alcanzan, el más ajustado. Si ninguno alcanza solo, queda una línea sin lote con el total — nunca se fracciona en varias líneas más chicas.
+  - Cable tampoco se agrupa por material entre lotes distintos como el resto: cada fila física (material+lote) es su propia línea, 1 a 1.
+  - `esTipoCable` (`esCable.ts`, ya existía) decide qué material es cable — mismo criterio que EP/lista de ATT.
+
+**2. "Rebaja pendiente" (`RebajaPendienteSection`) reformateada** con las mismas 9 columnas y orden que "Material digital" (OTT, Dirección de trabajos, Fecha de instalación, RUT empresa, Dirección empresa, SKU, Material, Lote, Cantidad) — antes solo tenía Material/Lote/Bodega/Cantidad/Origen. Bodega/Origen/Acción quedan como columnas extra al final (uso interno, no están en el Excel de Entel). Recibe `ott`/`direccion`/`fechaInstalacion` igual que `TablaDigital` — mismos props ya threaded desde v1.64, solo faltaba pasarlos a este componente también.
 
 ## v1.65 — guardar rebaja pendiente reventaba: "Rebajado requiere proyecto, técnico y bodega de origen"
 Bug de la v1.64 recién subida: `RebajaPendienteSection` arma cada línea con material/lote/bodega/cantidad pero SIN técnico (con razón — Andrés: "técnico no es relevante para rebajas desde C088"), y el loop de guardado llamaba `registrarMovimiento({tipoUI:'rebajado', ...})` sin mandar `tecnicoUserId`.

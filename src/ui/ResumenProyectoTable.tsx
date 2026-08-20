@@ -26,6 +26,7 @@ import type { MemberProfile } from '@/lib/adminRepo'
 import { useAuth } from '@/lib/auth'
 import { nanoid } from '@/core/utils/nanoid'
 import { BODEGA_DEFECTO_POR_AREA } from '@/lib/inventario/defaults'
+import { esTipoCable } from '@/lib/inventario/esCable'
 import { esTipoFerreteria, LOTE_FISICO_FERRETERIA } from '@/lib/inventario/esFerreteria'
 import {
   corregirProyectoMaterial, getResumenProyecto, getStock, listMateriales, listUbicaciones,
@@ -353,29 +354,75 @@ export function ResumenProyectoTable({ projectId, area, puntos, refreshKey = 0, 
    * las `manual` que ya se hayan agregado (mismo patrón que "Regenerar
    * avance" del Estado de Pago: botón, no automático).
    *
-   * Por material: necesario = Instalado total (sumado entre lotes físicos y
-   * puntos) − ya rebajado. Con eso > 0, se reparte entre TODOS los lotes
-   * digitales disponibles del material, buscando en CUALQUIER bodega — no
-   * solo la elegida en la barra de abajo. Orden de asignación (pedido
-   * explícito de Andrés): primero los lotes de la bodega del área
-   * (C088 en ATT, C132 en OyM — `defaultBodegaId`), de MENOR a MAYOR
-   * cantidad dentro de esa bodega; agotada esa bodega, sigue con el resto
-   * de bodegas, también de menor a mayor. Si ni sumando todo alcanza, la
-   * línea final queda con el faltante y SIN lote — nunca se inventa uno,
-   * se marca para completar a mano.
+   * CABLE es un caso aparte (pedido explícito de Andrés) — nunca se reparte
+   * entre varios lotes:
+   *   - Si el físico YA tiene un lote real (no 'SinDefinir'), la rebaja va
+   *     contra ESE MISMO lote, siempre, sin buscar ni comparar disponible —
+   *     es de ahí de donde salió de verdad. El digital ya permite negativo
+   *     (0055), así que no hace falta que "alcance" para usarlo.
+   *   - Si el físico todavía no tiene lote, se busca UN lote digital que
+   *     cubra toda la cantidad — nunca varios. Si ninguno alcanza solo,
+   *     queda una línea sin lote con el total, para completar a mano.
+   * Cable tampoco se agrupa por material entre lotes distintos: cada fila
+   * física (material+lote) es su propia línea de rebaja.
+   *
+   * Todo lo demás sigue igual que antes: se agrupa por material (sin
+   * importar el lote físico) y se reparte entre TODOS los lotes digitales
+   * disponibles, en cualquier bodega, priorizando la del área (C088 en ATT,
+   * C132 en OyM — `defaultBodegaId`) de MENOR a MAYOR cantidad; agotada esa
+   * bodega, sigue con el resto también de menor a mayor. Si ni sumando todo
+   * alcanza, la línea final queda con el faltante y sin lote.
    */
   async function sugerirRebaja() {
     setError(null)
     setSugiriendo(true)
     try {
-      const necesarioPorMaterial = new Map<string, { sku: string; descripcion: string; necesario: number }>()
+      const auto: LineaRebaja[] = []
+      const filasCable: typeof displayRows = []
+      const filasResto: typeof displayRows = []
       for (const row of displayRows) {
+        const tipoNombre = materiales.find((m) => m.id === row.materialId)?.tipo?.nombre
+        ;(esTipoCable(tipoNombre) ? filasCable : filasResto).push(row)
+      }
+
+      for (const row of filasCable) {
+        const necesario = Math.round((row.cantInstalada - row.cantRebajada) * 100) / 100
+        if (necesario <= 0) continue
+
+        if (row.lote && row.lote !== 'SinDefinir') {
+          const stockLote = await getStock({ materialId: row.materialId, lote: row.lote })
+          const ubicacion = stockLote.find((s) => s.ubicacionId === defaultBodegaId) ?? stockLote[0]
+          auto.push({
+            localId: nanoid(8), materialId: row.materialId, materialSku: row.materialSku, materialDescripcion: row.materialDescripcion,
+            lote: row.lote, ubicacionBodegaId: ubicacion?.ubicacionId ?? defaultBodegaId, cantidad: String(necesario), origen: 'auto',
+          })
+          continue
+        }
+
+        // Sin lote físico todavía: un solo lote digital que cubra todo,
+        // nunca varios. Entre los que alcanzan, prioriza la bodega del
+        // área y, dentro de esa prioridad, el más ajustado (menor sobrante).
+        const stockMaterial = await getStock({ materialId: row.materialId })
+        const candidato = stockMaterial
+          .filter((s) => s.cantidadDigital >= necesario)
+          .sort((a, b) => {
+            const prioridadA = a.ubicacionId === defaultBodegaId
+            const prioridadB = b.ubicacionId === defaultBodegaId
+            return prioridadA !== prioridadB ? (prioridadA ? -1 : 1) : a.cantidadDigital - b.cantidadDigital
+          })[0]
+        auto.push({
+          localId: nanoid(8), materialId: row.materialId, materialSku: row.materialSku, materialDescripcion: row.materialDescripcion,
+          lote: candidato?.lote ?? '', ubicacionBodegaId: candidato?.ubicacionId ?? defaultBodegaId,
+          cantidad: String(necesario), origen: 'auto',
+        })
+      }
+
+      const necesarioPorMaterial = new Map<string, { sku: string; descripcion: string; necesario: number }>()
+      for (const row of filasResto) {
         const acc = necesarioPorMaterial.get(row.materialId) ?? { sku: row.materialSku, descripcion: row.materialDescripcion, necesario: 0 }
         acc.necesario += row.cantInstalada - row.cantRebajada
         necesarioPorMaterial.set(row.materialId, acc)
       }
-
-      const auto: LineaRebaja[] = []
       for (const [materialId, info] of necesarioPorMaterial) {
         let restante = Math.round(info.necesario * 100) / 100
         if (restante <= 0) continue
@@ -886,6 +933,9 @@ export function ResumenProyectoTable({ projectId, area, puntos, refreshKey = 0, 
               cellErrors={cellErrors}
               saving={saving}
               sugiriendo={sugiriendo}
+              ott={ott}
+              direccion={direccion}
+              fechaInstalacion={fechaInicio}
               onSugerir={sugerirRebaja}
               onAgregarManual={agregarLineaRebajaManual}
               onActualizar={actualizarLineaRebaja}
@@ -1070,6 +1120,7 @@ function TablaDigital({
  */
 function RebajaPendienteSection({
   lineas, materiales, bodegas, cellErrors, saving, sugiriendo,
+  ott, direccion, fechaInstalacion,
   onSugerir, onAgregarManual, onActualizar, onQuitar,
 }: {
   lineas: LineaRebaja[]
@@ -1078,6 +1129,9 @@ function RebajaPendienteSection({
   cellErrors: Record<string, string>
   saving: boolean
   sugiriendo: boolean
+  ott?: string
+  direccion?: string
+  fechaInstalacion?: string
   onSugerir: () => Promise<void>
   onAgregarManual: () => void
   onActualizar: (localId: string, patch: Partial<LineaRebaja>) => void
@@ -1091,7 +1145,7 @@ function RebajaPendienteSection({
         <div>
           <h3 className="text-xs font-semibold text-brand-400 uppercase tracking-wide">Rebaja pendiente</h3>
           <p className="text-[11px] text-slate-500 leading-relaxed mt-1">
-            Registra nueva baja SAP. "Sugerir" propone lote y cantidad a partir de lo instalado, priorizando la bodega del área — revisa y ajusta antes de guardar.
+            Registra nueva baja SAP. "Sugerir" propone lote y cantidad a partir de lo instalado, priorizando la bodega del área — revisa y ajusta antes de guardar. Formato listo para copiar y pegar en el control de rebajas de Entel, igual que "Material digital". Cable nunca se reparte entre lotes: usa el mismo lote físico si ya se conoce, o uno solo que alcance completo.
           </p>
         </div>
         <button type="button" disabled={sugiriendo || saving} onClick={onSugerir}
@@ -1105,10 +1159,20 @@ function RebajaPendienteSection({
           <table className="w-full text-xs border-collapse">
             <thead>
               <tr className="bg-slate-900/60 text-slate-400 text-left divide-x divide-slate-700">
-                <th className="px-2 py-2 font-medium whitespace-nowrap">Material</th>
+                {/* Mismas 9 columnas y orden que "Material digital" (y que el
+                    control de rebajas de Entel) — así al confirmar la
+                    sugerencia se puede copiar igual, antes incluso de guardar.
+                    Bodega/Origen/Acción van después, son de uso interno. */}
+                <th className="px-2 py-2 font-medium whitespace-nowrap">OTT</th>
+                <th className="px-2 py-2 font-medium">Dirección de trabajos</th>
+                <th className="px-2 py-2 font-medium whitespace-nowrap">Fecha de instalación</th>
+                <th className="px-2 py-2 font-medium whitespace-nowrap">RUT empresa</th>
+                <th className="px-2 py-2 font-medium">Dirección empresa</th>
+                <th className="px-2 py-2 font-medium whitespace-nowrap">SKU</th>
+                <th className="px-2 py-2 font-medium">Material</th>
                 <th className="px-2 py-2 font-medium whitespace-nowrap">Lote</th>
-                <th className="px-2 py-2 font-medium whitespace-nowrap">Bodega</th>
                 <th className="px-2 py-2 font-medium text-center whitespace-nowrap">Cantidad</th>
+                <th className="px-2 py-2 font-medium whitespace-nowrap">Bodega</th>
                 <th className="px-2 py-2 font-medium whitespace-nowrap">Origen</th>
                 <th className="px-2 py-2 font-medium" />
               </tr>
@@ -1121,6 +1185,11 @@ function RebajaPendienteSection({
                 const sinLote = l.origen === 'auto' && !l.lote
                 return (
                   <tr key={l.localId} className={`border-t border-slate-700 divide-x divide-slate-700 ${sinLote ? 'bg-amber-950/30' : 'bg-slate-800/60'}`}>
+                    <td className="px-2 py-2 text-slate-300 whitespace-nowrap">{ott || '—'}</td>
+                    <td className="px-2 py-2 max-w-[220px]"><p className="text-slate-300 truncate">{direccion || '—'}</p></td>
+                    <td className="px-2 py-2 text-slate-300 whitespace-nowrap">{fechaInstalacion || '—'}</td>
+                    <td className="px-2 py-2 text-slate-300 whitespace-nowrap">{RUT_EMPRESA}</td>
+                    <td className="px-2 py-2 text-slate-300 whitespace-nowrap">{DIRECCION_EMPRESA}</td>
                     <td className="px-2 py-2 align-top">
                       {l.materialId ? (
                         <span className="text-slate-300 whitespace-nowrap">{l.materialSku}</span>
@@ -1134,12 +1203,19 @@ function RebajaPendienteSection({
                       )}
                       {errMaterial && <p className="text-[9px] text-red-400 mt-0.5">{errMaterial}</p>}
                     </td>
+                    <td className="px-2 py-2 max-w-[220px]"><p className="text-white truncate">{l.materialDescripcion}</p></td>
                     <td className="px-2 py-2 align-top">
                       <LoteSelect materialId={l.materialId} ubicacionId={l.ubicacionBodegaId || null} naturaleza="digital"
                         checkAvailability={false} value={l.lote}
                         onChange={(lote) => onActualizar(l.localId, { lote })}
                         className="w-24 bg-slate-700 text-white text-xs rounded px-1.5 py-1 border border-slate-600 focus:border-brand-500 focus:outline-none" />
                       {sinLote && <p className="text-[9px] text-amber-400 mt-0.5">Sin lote con stock suficiente</p>}
+                    </td>
+                    <td className="px-2 py-2 text-center align-top">
+                      <input type="number" min="0" step="any" value={l.cantidad}
+                        onChange={(e) => onActualizar(l.localId, { cantidad: e.target.value })}
+                        className="w-16 bg-slate-700 text-white text-xs rounded px-1 py-0.5 border border-slate-600 focus:border-brand-500 focus:outline-none text-center" />
+                      {errCantidad && <p className="text-[9px] text-red-400 mt-0.5">{errCantidad}</p>}
                     </td>
                     <td className="px-2 py-2 align-top">
                       <select value={l.ubicacionBodegaId} onChange={(e) => onActualizar(l.localId, { ubicacionBodegaId: e.target.value, lote: '' })}
@@ -1148,12 +1224,6 @@ function RebajaPendienteSection({
                         {bodegas.map((b) => <option key={b.id} value={b.id}>{b.nombre}</option>)}
                       </select>
                       {errBodega && <p className="text-[9px] text-red-400 mt-0.5">{errBodega}</p>}
-                    </td>
-                    <td className="px-2 py-2 text-center align-top">
-                      <input type="number" min="0" step="any" value={l.cantidad}
-                        onChange={(e) => onActualizar(l.localId, { cantidad: e.target.value })}
-                        className="w-16 bg-slate-700 text-white text-xs rounded px-1 py-0.5 border border-slate-600 focus:border-brand-500 focus:outline-none text-center" />
-                      {errCantidad && <p className="text-[9px] text-red-400 mt-0.5">{errCantidad}</p>}
                     </td>
                     <td className="px-2 py-2 whitespace-nowrap align-top">
                       <span className={`text-[10px] font-semibold px-2 py-0.5 rounded-full ${l.origen === 'auto' ? 'bg-blue-900/50 text-blue-300' : 'bg-slate-700 text-slate-300'}`}>
