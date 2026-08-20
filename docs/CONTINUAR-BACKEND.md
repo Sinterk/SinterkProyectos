@@ -1,20 +1,20 @@
 # Continuar — Migración a backend Supabase
 
 > Documento de retomada — LEER ESTO PRIMERO si se retoma en otra máquina o
-> sesión nueva. Última actualización: 11-08-2026 (noche, tarde-5).
+> sesión nueva. Última actualización: 11-08-2026 (noche, tarde-6).
 
 ## ⚡ Estado ahora mismo (11-08-2026)
-- **`main` va atrás a propósito**: `main` está en `97b097a` (v1.59) y `backend-supabase` en v1.62, con el commit `599bb86` (alta de trabajadores, v1.55) de por medio — ver pendiente (2).
-- **Migraciones**: corridas y confirmadas hasta `0063`. **`0064_ferreteria_traspaso_lote.sql` es NUEVA, sin correr todavía** — ver detalle abajo. Sin ella, reclasificar un material a Ferretería no traspasa su `SinDefinir` a `Físico`, pero el resto de la feature (sin lote en movimientos físicos, rebaja sugerida) funciona igual.
+- **`main` va atrás a propósito**: `main` está en `97b097a` (v1.59) y `backend-supabase` en v1.62, con el commit `599bb86` (alta de trabajadores, v1.55) de por medio — ver pendiente (1).
+- **Migraciones**: corridas y confirmadas hasta `0064` (Andrés confirmó "sql 64 corrido" el 11-08). Ninguna pendiente.
 - **Para retomar en otra máquina**: `git clone` (o `git fetch` + `git checkout backend-supabase`; si el `main` local quedó viejo, `git branch -f main origin/main`), `npm install`, recrear el `.env` a mano (los nombres de variable están en `src/lib/supabaseClient.ts` y `src/lib/auth.ts`; los valores NO están en el repo, es público — Andrés los tiene), `npm run dev`.
 - **Pendientes de Andrés** (no bloquean nada salvo lo marcado):
-  1. **Correr la migración 0064** — sin ella, el traspaso automático SinDefinir→Físico al reclasificar un material a Ferretería no ocurre (ni para lo ya clasificado hoy, ni hacia adelante).
-  2. Desplegar la Edge Function de alta de usuarios: `supabase functions deploy crear-usuario` (requiere CLI de Supabase y el proyecto enlazado). Sin esto el botón "➕ Agregar trabajador" en Administración falla.
-  3. Completar en Administración el texto de Corrección de los 2 hallazgos que llegaron sin definir ("Falta Planimetria" y "CTO en condición insegura o no autorizada") — ya no es tarea de código, es editar el campo ahí mismo.
-  4. Corregir con el modo corrección los 2 "Asignado a técnico" que quedaron en la OTT de prueba.
-  5. Decidir si se automatiza la reversión de resoluciones al anular (bloqueo conocido: `resolver_evento_parcial` no llena `movimientos.evento_resolucion_id`).
-  6. Volver a guardar la contraseña en Firefox desde `about:logins` — las guardadas antes de v1.47 quedaron con campos anónimos y no se autocompletan.
-  7. **Falta un historial global de eventos resueltos** (ver la entrada sobre "Ignorar" más abajo) — decidir si vale la pena una pantalla nueva para eso o basta con lo que ya hay por conteo.
+  1. Desplegar la Edge Function de alta de usuarios: `supabase functions deploy crear-usuario` (requiere CLI de Supabase y el proyecto enlazado). Sin esto el botón "➕ Agregar trabajador" en Administración falla.
+  2. Completar en Administración el texto de Corrección de los 2 hallazgos que llegaron sin definir ("Falta Planimetria" y "CTO en condición insegura o no autorizada") — ya no es tarea de código, es editar el campo ahí mismo.
+  3. Corregir con el modo corrección los 2 "Asignado a técnico" que quedaron en la OTT de prueba.
+  4. Decidir si se automatiza la reversión de resoluciones al anular (bloqueo conocido: `resolver_evento_parcial` no llena `movimientos.evento_resolucion_id`).
+  5. Volver a guardar la contraseña en Firefox desde `about:logins` — las guardadas antes de v1.47 quedaron con campos anónimos y no se autocompletan.
+  6. **Falta un historial global de eventos resueltos** (ver la entrada sobre "Ignorar" más abajo) — decidir si vale la pena una pantalla nueva para eso o basta con lo que ya hay por conteo.
+  7. **Probar Ferretería sin lote físico + rebaja sugerida** (v1.62, ver entrada abajo) — sin probar todavía en el navegador esta sesión.
 - **Deploy**: sano. El desfase "producción en v1.28 con `main` en v1.44" que figuraba acá como sin resolver era un error de Andrés al mirar, no un problema del workflow — confirmado el 11-08. `.github/workflows/deploy.yml` publica bien en cada push a `main`.
 
 ## v1.62 — Ferretería sin lote físico + rebaja sugerida
