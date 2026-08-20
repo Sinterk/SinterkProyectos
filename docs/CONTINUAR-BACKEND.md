@@ -1,11 +1,11 @@
 # Continuar — Migración a backend Supabase
 
 > Documento de retomada — LEER ESTO PRIMERO si se retoma en otra máquina o
-> sesión nueva. Última actualización: 11-08-2026 (noche, tarde-6).
+> sesión nueva. Última actualización: 11-08-2026 (noche, tarde-7).
 
 ## ⚡ Estado ahora mismo (11-08-2026)
-- **`main` va atrás a propósito**: `main` está en `97b097a` (v1.59) y `backend-supabase` en v1.62, con el commit `599bb86` (alta de trabajadores, v1.55) de por medio — ver pendiente (1).
-- **Migraciones**: corridas y confirmadas hasta `0064` (Andrés confirmó "sql 64 corrido" el 11-08). Ninguna pendiente.
+- **`main` va atrás a propósito**: `main` está en `97b097a` (v1.59) y `backend-supabase` en v1.64, con el commit `599bb86` (alta de trabajadores, v1.55) de por medio — ver pendiente (1).
+- **Migraciones**: corridas y confirmadas hasta `0064`. Ninguna pendiente.
 - **Para retomar en otra máquina**: `git clone` (o `git fetch` + `git checkout backend-supabase`; si el `main` local quedó viejo, `git branch -f main origin/main`), `npm install`, recrear el `.env` a mano (los nombres de variable están en `src/lib/supabaseClient.ts` y `src/lib/auth.ts`; los valores NO están en el repo, es público — Andrés los tiene), `npm run dev`.
 - **Pendientes de Andrés** (no bloquean nada salvo lo marcado):
   1. Desplegar la Edge Function de alta de usuarios: `supabase functions deploy crear-usuario` (requiere CLI de Supabase y el proyecto enlazado). Sin esto el botón "➕ Agregar trabajador" en Administración falla.
@@ -14,10 +14,24 @@
   4. Decidir si se automatiza la reversión de resoluciones al anular (bloqueo conocido: `resolver_evento_parcial` no llena `movimientos.evento_resolucion_id`).
   5. Volver a guardar la contraseña en Firefox desde `about:logins` — las guardadas antes de v1.47 quedaron con campos anónimos y no se autocompletan.
   6. **Falta un historial global de eventos resueltos** (ver la entrada sobre "Ignorar" más abajo) — decidir si vale la pena una pantalla nueva para eso o basta con lo que ya hay por conteo.
-  7. **Probar Ferretería sin lote físico + rebaja sugerida** (v1.62, ver entrada abajo) — sin probar todavía en el navegador esta sesión.
+  7. **Probar Ferretería sin lote físico + rebaja sugerida** (v1.62-v1.64, ver entradas abajo) — sin probar todavía en el navegador esta sesión.
+  8. **Pendiente para la semana (sin fecha fija)**: reescribir el texto de advertencia de "Corregir errores de tipeo" en Resumen de Proyecto — hoy dice "para arreglar un error de tipeo" y eso confunde con el caso real de "anoté 6, eran 5, ya hubo un movimiento real de 6". Corrección NUNCA revierte el movimiento ni el stock, solo pisa el número que se ve en la tabla — si el movimiento real fue mal registrado, hay que anularlo y volver a registrar con la cantidad correcta, o el stock queda mintiendo (técnico con más de lo que en verdad tiene). Andrés pidió dejarlo pendiente, no implementarlo ahora.
 - **Deploy**: sano. El desfase "producción en v1.28 con `main` en v1.44" que figuraba acá como sin resolver era un error de Andrés al mirar, no un problema del workflow — confirmado el 11-08. `.github/workflows/deploy.yml` publica bien en cada push a `main`.
 
-## v1.62 — Ferretería sin lote físico + rebaja sugerida
+## v1.64 — orden de Logística + rebaja multi-bodega + formato copiable a Excel de Entel
+Andrés compartió `CONTROL DE REBAJAS C088.xlsx` (pestaña 2026) — el control de rebajas real que usa Entel — y pidió 3 cosas sobre lo construido en v1.62:
+
+1. **Orden de secciones en Logística confirmado**: Técnicos (`EquipoSection`) → Material físico → **Rebaja pendiente** → Material digital. Antes Material digital iba ANTES que Rebaja pendiente; se invirtió el orden de render en `ResumenProyectoTable.tsx` (ambos componentes seguían intactos, solo cambió el orden en que se llaman).
+2. **`sugerirRebaja()` ahora busca en TODAS las bodegas**, no solo la elegida en la barra de abajo — antes exigía elegir una bodega primero. Por material, junta el stock digital de cualquier bodega vía `getStock({ materialId })` (sin `ubicacionId`), y ordena: primero los lotes de la bodega del área (`defaultBodegaId` — C088 en ATT, C132 en OyM), de menor a mayor cantidad; agotada esa bodega, sigue con el resto también de menor a mayor. Pedido explícito de Andrés: "ordena primero los de C088 y después los de otras bodegas".
+3. **`TablaDigital` ("Material digital") reformateada** para calzar columna por columna con la pestaña 2026 del Excel — orden exacto: OTT, Dirección de trabajos, Fecha de instalación, RUT empresa, Dirección empresa, SKU, Material, Lote, Cantidad. Seleccionar filas y pegarlas directo en el Excel de Entel cae en su lugar sin reacomodar nada.
+   - RUT empresa / Dirección empresa son constantes (`76.512.898-6` / `Primero de Mayo 3425`, iguales en las ~2200 filas del Excel de referencia — el RUT/dirección de Sinterk como contratista, no del proyecto).
+   - OTT/Dirección/Fecha de instalación son del proyecto completo (mismo valor en cada fila) — nuevos props opcionales en `LogisticaTab`/`ResumenProyectoTable` (`ott`, `direccion`, `fechaInicio`), pasados desde `Editor.tsx` de ATT únicamente (`record.ott`, `record.direccion`, `fechaInicioDe(record)`). Preventivos/Incidencias no los mandan — esas 3 columnas quedan en blanco ahí, no rompe nada.
+   - "Fecha de instalación" usa la Fecha de inicio de la OTT (confirmado con Andrés) — no hay una fecha de instalación real por fila (la rebaja suma instalaciones de varios días/puntos).
+   - La tabla ahora filtra a `cantRebajada > 0` (antes mostraba toda fila del proyecto, incluso con 0 rebajado) — es un log de rebajas confirmadas, no el inventario completo.
+
+De paso: nueva columna **Descripción** en la tabla de Material físico de la OTT (junto al SKU), pedido explícito de Andrés, sin relación con lo de arriba.
+
+## v1.62-v1.63 — Ferretería sin lote físico + rebaja sugerida
 Pedido de Andrés, con plan aprobado en la conversación (ver el mensaje "Plan:" del 11-08). Problema real: materiales como cruceta/tornillería no tienen lote físico distinguible — obligar a elegir "cualquier lote disponible" en cada Entrega/Instalado generaba descuadre.
 
 **Parte 1 — sin lote en movimientos físicos.** Nuevo `src/lib/inventario/esFerreteria.ts` (`esTipoFerreteria`, mismo patrón que `esCable.ts`: por nombre del Tipo del Catálogo, no por id) y `LOTE_FISICO_FERRETERIA = 'Físico'`. En los 3 sitios reales donde se elige lote físico (`AsignacionesForm.tsx` Entrega/Conteo, `RegistrarMovimientoForm.tsx` Entrada, `ResumenProyectoTable.tsx` filas físicas nueva/existente), si el material es Ferretería no se muestra `LoteSelect` — se fija `'Físico'` directo. El valor real guardado en `lote` pasa a ser ese string, así que fluye solo a Bodega/Movimientos/Técnico sin tocar esas pantallas. La rama `naturaleza='digital'` de `RegistrarMovimientoForm` (rebajado) queda intacta a propósito — ahí el lote real sigue importando (hoy es código muerto de todos modos: el único render real de ese componente es `soloEntrada`, ver `Home.tsx:118`).

@@ -22,9 +22,19 @@ interface Props {
   puntos?: Punto[]
   /** Incidencias tiene su propia pestaña "Comentarios" separada — evita duplicar ObservacionesSection acá. Default true (ATT/Preventivos sin cambios). */
   incluirComentarios?: boolean
+  /**
+   * Solo ATT las pasa hoy — se usan para armar el formato de "Material
+   * digital" copiable al control de rebajas de Entel (OTT/Dirección/Fecha
+   * de instalación por fila, ver ResumenProyectoTable). Preventivos/
+   * Incidencias las dejan vacías, sin romper nada — esas columnas quedan en
+   * blanco si no aplica.
+   */
+  ott?: string
+  direccion?: string
+  fechaInicio?: string
 }
 
-export function LogisticaTab({ projectId, area, puntos, incluirComentarios = true }: Props) {
+export function LogisticaTab({ projectId, area, puntos, incluirComentarios = true, ott, direccion, fechaInicio }: Props) {
   const isTecnico = useAuth((s) => s.profile?.rol === 'tecnico')
   // EquipoSection y ResumenProyectoTable leen `project_members` cada uno por
   // su cuenta (listas separadas, sin estado compartido) — sin este contador,
@@ -36,7 +46,8 @@ export function LogisticaTab({ projectId, area, puntos, incluirComentarios = tru
       {!isTecnico && (
         <EquipoSection projectId={projectId} onMembersChanged={() => setMembersVersion((v) => v + 1)} />
       )}
-      <ResumenProyectoTable projectId={projectId} area={area} puntos={puntos} membersVersion={membersVersion} />
+      <ResumenProyectoTable projectId={projectId} area={area} puntos={puntos} membersVersion={membersVersion}
+        ott={ott} direccion={direccion} fechaInicio={fechaInicio} />
       {incluirComentarios && <ObservacionesSection projectId={projectId} />}
     </div>
   )

@@ -46,6 +46,10 @@ interface Props {
   refreshKey?: number
   /** Sube cuando `EquipoSection` (en LogisticaTab) agrega/quita un técnico — sin esto, esta tabla seguía mostrando la lista de técnicos vieja hasta salir y volver a entrar a la OTT. */
   membersVersion?: number
+  /** Solo ATT las pasa — para el formato "Material digital" copiable al control de rebajas de Entel (ver TablaDigital). */
+  ott?: string
+  direccion?: string
+  fechaInicio?: string
 }
 
 export function Stat({ label, value, highlight }: { label: string; value: number; highlight?: boolean }) {
@@ -161,7 +165,7 @@ interface LineaRebaja {
   origen: 'auto' | 'manual'
 }
 
-export function ResumenProyectoTable({ projectId, area, puntos, refreshKey = 0, membersVersion = 0 }: Props) {
+export function ResumenProyectoTable({ projectId, area, puntos, refreshKey = 0, membersVersion = 0, ott, direccion, fechaInicio }: Props) {
   const rol = useAuth((s) => s.profile?.rol)
   const puedeCorregir = rol === 'admin' || rol === 'jp' || rol === 'log'
   // El técnico solo reporta lo que instaló/devolvió — entregado/rebajado los
@@ -344,30 +348,20 @@ export function ResumenProyectoTable({ projectId, area, puntos, refreshKey = 0, 
    * avance" del Estado de Pago: botón, no automático).
    *
    * Por material: necesario = Instalado total (sumado entre lotes físicos y
-   * puntos) − ya rebajado. Con eso > 0, se reparte entre los lotes DIGITALES
-   * disponibles en la bodega elegida, de MENOR a MAYOR cantidad — vacía
-   * primero el lote más chico, sigue con el siguiente, hasta cubrir lo
-   * necesario (pedido explícito de Andrés: "vaciar el lote más vacío y
-   * luego empezar a consumir el 2do con menos unidades"). Si ni sumando
-   * todo alcanza, la línea final queda con el faltante y SIN lote — nunca
-   * se inventa un lote que no tiene stock real, se marca para que se
-   * complete a mano o se elija otra bodega.
+   * puntos) − ya rebajado. Con eso > 0, se reparte entre TODOS los lotes
+   * digitales disponibles del material, buscando en CUALQUIER bodega — no
+   * solo la elegida en la barra de abajo. Orden de asignación (pedido
+   * explícito de Andrés): primero los lotes de la bodega del área
+   * (C088 en ATT, C132 en OyM — `defaultBodegaId`), de MENOR a MAYOR
+   * cantidad dentro de esa bodega; agotada esa bodega, sigue con el resto
+   * de bodegas, también de menor a mayor. Si ni sumando todo alcanza, la
+   * línea final queda con el faltante y SIN lote — nunca se inventa uno,
+   * se marca para completar a mano.
    */
   async function sugerirRebaja() {
-    if (!bodegaEdicion) { setError('Elige una bodega (en la barra de abajo) antes de sugerir rebaja'); return }
     setError(null)
     setSugiriendo(true)
     try {
-      const stockBodega = await getStock({ ubicacionId: bodegaEdicion })
-      const disponiblePorMaterial = new Map<string, { lote: string; disponible: number }[]>()
-      for (const s of stockBodega) {
-        if (s.cantidadDigital <= 0) continue
-        const lista = disponiblePorMaterial.get(s.materialId) ?? []
-        lista.push({ lote: s.lote, disponible: s.cantidadDigital })
-        disponiblePorMaterial.set(s.materialId, lista)
-      }
-      for (const lista of disponiblePorMaterial.values()) lista.sort((a, b) => a.disponible - b.disponible)
-
       const necesarioPorMaterial = new Map<string, { sku: string; descripcion: string; necesario: number }>()
       for (const row of displayRows) {
         const acc = necesarioPorMaterial.get(row.materialId) ?? { sku: row.materialSku, descripcion: row.materialDescripcion, necesario: 0 }
@@ -379,21 +373,28 @@ export function ResumenProyectoTable({ projectId, area, puntos, refreshKey = 0, 
       for (const [materialId, info] of necesarioPorMaterial) {
         let restante = Math.round(info.necesario * 100) / 100
         if (restante <= 0) continue
-        for (const l of disponiblePorMaterial.get(materialId) ?? []) {
+
+        const stockMaterial = await getStock({ materialId })
+        const lotes = stockMaterial
+          .filter((s) => s.cantidadDigital > 0)
+          .map((s) => ({ ubicacionId: s.ubicacionId, lote: s.lote, disponible: s.cantidadDigital, prioridad: s.ubicacionId === defaultBodegaId }))
+          .sort((a, b) => (a.prioridad !== b.prioridad ? (a.prioridad ? -1 : 1) : a.disponible - b.disponible))
+
+        for (const l of lotes) {
           if (restante <= 0) break
           const usar = Math.min(l.disponible, restante)
           auto.push({
             localId: nanoid(8), materialId, materialSku: info.sku, materialDescripcion: info.descripcion,
-            lote: l.lote, ubicacionBodegaId: bodegaEdicion, cantidad: String(usar), origen: 'auto',
+            lote: l.lote, ubicacionBodegaId: l.ubicacionId, cantidad: String(usar), origen: 'auto',
           })
           restante -= usar
         }
         if (restante > 0) {
-          // Sin lote que cubra el resto — se deja explícito, en vez de
-          // inventar uno, para que se complete a mano o se cambie de bodega.
+          // Sin lote que cubra el resto en NINGUNA bodega — se deja
+          // explícito, en vez de inventar uno, para completar a mano.
           auto.push({
             localId: nanoid(8), materialId, materialSku: info.sku, materialDescripcion: info.descripcion,
-            lote: '', ubicacionBodegaId: bodegaEdicion, cantidad: String(restante), origen: 'auto',
+            lote: '', ubicacionBodegaId: defaultBodegaId, cantidad: String(restante), origen: 'auto',
           })
         }
       }
@@ -868,16 +869,8 @@ export function ResumenProyectoTable({ projectId, area, puntos, refreshKey = 0, 
             </table>
           </div>
 
-          <TablaDigital
-            rows={displayRows}
-            rowKey={rowKey}
-            modoCorreccion={modoCorreccion}
-            corrections={corrections}
-            onCorrection={setCorrection}
-            correctionErrors={correctionErrors}
-            editable={editableCampos.includes(CAMPO_DIGITAL)}
-          />
-
+          {/* Orden pedido por Andrés: Técnicos (EquipoSection, en LogisticaTab) →
+              Material físico (arriba) → Rebaja pendiente → Material digital. */}
           {editableCampos.includes(CAMPO_DIGITAL) && (
             <RebajaPendienteSection
               lineas={lineasRebaja}
@@ -892,6 +885,19 @@ export function ResumenProyectoTable({ projectId, area, puntos, refreshKey = 0, 
               onQuitar={quitarLineaRebaja}
             />
           )}
+
+          <TablaDigital
+            rows={displayRows}
+            rowKey={rowKey}
+            ott={ott}
+            direccion={direccion}
+            fechaInstalacion={fechaInicio}
+            modoCorreccion={modoCorreccion}
+            corrections={corrections}
+            onCorrection={setCorrection}
+            correctionErrors={correctionErrors}
+            editable={editableCampos.includes(CAMPO_DIGITAL)}
+          />
 
           {hayPendientes && (
             <div className="bg-slate-700/40 rounded-xl border border-dashed border-slate-600 p-3 space-y-2">
@@ -938,6 +944,13 @@ export function ResumenProyectoTable({ projectId, area, puntos, refreshKey = 0, 
   )
 }
 
+// RUT y dirección del contratista (Sinterk) — el control de rebajas de Entel
+// exige el mismo valor en toda fila, no depende del proyecto. Ver el Excel
+// que compartió Andrés ("CONTROL DE REBAJAS C088.xlsx", pestaña 2026): las
+// ~2200 filas existentes usan siempre este mismo par de valores.
+const RUT_EMPRESA = '76.512.898-6'
+const DIRECCION_EMPRESA = 'Primero de Mayo 3425'
+
 /**
  * Tabla DIGITAL del proyecto (baja contable en SAP). Muestra lo YA
  * rebajado — comparte filas con la física de arriba (mismo SKU y lote de
@@ -947,47 +960,72 @@ export function ResumenProyectoTable({ projectId, area, puntos, refreshKey = 0, 
  * resto de columnas corregibles).
  *
  * Registrar NUEVA rebaja ya no se hace en esta tabla — vive en
- * `RebajaPendienteSection`, más abajo, con sugerencia automática de lote.
+ * `RebajaPendienteSection`, arriba, con sugerencia automática de lote.
+ *
+ * Columnas y orden EXACTOS al control de rebajas que Entel espera (mismo
+ * Excel de arriba, pestaña 2026, columnas OTT→Cantidad): así seleccionar
+ * filas de acá y pegarlas en ese archivo cae directo en su lugar, sin
+ * reacomodar nada. `ott`/`direccion`/`fechaInstalacion` son del proyecto
+ * completo (mismo valor en cada fila) — los pasa `Editor.tsx` de ATT; en
+ * Preventivos/Incidencias, que no los mandan, esas 3 columnas quedan vacías.
  */
 function TablaDigital({
-  rows, rowKey,
+  rows, rowKey, ott, direccion, fechaInstalacion,
   modoCorreccion, corrections, onCorrection, correctionErrors, editable,
 }: {
   rows: ResumenMaterialProyecto[]
   rowKey: (r: ResumenMaterialProyecto) => string
+  ott?: string
+  direccion?: string
+  fechaInstalacion?: string
   modoCorreccion: boolean
   corrections: Record<string, Partial<Record<Campo, string>>>
   onCorrection: (key: string, campo: Campo, v: string) => void
   correctionErrors: Record<string, string>
   editable: boolean
 }) {
-  if (rows.length === 0) return null
+  // Solo lo que de verdad se rebajó — esto es un log de rebajas confirmadas,
+  // no el inventario completo del proyecto (ese es la tabla física).
+  const filas = rows.filter((r) => r.cantRebajada > 0)
+  if (filas.length === 0) return null
 
   return (
     <div className="space-y-2">
       <div>
         <h3 className="text-xs font-semibold text-brand-400 uppercase tracking-wide">Material digital (SAP)</h3>
         <p className="text-[11px] text-slate-500 leading-relaxed mt-1">
-          Baja contable en SAP, sin movimiento físico. Las filas salen solas de la tabla de arriba (mismo SKU y lote).
+          Baja contable en SAP, sin movimiento físico. Formato listo para copiar y pegar en el control de rebajas de Entel.
         </p>
       </div>
       <div className="overflow-x-auto rounded-xl border border-slate-700">
         <table className="w-full text-xs border-collapse">
           <thead>
             <tr className="bg-slate-900/60 text-slate-400 text-left divide-x divide-slate-700">
+              <th className="px-2 py-2 font-medium whitespace-nowrap">OTT</th>
+              <th className="px-2 py-2 font-medium">Dirección de trabajos</th>
+              <th className="px-2 py-2 font-medium whitespace-nowrap">Fecha de instalación</th>
+              <th className="px-2 py-2 font-medium whitespace-nowrap">RUT empresa</th>
+              <th className="px-2 py-2 font-medium">Dirección empresa</th>
               <th className="px-2 py-2 font-medium whitespace-nowrap">SKU</th>
+              <th className="px-2 py-2 font-medium">Material</th>
               <th className="px-2 py-2 font-medium whitespace-nowrap">Lote</th>
-              <th className="px-2 py-2 font-medium text-center whitespace-nowrap">Cantidad rebajada</th>
+              <th className="px-2 py-2 font-medium text-center whitespace-nowrap">Cantidad</th>
             </tr>
           </thead>
           <tbody>
-            {rows.map((row) => {
+            {filas.map((row) => {
               const key = rowKey(row)
               const errCorreccion = correctionErrors[`${key}|${CAMPO_DIGITAL}`]
               const esCorregible = modoCorreccion && editable
               return (
                 <tr key={key} className="border-t border-slate-700 divide-x divide-slate-700 bg-slate-800/60">
+                  <td className="px-2 py-2 text-slate-300 whitespace-nowrap">{ott || '—'}</td>
+                  <td className="px-2 py-2 max-w-[220px]"><p className="text-slate-300 truncate">{direccion || '—'}</p></td>
+                  <td className="px-2 py-2 text-slate-300 whitespace-nowrap">{fechaInstalacion || '—'}</td>
+                  <td className="px-2 py-2 text-slate-300 whitespace-nowrap">{RUT_EMPRESA}</td>
+                  <td className="px-2 py-2 text-slate-300 whitespace-nowrap">{DIRECCION_EMPRESA}</td>
                   <td className="px-2 py-2 text-slate-300 whitespace-nowrap">{row.materialSku}</td>
+                  <td className="px-2 py-2 max-w-[220px]"><p className="text-white truncate">{row.materialDescripcion}</p></td>
                   <td className="px-2 py-2 text-slate-400 whitespace-nowrap">{row.lote || '—'}</td>
                   <td className="px-2 py-2 text-center whitespace-nowrap align-top">
                     {esCorregible ? (
@@ -1046,7 +1084,7 @@ function RebajaPendienteSection({
         <div>
           <h3 className="text-xs font-semibold text-brand-400 uppercase tracking-wide">Rebaja pendiente</h3>
           <p className="text-[11px] text-slate-500 leading-relaxed mt-1">
-            Registra nueva baja SAP. "Sugerir" propone lote y cantidad a partir de lo instalado — revisa y ajusta antes de guardar.
+            Registra nueva baja SAP. "Sugerir" propone lote y cantidad a partir de lo instalado, priorizando la bodega del área — revisa y ajusta antes de guardar.
           </p>
         </div>
         <button type="button" disabled={sugiriendo || saving} onClick={onSugerir}
