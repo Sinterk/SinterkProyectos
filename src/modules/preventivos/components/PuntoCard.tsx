@@ -33,7 +33,14 @@ interface Props {
   index: number
   total: number
   editable?: boolean
-  /** Rol técnico: puede agregar/quitar las 3 fotos del punto, pero no tocar nombre/descripción/dirección/hallazgo ni reordenar/eliminar el punto. */
+  /**
+   * Deja solo las 3 fotos del punto editables, todo lo demás de solo
+   * lectura (nombre/descripción/dirección/hallazgo, reordenar, eliminar).
+   * El Editor ya NO lo pasa para rol técnico — terreno agrega y edita
+   * puntos por completo, solo la info del proyecto (`CuadranteSection`)
+   * les queda bloqueada. Queda como prop general por si hace falta en otro
+   * contexto de solo-lectura-salvo-fotos más adelante.
+   */
   soloFotos?: boolean
   /** Texto de Corrección por hallazgo, editable desde Administración (ver correccionesRepo.ts) — lo carga el Editor una sola vez para todos los puntos. */
   correccionesPorHallazgo: Record<string, string>

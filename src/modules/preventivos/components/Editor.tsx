@@ -138,6 +138,10 @@ export function Editor() {
             </div>
           )}
 
+          {/* Terreno (técnico) no toca la info del proyecto — cuadrante, zona,
+              responsable, etc. — pero sí debe poder agregar y editar puntos
+              por completo: es el trabajo real del levantamiento en terreno.
+              Por eso `soloFotos` solo se pasa acá, no a los puntos de abajo. */}
           <CuadranteSection preventivoId={record.id} cuadrante={record.cuadrante} soloFotos={isTecnico} />
 
           <div className="space-y-3">
@@ -152,9 +156,7 @@ export function Editor() {
             </div>
 
             {puntos.length === 0 && (
-              <div className="text-center py-8 text-slate-500 text-sm">
-                {isTecnico ? 'Todavía no hay puntos cargados para este levantamiento.' : 'Agrega puntos con el botón de abajo.'}
-              </div>
+              <div className="text-center py-8 text-slate-500 text-sm">Agrega puntos con el botón de abajo.</div>
             )}
 
             <DndContext sensors={sensors} collisionDetection={closestCenter} onDragEnd={handleDragEnd}>
@@ -162,7 +164,6 @@ export function Editor() {
                 {puntos.map((punto, i) => (
                   <PuntoCard key={punto.id} preventivoId={record.id} punto={punto} index={i} total={puntos.length}
                     editable={true}
-                    soloFotos={isTecnico}
                     correccionesPorHallazgo={correccionesPorHallazgo}
                     onSave={async () => {}}
                     onMove={(from, to) => movePunto(record.id, from, to)}
@@ -171,12 +172,10 @@ export function Editor() {
               </SortableContext>
             </DndContext>
 
-            {!isTecnico && (
-              <button type="button" onClick={() => addPunto(record.id)}
-                className="w-full py-3 rounded-2xl border-2 border-dashed border-slate-600 text-slate-400 text-sm hover:border-brand-500 hover:text-brand-400 transition-colors flex items-center justify-center gap-2">
-                ➕ Agregar punto
-              </button>
-            )}
+            <button type="button" onClick={() => addPunto(record.id)}
+              className="w-full py-3 rounded-2xl border-2 border-dashed border-slate-600 text-slate-400 text-sm hover:border-brand-500 hover:text-brand-400 transition-colors flex items-center justify-center gap-2">
+              ➕ Agregar punto
+            </button>
           </div>
         </>
       )}

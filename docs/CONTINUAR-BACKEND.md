@@ -1,21 +1,27 @@
 # Continuar — Migración a backend Supabase
 
 > Documento de retomada — LEER ESTO PRIMERO si se retoma en otra máquina o
-> sesión nueva. Última actualización: 11-08-2026 (noche, tarde-3).
+> sesión nueva. Última actualización: 11-08-2026 (noche, tarde-4).
 
 ## ⚡ Estado ahora mismo (11-08-2026)
-- **`main` va atrás a propósito**: `main` está en `97b097a` (v1.59) y `backend-supabase` en v1.60, con el commit `599bb86` (alta de trabajadores, v1.55) de por medio — ver pendiente (1).
-- **Migraciones**: corridas y confirmadas hasta `0062`. **`0063_ott_unico_solo_att.sql` es NUEVA, sin correr todavía** — saca la restricción de nombre único de cuadrante/incidencia repetido entre períodos (ver detalle abajo). Bloquea a cualquiera que intente crear o sincronizar un Preventivo/Incidencia con un nombre ya usado antes — que es exactamente lo normal en este flujo periódico.
+- **`main` va atrás a propósito**: `main` está en `97b097a` (v1.59) y `backend-supabase` en v1.61, con el commit `599bb86` (alta de trabajadores, v1.55) de por medio — ver pendiente (1).
+- **Migraciones**: corridas y confirmadas hasta `0063` (Andrés confirmó "ahora sí parece estar bien" el 11-08, tras correrla). Ninguna pendiente.
 - **Para retomar en otra máquina**: `git clone` (o `git fetch` + `git checkout backend-supabase`; si el `main` local quedó viejo, `git branch -f main origin/main`), `npm install`, recrear el `.env` a mano (los nombres de variable están en `src/lib/supabaseClient.ts` y `src/lib/auth.ts`; los valores NO están en el repo, es público — Andrés los tiene), `npm run dev`.
 - **Pendientes de Andrés** (no bloquean nada salvo lo marcado):
-  1. **Correr la migración 0063** — ver entrada v1.60 abajo. Después de correrla, el levantamiento del colega (y cualquier otro cuadrante con nombre repetido) debería sincronizar solo, sin re-importar nada — con reintentar desde el Editor basta.
-  2. Desplegar la Edge Function de alta de usuarios: `supabase functions deploy crear-usuario` (requiere CLI de Supabase y el proyecto enlazado). Sin esto el botón "➕ Agregar trabajador" en Administración falla.
-  3. Completar en Administración el texto de Corrección de los 2 hallazgos que llegaron sin definir ("Falta Planimetria" y "CTO en condición insegura o no autorizada") — ya no es tarea de código, es editar el campo ahí mismo.
-  4. Corregir con el modo corrección los 2 "Asignado a técnico" que quedaron en la OTT de prueba.
-  5. Decidir si se automatiza la reversión de resoluciones al anular (bloqueo conocido: `resolver_evento_parcial` no llena `movimientos.evento_resolucion_id`).
-  6. Volver a guardar la contraseña en Firefox desde `about:logins` — las guardadas antes de v1.47 quedaron con campos anónimos y no se autocompletan.
-  7. **Falta un historial global de eventos resueltos** (ver la entrada sobre "Ignorar" más abajo) — decidir si vale la pena una pantalla nueva para eso o basta con lo que ya hay por conteo.
+  1. Desplegar la Edge Function de alta de usuarios: `supabase functions deploy crear-usuario` (requiere CLI de Supabase y el proyecto enlazado). Sin esto el botón "➕ Agregar trabajador" en Administración falla.
+  2. Completar en Administración el texto de Corrección de los 2 hallazgos que llegaron sin definir ("Falta Planimetria" y "CTO en condición insegura o no autorizada") — ya no es tarea de código, es editar el campo ahí mismo.
+  3. Corregir con el modo corrección los 2 "Asignado a técnico" que quedaron en la OTT de prueba.
+  4. Decidir si se automatiza la reversión de resoluciones al anular (bloqueo conocido: `resolver_evento_parcial` no llena `movimientos.evento_resolucion_id`).
+  5. Volver a guardar la contraseña en Firefox desde `about:logins` — las guardadas antes de v1.47 quedaron con campos anónimos y no se autocompletan.
+  6. **Falta un historial global de eventos resueltos** (ver la entrada sobre "Ignorar" más abajo) — decidir si vale la pena una pantalla nueva para eso o basta con lo que ya hay por conteo.
 - **Deploy**: sano. El desfase "producción en v1.28 con `main` en v1.44" que figuraba acá como sin resolver era un error de Andrés al mirar, no un problema del workflow — confirmado el 11-08. `.github/workflows/deploy.yml` publica bien en cada push a `main`.
+
+## v1.61 — terreno (técnico) puede agregar y editar puntos de Preventivos
+Pedido de Andrés: terreno no debe poder cambiar la info del proyecto (cuadrante/zona/responsable/etc.), pero SÍ debe poder agregar puntos y editarlos por completo — antes ni siquiera veía el botón "Agregar punto".
+
+Causa: `Editor.tsx` pasaba `soloFotos={isTecnico}` tanto a `CuadranteSection` (correcto, la info de proyecto debe quedar bloqueada) como a cada `PuntoCard` (INCORRECTO — dejaba los puntos en modo solo-fotos para técnico: nombre/descripción/dirección/hallazgo de solo lectura, sin poder reordenar ni eliminar), y además ocultaba el botón "➕ Agregar punto" entero con `{!isTecnico && (...)}`.
+
+Fix: se dejó de pasar `soloFotos` a `PuntoCard` (queda en su default `false` para todos los roles) y se sacó el gate `!isTecnico` del botón de agregar. `CuadranteSection` no se tocó — sigue bloqueada para técnico. Sin cambios de RLS: `puntos_all` (0002) ya permitía insert/update/delete a cualquier miembro del proyecto (`is_member`), esto era puramente una restricción de la interfaz, no del servidor.
 
 ## v1.60 — nombre de cuadrante/incidencia repetido entre períodos rompía la sincronización
 Reportado por Andrés: subió el ZIP de un colega y "no se guarda bien"; además, el avance de ese colega trabajando en vivo tampoco le aparecía. Pista suya, clave para encontrarlo: "como esto se hace periódicamente, es común nombres iguales".
