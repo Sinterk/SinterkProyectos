@@ -71,10 +71,19 @@ async function insertProjectIdempotente(clientLocalId: string, patch: Record<str
   if (!error) return data.id
 
   if (error.code === '23505') {
-    const { data: existente2, error: errBuscar2 } = await supabase
-      .from('projects').select('id').eq('client_local_id', clientLocalId).single()
-    if (errBuscar2) throw new Error(`projects.insert (tras choque de duplicado): ${errBuscar2.message}`)
-    return existente2.id
+    // Un 23505 acá puede ser CUALQUIERA de dos constraints distintas de
+    // `projects`: el reintento por `client_local_id` (0046, el caso para el
+    // que se escribió esta recuperación) o `unique(ott, version)` (0001) —
+    // un OTT que ya existe. Antes se asumía siempre la primera; si el
+    // conflicto real era el OTT duplicado, la búsqueda por client_local_id
+    // no encontraba nada y reventaba con un error de "no rows" que no
+    // decía la causa real (ver 0063_ott_unico_solo_att.sql, que además saca
+    // esta constraint para Preventivos/Incidencias, donde reusar el nombre
+    // entre períodos es normal — en ATT sí es una colisión real).
+    const { data: existente2 } = await supabase
+      .from('projects').select('id').eq('client_local_id', clientLocalId).maybeSingle()
+    if (existente2) return existente2.id
+    throw new Error(`projects.insert: ya existe un proyecto con el OTT "${String(patch.ott ?? '')}"`)
   }
   throw new Error(`projects.insert: ${error.message}`)
 }

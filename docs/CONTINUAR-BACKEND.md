@@ -1,21 +1,34 @@
 # Continuar — Migración a backend Supabase
 
 > Documento de retomada — LEER ESTO PRIMERO si se retoma en otra máquina o
-> sesión nueva. Última actualización: 11-08-2026 (noche, tarde-2).
+> sesión nueva. Última actualización: 11-08-2026 (noche, tarde-3).
 
 ## ⚡ Estado ahora mismo (11-08-2026)
-- **`main` va atrás a propósito**: `main` está en `3145bd3` (v1.54) y `backend-supabase` en v1.59, con el commit `599bb86` (alta de trabajadores, v1.55) de por medio. Ese commit requiere desplegar la Edge Function `crear-usuario` antes de subir a producción — ver pendiente (1). Si se sube algo nuevo a `main` sin ese commit, hace falta `cherry-pick`, no push directo.
-- **Migraciones**: corridas y confirmadas hasta `0062`. Ninguna pendiente.
+- **`main` va atrás a propósito**: `main` está en `97b097a` (v1.59) y `backend-supabase` en v1.60, con el commit `599bb86` (alta de trabajadores, v1.55) de por medio — ver pendiente (1).
+- **Migraciones**: corridas y confirmadas hasta `0062`. **`0063_ott_unico_solo_att.sql` es NUEVA, sin correr todavía** — saca la restricción de nombre único de cuadrante/incidencia repetido entre períodos (ver detalle abajo). Bloquea a cualquiera que intente crear o sincronizar un Preventivo/Incidencia con un nombre ya usado antes — que es exactamente lo normal en este flujo periódico.
 - **Para retomar en otra máquina**: `git clone` (o `git fetch` + `git checkout backend-supabase`; si el `main` local quedó viejo, `git branch -f main origin/main`), `npm install`, recrear el `.env` a mano (los nombres de variable están en `src/lib/supabaseClient.ts` y `src/lib/auth.ts`; los valores NO están en el repo, es público — Andrés los tiene), `npm run dev`.
 - **Pendientes de Andrés** (no bloquean nada salvo lo marcado):
-  1. Desplegar la Edge Function de alta de usuarios: `supabase functions deploy crear-usuario` (requiere CLI de Supabase y el proyecto enlazado). Sin esto el botón "➕ Agregar trabajador" en Administración falla.
-  2. Completar en Administración el texto de Corrección de los 2 hallazgos que llegaron sin definir ("Falta Planimetria" y "CTO en condición insegura o no autorizada") — ya no es tarea de código, es editar el campo ahí mismo.
-  3. Corregir con el modo corrección los 2 "Asignado a técnico" que quedaron en la OTT de prueba.
-  4. Decidir si se automatiza la reversión de resoluciones al anular (bloqueo conocido: `resolver_evento_parcial` no llena `movimientos.evento_resolucion_id`).
-  5. Volver a guardar la contraseña en Firefox desde `about:logins` — las guardadas antes de v1.47 quedaron con campos anónimos y no se autocompletan.
-  6. **Falta un historial global de eventos resueltos** (ver la entrada del 11-08 sobre "Ignorar" más abajo) — decidir si vale la pena una pantalla nueva para eso o basta con lo que ya hay por conteo.
-  7. **Recuperar el levantamiento del colega** (ver entrada v1.59 abajo) — el ZIP le creó un informe vacío en el servidor (0 puntos). Con el fix ya arriba, borrar ese levantamiento local (o el registro server-side si ya no está en el store local de nadie) y volver a importar el mismo ZIP.
+  1. **Correr la migración 0063** — ver entrada v1.60 abajo. Después de correrla, el levantamiento del colega (y cualquier otro cuadrante con nombre repetido) debería sincronizar solo, sin re-importar nada — con reintentar desde el Editor basta.
+  2. Desplegar la Edge Function de alta de usuarios: `supabase functions deploy crear-usuario` (requiere CLI de Supabase y el proyecto enlazado). Sin esto el botón "➕ Agregar trabajador" en Administración falla.
+  3. Completar en Administración el texto de Corrección de los 2 hallazgos que llegaron sin definir ("Falta Planimetria" y "CTO en condición insegura o no autorizada") — ya no es tarea de código, es editar el campo ahí mismo.
+  4. Corregir con el modo corrección los 2 "Asignado a técnico" que quedaron en la OTT de prueba.
+  5. Decidir si se automatiza la reversión de resoluciones al anular (bloqueo conocido: `resolver_evento_parcial` no llena `movimientos.evento_resolucion_id`).
+  6. Volver a guardar la contraseña en Firefox desde `about:logins` — las guardadas antes de v1.47 quedaron con campos anónimos y no se autocompletan.
+  7. **Falta un historial global de eventos resueltos** (ver la entrada sobre "Ignorar" más abajo) — decidir si vale la pena una pantalla nueva para eso o basta con lo que ya hay por conteo.
 - **Deploy**: sano. El desfase "producción en v1.28 con `main` en v1.44" que figuraba acá como sin resolver era un error de Andrés al mirar, no un problema del workflow — confirmado el 11-08. `.github/workflows/deploy.yml` publica bien en cada push a `main`.
+
+## v1.60 — nombre de cuadrante/incidencia repetido entre períodos rompía la sincronización
+Reportado por Andrés: subió el ZIP de un colega y "no se guarda bien"; además, el avance de ese colega trabajando en vivo tampoco le aparecía. Pista suya, clave para encontrarlo: "como esto se hace periódicamente, es común nombres iguales".
+
+**Causa raíz.** `projects` es una tabla compartida entre ATT, Preventivos e Incidencias. El `unique(ott, version)` de `0001_init.sql` tenía sentido para ATT (un número de OTT no debería repetirse, salvo una "versión" explícita vía "copiar proyecto"). Pero en Preventivos/Incidencias, `ott` guarda el CÓDIGO DE CUADRANTE/de la incidencia — un nombre que se reutiliza cada período por diseño — y ninguna de las dos áreas usa jamás el mecanismo de versión (`version` queda en 1 para siempre). En la práctica, la constraint actuaba como `unique(ott)` puro para esas dos áreas, bloqueando el caso normal que describió Andrés.
+
+**Por qué explica los dos síntomas a la vez.** Crear/importar un cuadrante con un nombre ya usado en un período anterior hace que el primer `insert` en `projects` (`insertProjectIdempotente`) choque contra esa constraint (23505). El código de recuperación de ese error asumía que un 23505 SIEMPRE es el reintento por `client_local_id` (0046) y volvía a buscar por esa columna — que no encuentra nada, porque el conflicto real fue por el OTT, no por el reintento — y revienta con un error de "no rows" que no dice en ningún lado "ya existe un cuadrante con ese nombre". Pasa igual si el colega lo hace en vivo: su autoguardado repite el mismo `insert`, choca igual, y su trabajo se queda local en su máquina para siempre — nunca llega al servidor, así que Andrés nunca lo ve.
+
+**Fix — `0063_ott_unico_solo_att.sql`**: la unicidad de `(ott, version)` queda restringida a ATT vía índice único parcial (`where area = 'ATT'`). Preventivos e Incidencias quedan libres de repetir nombres entre períodos.
+
+**Defensa en profundidad** (`attRepo.ts`, `incidenciaRepo.ts`, `preventivoRepo.ts`): el manejo de 23505 en `insertProjectIdempotente` ya no asume ciegamente que es el reintento por `client_local_id` — si la búsqueda por esa columna no encuentra nada, tira un error honesto ("ya existe un proyecto con el OTT/código …") en vez del error de "no rows" sin contexto. Relevante sobre todo para ATT, donde la constraint de nombre único SÍ sigue aplicando.
+
+**Recuperación**: después de correr la 0063, NO hace falta re-importar el ZIP del colega — su levantamiento debería seguir en el store local (de quien lo haya intentado subir) marcado "sin sincronizar"; con reintentar desde el botón de guardado del Editor (o esperar el próximo autoguardado) alcanza, porque el `record.id` local nunca cambió y el mismo insert que antes chocaba ahora debería pasar limpio.
 
 ## v1.59 — ZIP de una versión vieja del sitio: "puntos.delete: invalid input syntax for type uuid"
 Reportado por Andrés: subió un ZIP de un cuadrante hecho por un colega en la versión vieja del sitio (otro PC) y obtuvo ese error al guardar — pero el levantamiento "sí se subió" (a medias).

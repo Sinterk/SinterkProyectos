@@ -59,10 +59,14 @@ async function insertProjectIdempotente(clientLocalId: string, patch: Record<str
   if (!error) return data.id
 
   if (error.code === '23505') {
-    const { data: existente2, error: errBuscar2 } = await supabase
-      .from('projects').select('id').eq('client_local_id', clientLocalId).single()
-    if (errBuscar2) throw new Error(`projects.insert (tras choque de duplicado): ${errBuscar2.message}`)
-    return existente2.id
+    // Ver el comentario largo en attRepo.ts: un 23505 acá puede ser el
+    // reintento por client_local_id (0046) o, antes de 0063, un choque por
+    // nombre repetido (`unique(ott, version)`, que ya no aplica a esta área
+    // — el código de incidencia se reutiliza entre períodos por diseño).
+    const { data: existente2 } = await supabase
+      .from('projects').select('id').eq('client_local_id', clientLocalId).maybeSingle()
+    if (existente2) return existente2.id
+    throw new Error(`projects.insert: ya existe un proyecto con el código "${String(patch.ott ?? '')}"`)
   }
   throw new Error(`projects.insert: ${error.message}`)
 }

@@ -1,0 +1,42 @@
+-- Bug reportado por Andrés: un ZIP de Preventivos de un colega "no se
+-- guardaba bien" al importarlo, y en general el avance de un colega no le
+-- aparecía. Pista que dio él mismo y resultó ser la clave: "como esto se
+-- hace periódicamente, es común nombres iguales" — el mismo código de
+-- cuadrante se repite cada ronda de levantamiento, a propósito.
+--
+-- Causa raíz: `projects` es una tabla COMPARTIDA entre ATT, Preventivos e
+-- Incidencias (columna `area`/`subarea` las distingue). El `unique(ott,
+-- version)` de 0001_init.sql tenía sentido para ATT — un número de OTT es
+-- un identificador real que no debería repetirse, salvo una "versión"
+-- explícita (columna `version`, incrementada por el mecanismo de "copiar
+-- proyecto" que sí tiene ATT). Pero en Preventivos/Incidencias, `ott`
+-- guarda el CÓDIGO DE CUADRANTE / de la incidencia — un nombre que se
+-- reutiliza cada período por diseño — y ninguna de las dos áreas usa jamás
+-- el mecanismo de versión (`version` queda en 1 para siempre). En la
+-- práctica, la constraint actuaba como `unique(ott)` puro para esas dos
+-- áreas, bloqueando exactamente el caso normal que Andrés describe.
+--
+-- Mecanismo del fallo: al importar el ZIP, `insertProjectIdempotente` hace
+-- un INSERT en `projects` con el `ott` del cuadrante. Si YA existe otro
+-- proyecto (de un período anterior) con ese mismo nombre, el INSERT choca
+-- con `unique(ott, version)` → Postgres devuelve 23505. El código de
+-- recuperación de ese error asumía que un 23505 SIEMPRE es el reintento
+-- por `client_local_id` (el caso que 0046 vino a resolver) y volvía a
+-- buscar por esa columna — que en este caso no encuentra nada (el conflicto
+-- fue por OTRA constraint, contra una fila con un `client_local_id`
+-- distinto o nulo), y revienta con un error de "no rows" que no dice en
+-- ningún lado "ya existe un cuadrante con ese nombre". De ahí el "no se
+-- guarda bien" sin pista clara de la causa.
+--
+-- Mismo problema aplica a un colega trabajando en vivo (no por ZIP): crear
+-- un cuadrante nuevo con un nombre ya usado en una ronda anterior fallaría
+-- exactamente igual, en SU máquina, en cada intento de autoguardado — el
+-- registro se queda local, nunca llega al servidor, y por eso Andrés nunca
+-- ve su avance aunque el colega sí esté trabajando.
+--
+-- Fix: la unicidad de (ott, version) queda restringida a ATT — que es
+-- donde de verdad protege algo real — vía índice único parcial. Preventivos
+-- e Incidencias quedan libres de repetir nombres entre períodos, que es el
+-- uso real y esperado.
+alter table public.projects drop constraint if exists projects_ott_version_key;
+create unique index projects_ott_version_att_key on public.projects (ott, version) where area = 'ATT';
