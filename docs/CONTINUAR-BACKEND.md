@@ -5,7 +5,7 @@
 
 ## ⚡ Estado ahora mismo (11-08-2026)
 - **`main` va atrás a propósito**: `main` está en `97b097a` (v1.59) y `backend-supabase` en v1.67, con el commit `599bb86` (alta de trabajadores, v1.55) de por medio — ver pendiente (1).
-- **Migraciones**: corridas y confirmadas hasta `0064`. Ninguna pendiente.
+- **Migraciones**: corridas y confirmadas hasta `0064`. **Pendiente: `0065_ferreteria_traspaso_solo_fisico.sql`** — corregir a mano en el SQL editor de Supabase (ver entrada de v1.68 abajo).
 - **Para retomar en otra máquina**: `git clone` (o `git fetch` + `git checkout backend-supabase`; si el `main` local quedó viejo, `git branch -f main origin/main`), `npm install`, recrear el `.env` a mano (los nombres de variable están en `src/lib/supabaseClient.ts` y `src/lib/auth.ts`; los valores NO están en el repo, es público — Andrés los tiene), `npm run dev`.
 - **Pendientes de Andrés** (no bloquean nada salvo lo marcado):
   1. Desplegar la Edge Function de alta de usuarios: `supabase functions deploy crear-usuario` (requiere CLI de Supabase y el proyecto enlazado). Sin esto el botón "➕ Agregar trabajador" en Administración falla.
@@ -17,6 +17,16 @@
   7. **Probar Ferretería sin lote físico + rebaja sugerida** (v1.62-v1.67, ver entradas abajo) — sin probar todavía en el navegador esta sesión.
   8. **Pendiente para la semana (sin fecha fija)**: reescribir el texto de advertencia de "Corregir errores de tipeo" en Resumen de Proyecto — hoy dice "para arreglar un error de tipeo" y eso confunde con el caso real de "anoté 6, eran 5, ya hubo un movimiento real de 6". Corrección NUNCA revierte el movimiento ni el stock, solo pisa el número que se ve en la tabla — si el movimiento real fue mal registrado, hay que anularlo y volver a registrar con la cantidad correcta, o el stock queda mintiendo (técnico con más de lo que en verdad tiene). Andrés pidió dejarlo pendiente, no implementarlo ahora.
 - **Deploy**: sano. El desfase "producción en v1.28 con `main` en v1.44" que figuraba acá como sin resolver era un error de Andrés al mirar, no un problema del workflow — confirmado el 11-08. `.github/workflows/deploy.yml` publica bien en cada push a `main`.
+
+## Migración 0065 — traspaso de Ferretería ahora es SOLO físico (pendiente de correr)
+Andrés revisó lo hecho en 0064 (v1.62): "haz el traspaso de todos los lotes de items marcados como ferretería a físico, pero solo en stock físico, en digital se deben mantener los lotes que indica SAP." Dos ajustes, sin tocar 0064 (ya corrida) — se escribió `0065_ferreteria_traspaso_solo_fisico.sql` nueva:
+
+1. **Alcance más amplio en lo físico**: 0064 solo traspasaba el lote `'SinDefinir'`. 0065 traspasa CUALQUIER lote físico (no solo `'SinDefinir'`) a `'Físico'` — el físico de Ferretería nunca se distingue por lote, sin importar en qué lote haya llegado originalmente.
+2. **Alcance más angosto en lo digital (el cambio importante)**: el traspaso deja de tocar el lado digital. `stock.cantidad_digital`, `proyecto_materiales.cant_rebajada` y los `movimientos` con `naturaleza='digital'` quedan intactos, bajo el lote real que entrega SAP.
+
+**Es posible** porque físico y digital nunca dependen de filas separadas para poder tratarse por separado — son COLUMNAS separadas en la misma fila: `stock.cantidad_fisico`/`cantidad_digital`, y en `proyecto_materiales` las 4 columnas físicas (`cant_entregada/instalada/devuelta/rezagada`) vs. la columna digital (`cant_rebajada`). En `movimientos` cada fila ya trae `naturaleza` ('fisico'/'digital'), así que ahí ni siquiera hace falta separar columnas. La función nueva (`traspasar_fisico_ferreteria_a_lote_unico`, reemplaza a `traspasar_lote_sindefinir_a_fisico` que queda `drop`eada) mueve solo las columnas físicas hacia la fila `'Físico'` (sumando si ya existía saldo ahí) y las deja en 0 en el lote de origen — si al lote de origen le queda algo digital (`cantidad_digital`/`cant_rebajada` ≠ 0), la fila NO se borra, sigue viva con su lote real y solo la parte física en 0.
+
+Trigger y bloque retroactivo (los mismos de 0064) se actualizan para llamar a la función nueva — **falta correr esta migración en Supabase** (no la corrí yo, sigue el mismo flujo manual de las anteriores). Sin cambios de cliente: `esFerreteria.ts`/`LoteSelect` ya solo tocaban el lado físico desde v1.62, no hace falta tocar nada ahí.
 
 ## v1.67 — copiado como TSV puro + fecha en formato Excel real
 Andrés aclaró lo pedido en v1.64/v1.66 sobre "formato Excel": no bastaba con que las columnas calzaran — pidió que el TIPO de cada celda calce (no se vean "fuera de lugar" al pegar), y notó que pegar con formato vs. "pegar sin formato" pegaba distinto.
