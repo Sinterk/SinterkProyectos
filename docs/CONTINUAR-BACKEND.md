@@ -4,7 +4,7 @@
 > sesión nueva. Última actualización: 11-08-2026 (noche, tarde-10).
 
 ## ⚡ Estado ahora mismo (11-08-2026)
-- **`main` va atrás a propósito**: `main` está en `97b097a` (v1.59) y `backend-supabase` en v1.69, con el commit `599bb86` (alta de trabajadores, v1.55) de por medio — ver pendiente (1).
+- **`main` va atrás a propósito**: `main` está en `97b097a` (v1.59) y `backend-supabase` en v1.70, con el commit `599bb86` (alta de trabajadores, v1.55) de por medio — ver pendiente (1).
 - **Migraciones**: corridas y confirmadas hasta `0064`. **Pendiente: `0065_ferreteria_traspaso_solo_fisico.sql`** — corregir a mano en el SQL editor de Supabase (ver entrada de v1.68 abajo).
 - **Para retomar en otra máquina**: `git clone` (o `git fetch` + `git checkout backend-supabase`; si el `main` local quedó viejo, `git branch -f main origin/main`), `npm install`, recrear el `.env` a mano (los nombres de variable están en `src/lib/supabaseClient.ts` y `src/lib/auth.ts`; los valores NO están en el repo, es público — Andrés los tiene), `npm run dev`.
 - **Pendientes de Andrés** (no bloquean nada salvo lo marcado):
@@ -17,6 +17,13 @@
   7. **Probar Ferretería sin lote físico + rebaja sugerida** (v1.62-v1.67, ver entradas abajo) — sin probar todavía en el navegador esta sesión.
   8. **Pendiente para la semana (sin fecha fija)**: reescribir el texto de advertencia de "Corregir errores de tipeo" en Resumen de Proyecto — hoy dice "para arreglar un error de tipeo" y eso confunde con el caso real de "anoté 6, eran 5, ya hubo un movimiento real de 6". Corrección NUNCA revierte el movimiento ni el stock, solo pisa el número que se ve en la tabla — si el movimiento real fue mal registrado, hay que anularlo y volver a registrar con la cantidad correcta, o el stock queda mintiendo (técnico con más de lo que en verdad tiene). Andrés pidió dejarlo pendiente, no implementarlo ahora.
 - **Deploy**: sano. El desfase "producción en v1.28 con `main` en v1.44" que figuraba acá como sin resolver era un error de Andrés al mirar, no un problema del workflow — confirmado el 11-08. `.github/workflows/deploy.yml` publica bien en cada push a `main`.
+
+## v1.70 — el desplegable de lote de v1.69 también en "Entradas registradas" (editar)
+Corrección sobre v1.69: Andrés aclaró que el desplegable pedido no era (solo) para la fila nueva del formulario de arriba — era para el editor de tandas YA REGISTRADAS ("✎ Editar líneas" en "Entradas registradas", `ListaRegistros.tsx`), que es donde de verdad se completa el lote cuando Entel actualiza su stock (pedido original del 11-08, ver v1.18-era). Ese editor tenía a propósito un campo de texto libre — comentario en el código explicaba que "el lote muchas veces todavía no existe en `stock`, así que un desplegable no serviría" — razón que dejó de aplicar con el "+ Lote nuevo…" de v1.69 (cubre exactamente ese caso).
+
+**`ListaRegistros.tsx`**: en modo Entrada, la celda Lote de cada fila en edición ahora usa el mismo `LoteSelect` (naturaleza digital, todas las bodegas, `soloConDisponible`) que el formulario de arriba, con el mismo gate de Ferretería (estático "Físico", sin selector) — para eso el componente ahora carga `listMateriales()` una vez y lo pasa a través de `RegistroCard` → `LineaRegistro`. El modo Asignaciones no se tocó, sigue con el campo de texto libre de siempre (no era parte de lo pedido).
+
+Verificado en el navegador: en una tanda ya registrada (C132, 2026-08-10), la fila de MUFA_BC_FOSC-A_2_24_4R-1O_TERMO (no Ferretería) mostró el desplegable con los lotes reales `968415 (3)`, `971327 (8)`, `972198 (1)` + "+ Lote nuevo…"; las filas de Ferretería (FIERRO ANGULO, CRUCETA…) en la misma tanda siguieron mostrando "Físico" fijo, sin selector.
 
 ## v1.69 — Entrada ahora permite elegir lote (desplegable de los ya conocidos en digital + "Lote nuevo…")
 Andrés retomó lo hablado sobre lote en entradas: "la idea es que a las entradas se les pueda poner lote. Debe aparecer como desplegable de los ya existentes en digital, aunque en físico quede como 'físico'. Dentro de los desplegables debe estar la opción de lote nuevo para digitarlo."
