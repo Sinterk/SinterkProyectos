@@ -4,7 +4,7 @@
 > sesión nueva. Última actualización: 11-08-2026 (noche, tarde-10).
 
 ## ⚡ Estado ahora mismo (11-08-2026)
-- **`main` va atrás a propósito**: `main` está en `97b097a` (v1.59) y `backend-supabase` en v1.68, con el commit `599bb86` (alta de trabajadores, v1.55) de por medio — ver pendiente (1).
+- **`main` va atrás a propósito**: `main` está en `97b097a` (v1.59) y `backend-supabase` en v1.69, con el commit `599bb86` (alta de trabajadores, v1.55) de por medio — ver pendiente (1).
 - **Migraciones**: corridas y confirmadas hasta `0064`. **Pendiente: `0065_ferreteria_traspaso_solo_fisico.sql`** — corregir a mano en el SQL editor de Supabase (ver entrada de v1.68 abajo).
 - **Para retomar en otra máquina**: `git clone` (o `git fetch` + `git checkout backend-supabase`; si el `main` local quedó viejo, `git branch -f main origin/main`), `npm install`, recrear el `.env` a mano (los nombres de variable están en `src/lib/supabaseClient.ts` y `src/lib/auth.ts`; los valores NO están en el repo, es público — Andrés los tiene), `npm run dev`.
 - **Pendientes de Andrés** (no bloquean nada salvo lo marcado):
@@ -17,6 +17,18 @@
   7. **Probar Ferretería sin lote físico + rebaja sugerida** (v1.62-v1.67, ver entradas abajo) — sin probar todavía en el navegador esta sesión.
   8. **Pendiente para la semana (sin fecha fija)**: reescribir el texto de advertencia de "Corregir errores de tipeo" en Resumen de Proyecto — hoy dice "para arreglar un error de tipeo" y eso confunde con el caso real de "anoté 6, eran 5, ya hubo un movimiento real de 6". Corrección NUNCA revierte el movimiento ni el stock, solo pisa el número que se ve en la tabla — si el movimiento real fue mal registrado, hay que anularlo y volver a registrar con la cantidad correcta, o el stock queda mintiendo (técnico con más de lo que en verdad tiene). Andrés pidió dejarlo pendiente, no implementarlo ahora.
 - **Deploy**: sano. El desfase "producción en v1.28 con `main` en v1.44" que figuraba acá como sin resolver era un error de Andrés al mirar, no un problema del workflow — confirmado el 11-08. `.github/workflows/deploy.yml` publica bien en cada push a `main`.
+
+## v1.69 — Entrada ahora permite elegir lote (desplegable de los ya conocidos en digital + "Lote nuevo…")
+Andrés retomó lo hablado sobre lote en entradas: "la idea es que a las entradas se les pueda poner lote. Debe aparecer como desplegable de los ya existentes en digital, aunque en físico quede como 'físico'. Dentro de los desplegables debe estar la opción de lote nuevo para digitarlo."
+
+**`LoteSelect.tsx`** (compartido por Entrada, Entrega, Rebajado, Devuelto, Instalado, Merma) gana dos capacidades genéricas, sin romper ningún uso existente porque son opt-in por prop:
+- `buscarTodasBodegas?: boolean` — ignora `ubicacionId` y busca el material en TODAS las bodegas (`getStock({ materialId })`), juntando en una sola opción los lotes repetidos entre bodegas (suma cantidades) — el código real de un lote de SAP no depende de a cuál bodega física llega la mercadería.
+- `soloConDisponible?: boolean` — filtra el desplegable a lotes que de verdad tienen algo en la naturaleza pedida, sacando los placeholders `'SinDefinir'`/`'Físico'` (no son lotes reales).
+- **"+ Lote nuevo…"** al final del desplegable, siempre disponible (no solo con las dos props de arriba): al elegirlo cambia a un campo de texto igual al patrón ya usado en `UbicacionSelect` ("+ Nueva bodega…"), para digitar un lote que todavía no existe en el sistema.
+
+**`RegistrarMovimientoForm.tsx`**, fila de Entrada: se le pasa `naturaleza="digital"` (pisando el `'fisico'` de `ctx.naturaleza`, que se deja intacto para que el gate de Ferretería — `ctx.naturaleza === 'fisico'` — siga funcionando igual que antes) más `buscarTodasBodegas` y `soloConDisponible`, ambos `true`. Para Ferretería el selector sigue sin mostrarse (queda fijo en "Físico", sin cambios) — así se cumple lo pedido: el desplegable ofrece los lotes ya conocidos en digital, pero en físico Ferretería sigue sin distinguir lote.
+
+Verificado en el navegador (v1.69): con el material SKU 51024 (no Ferretería) el desplegable mostró `972478 (4)` (el lote digital real, sumado entre bodegas) y `+ Lote nuevo…`; escribir `PLXC999999` en "Lote nuevo…" lo dejó seleccionado como `PLXC999999 (nuevo)`. Con SKU 6 (Ferretería, ABRAZADERA ALTA TENSION 1/2INCH) la celda siguió mostrando el texto fijo "Físico", sin selector — sin regresión.
 
 ## v1.68 — bug real: el buscador de Movimientos no encontraba OTTs viejas + Anular movimiento desde la OTT
 Andrés reportó que el buscador de la pestaña Movimientos no mostraba OTTs anteriores al 13-08. Confirmado con datos reales de la BD: no es un problema de guardado (los 344 movimientos existen, sin huecos reales — solo el 18-08, un martes, quedó sin ninguno, el resto de "huecos" eran sábados). El bug es de la pantalla:

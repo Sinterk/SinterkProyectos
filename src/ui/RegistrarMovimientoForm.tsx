@@ -422,8 +422,21 @@ export function RegistrarMovimientoForm({ fixedProject, puntos, lockTipoUI, solo
                         {esFerreteriaFisico ? (
                           <span className="text-slate-400 text-xs">Físico</span>
                         ) : (
-                          <LoteSelect materialId={l.materialId} ubicacionId={ctx.ubicacionId} naturaleza={ctx.naturaleza}
+                          // Entrada es un movimiento físico (ctx.naturaleza se
+                          // deja en 'fisico' arriba, para que el gate de
+                          // Ferretería siga funcionando), pero el lote que
+                          // tiene sentido ofrecer acá es el YA CONOCIDO en
+                          // digital (el código real de SAP) — Andrés: "debe
+                          // aparecer como desplegable de los ya existentes en
+                          // digital". Por eso naturaleza se pisa solo para
+                          // esta llamada, buscando en todas las bodegas (el
+                          // lote de SAP no depende de a cuál llega la
+                          // mercadería) y con "+ Lote nuevo…" para el caso de
+                          // un lote que todavía no existe en el sistema.
+                          <LoteSelect materialId={l.materialId} ubicacionId={ctx.ubicacionId}
+                            naturaleza={esEntrada ? 'digital' : ctx.naturaleza}
                             checkAvailability={ctx.checkAvailability} value={l.lote}
+                            buscarTodasBodegas={esEntrada} soloConDisponible={esEntrada}
                             onChange={(lote) => updateLinea(l.localId, { lote })} className={`${inputCls} w-full`} />
                         )}
                       </td>
