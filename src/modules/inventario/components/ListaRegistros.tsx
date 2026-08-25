@@ -13,10 +13,9 @@
 
 import { useEffect, useState } from 'react'
 import { useAuth } from '@/lib/auth'
-import { listRegistros, listMateriales, corregirMovimiento, anularMovimiento } from '@/lib/inventario/inventarioRepo'
+import { listRegistros, corregirMovimiento, anularMovimiento } from '@/lib/inventario/inventarioRepo'
 import type { RegistroAgrupado } from '@/lib/inventario/inventarioRepo'
-import type { Material, Movimiento } from '@/lib/inventario/types'
-import { esTipoFerreteria } from '@/lib/inventario/esFerreteria'
+import type { Movimiento } from '@/lib/inventario/types'
 import { LoteSelect } from '@/ui/LoteSelect'
 
 const LOTE_SIN_DEFINIR = 'SinDefinir'
@@ -54,8 +53,6 @@ export function ListaRegistros({ modo, refreshKey }: Props) {
   const [registros, setRegistros] = useState<RegistroAgrupado[] | null>(null)
   const [error, setError] = useState<string | null>(null)
   const [abierto, setAbierto] = useState<string | null>(null)
-  // Para el gate de Ferretería en el editor de lote de Entrada (ver LineaRegistro).
-  const [materiales, setMateriales] = useState<Material[]>([])
 
   async function reload() {
     setError(null)
@@ -66,7 +63,6 @@ export function ListaRegistros({ modo, refreshKey }: Props) {
     }
   }
   useEffect(() => { reload() /* eslint-disable-next-line react-hooks/exhaustive-deps */ }, [modo, refreshKey])
-  useEffect(() => { listMateriales().then(setMateriales).catch(() => {}) }, [])
 
   return (
     <div className="space-y-2">
@@ -90,7 +86,7 @@ export function ListaRegistros({ modo, refreshKey }: Props) {
       ) : (
         <div className="space-y-1.5">
           {registros.map((r) => (
-            <RegistroCard key={r.key} registro={r} modo={modo} puedeEditar={puedeEditar} materiales={materiales}
+            <RegistroCard key={r.key} registro={r} modo={modo} puedeEditar={puedeEditar}
               abierto={abierto === r.key}
               onToggle={() => setAbierto((k) => (k === r.key ? null : r.key))}
               onChanged={reload} />
@@ -101,11 +97,10 @@ export function ListaRegistros({ modo, refreshKey }: Props) {
   )
 }
 
-function RegistroCard({ registro, modo, puedeEditar, materiales, abierto, onToggle, onChanged }: {
+function RegistroCard({ registro, modo, puedeEditar, abierto, onToggle, onChanged }: {
   registro: RegistroAgrupado
   modo: 'asignaciones' | 'entrada'
   puedeEditar: boolean
-  materiales: Material[]
   abierto: boolean
   onToggle: () => void
   onChanged: () => void
@@ -286,7 +281,7 @@ function RegistroCard({ registro, modo, puedeEditar, materiales, abierto, onTogg
               </thead>
               <tbody>
                 {registro.lineas.map((l, i) => (
-                  <LineaRegistro key={l.id} linea={l} modo={modo} puedeEditar={puedeEditar} materiales={materiales}
+                  <LineaRegistro key={l.id} linea={l} modo={modo} puedeEditar={puedeEditar}
                     draft={editando ? drafts[l.id] : undefined}
                     autoFocus={editando && i === 0}
                     error={errores[l.id]}
@@ -303,11 +298,10 @@ function RegistroCard({ registro, modo, puedeEditar, materiales, abierto, onTogg
   )
 }
 
-function LineaRegistro({ linea, modo, puedeEditar, materiales, draft, autoFocus, error, guardando, onDraftChange, onAnular }: {
+function LineaRegistro({ linea, modo, puedeEditar, draft, autoFocus, error, guardando, onDraftChange, onAnular }: {
   linea: Movimiento
   modo: 'asignaciones' | 'entrada'
   puedeEditar: boolean
-  materiales: Material[]
   /** undefined = fila en solo lectura; presente = la tanda está en edición. */
   draft: Draft | undefined
   autoFocus: boolean
@@ -320,9 +314,6 @@ function LineaRegistro({ linea, modo, puedeEditar, materiales, draft, autoFocus,
   const tdCls = 'px-2 py-2 whitespace-nowrap'
   // SKU, Material, Lote, Cantidad, Nota + las dos condicionales.
   const totalCols = 5 + (modo === 'asignaciones' ? 1 : 0) + (puedeEditar ? 1 : 0)
-  // Ferretería no distingue lote físico — mismo gate que en RegistrarMovimientoForm/ResumenProyectoTable.
-  const esFerreteriaFisico = modo === 'entrada'
-    && esTipoFerreteria(materiales.find((m) => m.id === linea.materialId)?.tipo?.nombre)
 
   return (
     <>
@@ -337,17 +328,16 @@ function LineaRegistro({ linea, modo, puedeEditar, materiales, draft, autoFocus,
         <td className={tdCls}>
           {draft ? (
             modo === 'entrada' ? (
-              esFerreteriaFisico ? (
-                <span className="text-slate-400 text-xs">Físico</span>
-              ) : (
-                // Desplegable de lotes ya conocidos en digital (el código
-                // real de SAP) + "+ Lote nuevo…" para digitar uno que
-                // todavía no existe — Andrés: se completa cuando Entel
-                // actualiza su stock, y muchas veces ya se conoce el código.
-                <LoteSelect materialId={linea.materialId} ubicacionId={null} naturaleza="digital"
-                  checkAvailability={false} value={draft.lote} onChange={(lote) => onDraftChange({ lote })}
-                  buscarTodasBodegas soloConDisponible className={`${inputCls} min-w-[7rem]`} />
-              )
+              // Desplegable de lotes ya conocidos en digital (el código real
+              // de SAP) + "+ Lote nuevo…" para digitar uno que todavía no
+              // existe. Se muestra SIEMPRE, incluso para Ferretería — el
+              // físico de Ferretería sigue sin distinguir lote (el servidor
+              // lo deja fijo en 'Físico'), pero el lote real que entrega SAP
+              // igual importa para que el inventario digital calce con SAP
+              // (ver 0066_entrada_ferreteria_con_lote.sql).
+              <LoteSelect materialId={linea.materialId} ubicacionId={null} naturaleza="digital"
+                checkAvailability={false} value={draft.lote} onChange={(lote) => onDraftChange({ lote })}
+                buscarTodasBodegas soloConDisponible className={`${inputCls} min-w-[7rem]`} />
             ) : (
               <input value={draft.lote} onChange={(e) => onDraftChange({ lote: e.target.value })}
                 placeholder="Sin lote" autoFocus={autoFocus} className={`${inputCls} min-w-[7rem]`} />

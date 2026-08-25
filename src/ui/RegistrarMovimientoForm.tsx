@@ -366,6 +366,12 @@ export function RegistrarMovimientoForm({ fixedProject, puntos, lockTipoUI, solo
 
       <div className="space-y-2">
         <span className={labelCls}>Material</span>
+        {esEntrada && (
+          <p className="text-[11px] text-slate-500">
+            Si conoces el lote real de SAP, indícalo — para Ferretería el físico siempre queda en "Físico"
+            (no distingue lote), pero ese lote también queda acreditado en digital, para que calce con SAP.
+          </p>
+        )}
         {/* Una fila por línea, mismo formato que Asignaciones. Las columnas de
             bodega son condicionales: solo los tipos que la piden por línea la
             muestran (Entrada la tiene una sola vez arriba, no por línea). */}
@@ -393,10 +399,16 @@ export function RegistrarMovimientoForm({ fixedProject, puntos, lockTipoUI, solo
                 // Ferretería no tiene lote físico distinguible — se omite el
                 // selector SOLO del lado físico. En 'rebajado' (digital, SAP)
                 // el lote sigue importando y el selector se mantiene siempre.
-                const esFerreteriaFisico = ctx.naturaleza === 'fisico'
+                // Entrada es la EXCEPCIÓN: aunque sea Ferretería, el material
+                // llega con un lote real de SAP y el servidor ya sabe partirlo
+                // (físico siempre a 'Físico', digital al lote indicado — ver
+                // 0066_entrada_ferreteria_con_lote.sql) — así que el selector
+                // se mantiene siempre en Entrada, sin importar el tipo.
+                const esFerreteriaFisico = !esEntrada && ctx.naturaleza === 'fisico'
                   && esTipoFerreteria(materiales.find((m) => m.id === l.materialId)?.tipo?.nombre)
                 const loteReset = (materialId: string) =>
-                  esTipoFerreteria(materiales.find((m) => m.id === materialId)?.tipo?.nombre) ? LOTE_FISICO_FERRETERIA : ''
+                  (!esEntrada && esTipoFerreteria(materiales.find((m) => m.id === materialId)?.tipo?.nombre))
+                    ? LOTE_FISICO_FERRETERIA : ''
                 return (
                   <Fragment key={l.localId}>
                     <tr className="border-t border-slate-800 divide-x divide-slate-800">

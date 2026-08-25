@@ -52,14 +52,15 @@ begin
   -- columnas (entregada/instalada/devuelta/rezagada) y lo digital es
   -- cant_rebajada. Se procesa cada índice único parcial por separado
   -- (con/sin punto_id, ver 0003_inventario_logistica.sql). origen_ubicacion_id
-  -- no es parte de la clave única — se agrega con max() para no intentar
-  -- afectar la misma fila dos veces en el mismo INSERT si distintos lotes
-  -- de origen traían valores distintos ahí (dato ya arbitrario desde 0064).
+  -- no es parte de la clave única — se agrega con (array_agg(...))[1] (uuid no
+  -- tiene max()/min() como agregado nativo en Postgres) para no intentar
+  -- afectar la misma fila dos veces en el mismo INSERT si distintos lotes de
+  -- origen traían valores distintos ahí (dato ya arbitrario desde 0064).
   insert into public.proyecto_materiales (
     project_id, material_id, lote, punto_id, origen_ubicacion_id,
     cant_entregada, cant_instalada, cant_devuelta, cant_rezagada, cant_rebajada
   )
-  select project_id, material_id, 'Físico', punto_id, max(origen_ubicacion_id),
+  select project_id, material_id, 'Físico', punto_id, (array_agg(origen_ubicacion_id))[1],
          sum(cant_entregada), sum(cant_instalada), sum(cant_devuelta), sum(cant_rezagada), 0
     from public.proyecto_materiales
     where material_id = p_material_id and lote <> 'Físico' and punto_id is null
@@ -85,7 +86,7 @@ begin
     project_id, material_id, lote, punto_id, origen_ubicacion_id,
     cant_entregada, cant_instalada, cant_devuelta, cant_rezagada, cant_rebajada
   )
-  select project_id, material_id, 'Físico', punto_id, max(origen_ubicacion_id),
+  select project_id, material_id, 'Físico', punto_id, (array_agg(origen_ubicacion_id))[1],
          sum(cant_entregada), sum(cant_instalada), sum(cant_devuelta), sum(cant_rezagada), 0
     from public.proyecto_materiales
     where material_id = p_material_id and lote <> 'Físico' and punto_id is not null
