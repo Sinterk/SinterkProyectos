@@ -14,7 +14,7 @@ import { ResumenProyectoTable } from '@/ui/ResumenProyectoTable'
 import { UbicacionSelect } from '@/ui/UbicacionSelect'
 import { useFileDrop } from '@/ui/useFileDrop'
 import {
-  getStock, getTecnicoLedger, listMovimientos, anularMovimiento, listMateriales, listUbicaciones,
+  getStock, getTecnicoLedger, listMovimientos, anularMovimiento, listMateriales, listUbicaciones, TIPO_LABELS_MOV,
   updateMaterialStockMinimo, updateMaterialComentario, updateMaterialTendido, crearMaterial,
   listMaterialTipos, crearMaterialTipo, updateMaterialApodo, updateMaterialDescripcion, updateMaterialTipo,
   listProveedores, crearProveedor, updateMaterialProveedores,
@@ -38,12 +38,6 @@ import { ColumnHeader } from '@/ui/ColumnHeader'
 
 type MainTab = 'registro' | 'stock' | 'conteo' | 'movimientos' | 'catalogo'
 type StockSubTab = 'bodega' | 'proyecto' | 'tecnico'
-
-const TIPO_LABELS_MOV: Record<string, string> = {
-  entrada: 'Entrada', salida: 'Salida', traslado: 'Traslado/Devuelto',
-  rebaja: 'Rebajado (SAP)', solicitud: 'Solicitud', instalado: 'Instalado', merma: 'Merma',
-  traslado_bodega: 'Traspaso entre bodegas', ajuste: 'Ajuste (Conteo)',
-}
 
 const inputCls = 'bg-slate-800 text-white text-sm rounded-lg px-2 py-1.5 border border-slate-700 focus:border-brand-500 focus:outline-none'
 
@@ -229,12 +223,16 @@ function MovimientosTab({ refreshKey }: { refreshKey: number }) {
       const filters: ListMovimientosFilters = {}
       if (desde) filters.desde = new Date(desde).toISOString()
       if (hasta) filters.hasta = new Date(`${hasta}T23:59:59`).toISOString()
+      // Con texto de búsqueda, se saca el límite de 200 (que existe solo para
+      // que la vista "sin filtros" cargue rápido) — si no, el buscador nunca
+      // encuentra un OTT/SKU viejo que quedó fuera de esa ventana reciente.
+      if (search.trim()) filters.limit = null
       setRows(await listMovimientos(filters))
     } catch (err) {
       setError(err instanceof Error ? err.message : String(err))
     }
   }
-  useEffect(() => { reload() /* eslint-disable-next-line react-hooks/exhaustive-deps */ }, [desde, hasta, refreshKey])
+  useEffect(() => { reload() /* eslint-disable-next-line react-hooks/exhaustive-deps */ }, [desde, hasta, search, refreshKey])
 
   async function handleAnular(m: Movimiento) {
     const detalle = `${TIPO_LABELS_MOV[m.tipo] ?? m.tipo} — ${m.materialSku} (${m.cantidad}) — ${m.fecha.slice(0, 10)}`

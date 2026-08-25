@@ -11,6 +11,8 @@ import { adminRepo } from '@/lib/adminRepo'
 import type { MemberProfile } from '@/lib/adminRepo'
 import type { Profile } from '@/lib/auth'
 import { useAuth, ROL_LABELS } from '@/lib/auth'
+import { anularMovimiento, listMovimientos, TIPO_LABELS_MOV } from '@/lib/inventario/inventarioRepo'
+import type { Movimiento } from '@/lib/inventario/types'
 import { ResumenProyectoTable } from './ResumenProyectoTable'
 import { ObservacionesSection } from './ObservacionesSection'
 
@@ -48,6 +50,7 @@ export function LogisticaTab({ projectId, area, puntos, incluirComentarios = tru
       )}
       <ResumenProyectoTable projectId={projectId} area={area} puntos={puntos} membersVersion={membersVersion}
         ott={ott} direccion={direccion} fechaInicio={fechaInicio} />
+      {!isTecnico && <MovimientosProyectoSection projectId={projectId} />}
       {incluirComentarios && <ObservacionesSection projectId={projectId} />}
     </div>
   )
@@ -155,6 +158,108 @@ function EquipoSection({ projectId, onMembersChanged }: { projectId: string; onM
                 className="shrink-0 px-3 py-1.5 rounded-lg bg-brand-600 hover:bg-brand-700 disabled:opacity-40 text-white text-sm font-semibold">
                 + Agregar
               </button>
+            </div>
+          )}
+        </>
+      )}
+    </div>
+  )
+}
+
+/**
+ * Movimientos de ESTA OTT, con "Anular" ahí mismo — antes había que ir a la
+ * pestaña Movimientos de Inventario y buscar el proyecto ahí (Andrés:
+ * "para no tener que andar buscando en movimientos"). Mismo `anularMovimiento`
+ * y mismo aviso de `requiereRevision` que esa pestaña — ver Home.tsx
+ * (MovimientosTab). Colapsado por defecto: es una herramienta de auditoría,
+ * no algo que se consulte en cada entrada a la OTT.
+ */
+function MovimientosProyectoSection({ projectId }: { projectId: string }) {
+  const rol = useAuth((s) => s.profile?.rol)
+  const puedeAnular = rol === 'admin' || rol === 'jp' || rol === 'log'
+  const [abierto, setAbierto] = useState(false)
+  const [rows, setRows] = useState<Movimiento[] | null>(null)
+  const [error, setError] = useState<string | null>(null)
+  const [anulando, setAnulando] = useState<string | null>(null)
+
+  async function reload() {
+    try { setRows(await listMovimientos({ projectId })) }
+    catch (err) { setError(err instanceof Error ? err.message : String(err)) }
+  }
+  useEffect(() => { if (abierto && rows === null) reload() /* eslint-disable-next-line react-hooks/exhaustive-deps */ }, [abierto])
+
+  async function handleAnular(m: Movimiento) {
+    const detalle = `${TIPO_LABELS_MOV[m.tipo] ?? m.tipo} — ${m.materialSku} (${m.cantidad}) — ${m.fecha.slice(0, 10)}`
+    const aviso = m.requiereRevision
+      ? '\n\nOJO: este movimiento generó un evento de revisión. Al anularlo se borra ese evento y sus resoluciones. Lo que esas resoluciones movieron NO se revierte acá: cada una dejó su propio movimiento, y hay que anularlo por separado.'
+      : ''
+    if (!confirm(`¿Anular este movimiento?\n\n${detalle}\n\nEsto revierte el stock que movió y borra el registro. No se puede deshacer.${aviso}`)) return
+    setAnulando(m.id)
+    setError(null)
+    try {
+      await anularMovimiento(m.id)
+      await reload()
+    } catch (err) {
+      setError(err instanceof Error ? err.message : String(err))
+    } finally {
+      setAnulando(null)
+    }
+  }
+
+  return (
+    <div className="bg-slate-800 rounded-2xl border border-slate-700 p-4 space-y-3">
+      <button type="button" onClick={() => setAbierto((v) => !v)}
+        className="w-full flex items-center justify-between text-xs font-semibold text-brand-400 uppercase tracking-wide">
+        <span>{abierto ? '▾' : '▸'} Movimientos de esta OTT{rows ? ` (${rows.length})` : ''}</span>
+      </button>
+      {abierto && (
+        <>
+          {error && <p className="text-xs text-red-400">{error}</p>}
+          {rows === null ? (
+            <p className="text-xs text-slate-500">Cargando…</p>
+          ) : rows.length === 0 ? (
+            <p className="text-xs text-slate-500">Sin movimientos.</p>
+          ) : (
+            <div className="overflow-x-auto rounded-xl border border-slate-700">
+              <table className="w-full text-xs border-collapse">
+                <thead>
+                  <tr className="bg-slate-700/50 text-slate-400 text-left divide-x divide-slate-700">
+                    <th className="px-2 py-1.5 font-medium">Fecha</th>
+                    <th className="px-2 py-1.5 font-medium">Tipo</th>
+                    <th className="px-2 py-1.5 font-medium">SKU</th>
+                    <th className="px-2 py-1.5 font-medium">Lote</th>
+                    <th className="px-2 py-1.5 font-medium text-right">Cantidad</th>
+                    <th className="px-2 py-1.5 font-medium">Bodega</th>
+                    <th className="px-2 py-1.5 font-medium">Usuario</th>
+                    <th className="px-2 py-1.5 font-medium">Nota</th>
+                    {puedeAnular && <th className="px-2 py-1.5 font-medium">Acción</th>}
+                  </tr>
+                </thead>
+                <tbody>
+                  {rows.map((m) => (
+                    <tr key={m.id} className="border-t border-slate-700 divide-x divide-slate-700">
+                      <td className="px-2 py-2 text-slate-300 whitespace-nowrap">{m.fecha.slice(0, 10)}</td>
+                      <td className="px-2 py-2 text-slate-300 whitespace-nowrap">{TIPO_LABELS_MOV[m.tipo] ?? m.tipo}</td>
+                      <td className="px-2 py-2 text-slate-300 whitespace-nowrap">{m.materialSku}</td>
+                      <td className="px-2 py-2 text-slate-300 whitespace-nowrap">{m.lote}</td>
+                      <td className="px-2 py-2 text-right font-semibold text-white whitespace-nowrap">{m.cantidad}</td>
+                      <td className="px-2 py-2 text-slate-300 whitespace-nowrap">
+                        {m.ubicacionDestinoNombre ? `${m.ubicacionNombre} → ${m.ubicacionDestinoNombre}` : m.ubicacionNombre}
+                      </td>
+                      <td className="px-2 py-2 text-slate-300 whitespace-nowrap">{m.usuarioNombre ?? '—'}</td>
+                      <td className="px-2 py-2 max-w-[220px]"><p className="text-slate-400 truncate">{m.nota ?? '—'}</p></td>
+                      {puedeAnular && (
+                        <td className="px-2 py-2 whitespace-nowrap">
+                          <button type="button" onClick={() => handleAnular(m)} disabled={anulando === m.id}
+                            className="text-[10px] text-red-400 hover:text-red-300 disabled:opacity-40">
+                            {anulando === m.id ? 'Anulando…' : '🗑 Anular'}
+                          </button>
+                        </td>
+                      )}
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
             </div>
           )}
         </>

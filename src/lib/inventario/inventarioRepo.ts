@@ -340,6 +340,13 @@ function movimientoFromJoinRow(r: MovimientoJoinRow): Movimiento {
   }
 }
 
+/** Compartido entre la pestaña Movimientos y la sección de Movimientos dentro de una OTT. */
+export const TIPO_LABELS_MOV: Record<string, string> = {
+  entrada: 'Entrada', salida: 'Salida', traslado: 'Traslado/Devuelto',
+  rebaja: 'Rebajado (SAP)', solicitud: 'Solicitud', instalado: 'Instalado', merma: 'Merma',
+  traslado_bodega: 'Traspaso entre bodegas', ajuste: 'Ajuste (Conteo)',
+}
+
 export interface ListMovimientosFilters {
   materialId?: string
   ubicacionId?: string
@@ -350,7 +357,8 @@ export interface ListMovimientosFilters {
   tipos?: string[]
   desde?: string
   hasta?: string
-  limit?: number
+  /** `null` = sin límite (necesario para que el buscador de texto libre alcance movimientos viejos, ver listMovimientos). Sin especificar, 200. */
+  limit?: number | null
 }
 
 export async function listMovimientos(filters?: ListMovimientosFilters): Promise<Movimiento[]> {
@@ -363,7 +371,14 @@ export async function listMovimientos(filters?: ListMovimientosFilters): Promise
     // real de inserción: es lo que hace que lo último quede primero.
     .order('fecha', { ascending: false })
     .order('created_at', { ascending: false })
-    .limit(filters?.limit ?? 200)
+
+  // `limit: null` = sin límite. El buscador de texto de MovimientosTab filtra
+  // en el cliente sobre lo que YA se trajo — con el límite de 200 puesto
+  // siempre, buscar un OTT viejo no encontraba nada porque esas filas nunca
+  // llegaban a bajarse (bug real: con ~250 movimientos entre el 13-08 y hoy,
+  // el corte de 200 caía justo a mitad del 13-08 y todo lo anterior a esa
+  // fecha quedaba fuera de la ventana buscable).
+  if (filters?.limit !== null) query = query.limit(filters?.limit ?? 200)
 
   if (filters?.materialId) query = query.eq('material_id', filters.materialId)
   if (filters?.ubicacionId) query = query.eq('ubicacion_id', filters.ubicacionId)
