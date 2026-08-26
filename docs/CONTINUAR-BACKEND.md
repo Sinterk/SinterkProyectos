@@ -1,22 +1,30 @@
 # Continuar — Migración a backend Supabase
 
 > Documento de retomada — LEER ESTO PRIMERO si se retoma en otra máquina o
-> sesión nueva. Última actualización: 11-08-2026 (noche, tarde-10).
+> sesión nueva. Última actualización: 26-08-2026.
 
-## ⚡ Estado ahora mismo (11-08-2026)
-- **`main` va atrás a propósito**: `main` está en `97b097a` (v1.59) y `backend-supabase` en v1.71, con el commit `599bb86` (alta de trabajadores, v1.55) de por medio — ver pendiente (1).
-- **Migraciones**: corridas y confirmadas hasta `0064`. **Pendientes, EN ESTE ORDEN: `0065_ferreteria_traspaso_solo_fisico.sql` (recién corregida, ver v1.71) y `0066_entrada_ferreteria_con_lote.sql`** — 0066 asume que 0065 ya corrió (ver v1.71 abajo para el porqué).
-- **Para retomar en otra máquina**: `git clone` (o `git fetch` + `git checkout backend-supabase`; si el `main` local quedó viejo, `git branch -f main origin/main`), `npm install`, recrear el `.env` a mano (los nombres de variable están en `src/lib/supabaseClient.ts` y `src/lib/auth.ts`; los valores NO están en el repo, es público — Andrés los tiene), `npm run dev`.
+## ⚡ Estado ahora mismo (26-08-2026)
+- **`main` y `backend-supabase` están sincronizados** (merge del 25-08, push confirmado a `main` el 26-08) — ambos en v1.72. Seguir mergeando `backend-supabase` a `main` cuando el trabajo esté listo para producción, en vez de dejarlo acumularse.
+- **Migraciones**: corridas y confirmadas hasta `0066`. Ninguna pendiente.
+- **Para retomar en otra máquina**: `git clone` (o `git fetch` + `git checkout backend-supabase`), `npm install`, recrear el `.env` a mano (los nombres de variable están en `src/lib/supabaseClient.ts` y `src/lib/auth.ts`; los valores NO están en el repo, es público — Andrés los tiene), `npm run dev`.
 - **Pendientes de Andrés** (no bloquean nada salvo lo marcado):
-  1. Desplegar la Edge Function de alta de usuarios: `supabase functions deploy crear-usuario` (requiere CLI de Supabase y el proyecto enlazado). Sin esto el botón "➕ Agregar trabajador" en Administración falla.
+  1. ~~Desplegar la Edge Function de alta de usuarios~~ — **hecho y confirmado el 26-08** (probada sin sesión y con token inválido, responde el gate de auth de la función, no un 404 — está desplegada de verdad).
   2. Completar en Administración el texto de Corrección de los 2 hallazgos que llegaron sin definir ("Falta Planimetria" y "CTO en condición insegura o no autorizada") — ya no es tarea de código, es editar el campo ahí mismo.
   3. Corregir con el modo corrección los 2 "Asignado a técnico" que quedaron en la OTT de prueba.
   4. Decidir si se automatiza la reversión de resoluciones al anular (bloqueo conocido: `resolver_evento_parcial` no llena `movimientos.evento_resolucion_id`).
   5. Volver a guardar la contraseña en Firefox desde `about:logins` — las guardadas antes de v1.47 quedaron con campos anónimos y no se autocompletan.
   6. **Falta un historial global de eventos resueltos** (ver la entrada sobre "Ignorar" más abajo) — decidir si vale la pena una pantalla nueva para eso o basta con lo que ya hay por conteo.
-  7. **Probar Ferretería sin lote físico + rebaja sugerida** (v1.62-v1.67, ver entradas abajo) — sin probar todavía en el navegador esta sesión.
-  8. **Pendiente para la semana (sin fecha fija)**: reescribir el texto de advertencia de "Corregir errores de tipeo" en Resumen de Proyecto — hoy dice "para arreglar un error de tipeo" y eso confunde con el caso real de "anoté 6, eran 5, ya hubo un movimiento real de 6". Corrección NUNCA revierte el movimiento ni el stock, solo pisa el número que se ve en la tabla — si el movimiento real fue mal registrado, hay que anularlo y volver a registrar con la cantidad correcta, o el stock queda mintiendo (técnico con más de lo que en verdad tiene). Andrés pidió dejarlo pendiente, no implementarlo ahora.
-- **Deploy**: sano. El desfase "producción en v1.28 con `main` en v1.44" que figuraba acá como sin resolver era un error de Andrés al mirar, no un problema del workflow — confirmado el 11-08. `.github/workflows/deploy.yml` publica bien en cada push a `main`.
+  7. **Pendiente para la semana (sin fecha fija)**: reescribir el texto de advertencia de "Corregir errores de tipeo" en Resumen de Proyecto — hoy dice "para arreglar un error de tipeo" y eso confunde con el caso real de "anoté 6, eran 5, ya hubo un movimiento real de 6". Corrección NUNCA revierte el movimiento ni el stock, solo pisa el número que se ve en la tabla — si el movimiento real fue mal registrado, hay que anularlo y volver a registrar con la cantidad correcta, o el stock queda mintiendo (técnico con más de lo que en verdad tiene). Andrés pidió dejarlo pendiente, no implementarlo ahora.
+- **Deploy**: el push del 26-08 a `main` falló al desplegar por una interrupción real de GitHub Actions/Pages (confirmada en githubstatus.com, no un problema del repo) — falta reintentar el workflow ("Re-run all jobs") una vez que GitHub se recupere. Fuera de eso, `.github/workflows/deploy.yml` publica bien en cada push a `main`.
+
+## v1.72 — Stock por trabajador ya no se limita a Terreno/Logística
+Andrés pidió que "stock por trabajador" en Inventario y "trabajador por proyecto" en Administración muestren cualquier trabajador, no solo los de Terreno.
+
+**Administración → "Equipo por proyecto" (`TeamsSection`, `AdminScreen.tsx`) ya estaba bien** — `adminRepo.listProfiles()` sin filtro de rol, con un comentario que ya documentaba el cambio ("Cualquier trabajador, sin importar su área/rol — antes solo Terreno y Logística"). Mismo criterio que "Técnicos asignados" en la pestaña Logística de la OTT (`EquipoSection`, `LogisticaTab.tsx`), también sin filtro. Nada que tocar ahí.
+
+**Inventario → Stock → Técnico (`TecnicoTab`, `Home.tsx`) sí tenía el filtro viejo**: `p.rol === 'tecnico' || p.rol === 'log'` excluía a Oficina/Admin del selector — alguien de oficina con stock a su nombre (por una Entrega, Conteo, etc.) no podía verse en esta pantalla. Se saca el filtro de rol, queda solo `p.activo`.
+
+Verificado en el navegador: el selector de Stock → Técnico ahora incluye a ANDRES BARAHONA (admin) y el resto de Oficina, además de Terreno/Logística.
 
 ## v1.71 — Entrada de Ferretería SÍ pide lote (fix SQL 0065 + nueva 0066)
 Dos cosas en un mismo tiro, reportadas por Andrés después de probar v1.70:
