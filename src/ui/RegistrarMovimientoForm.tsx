@@ -13,6 +13,7 @@ import type { MemberProfile, ProjectSummary } from '@/lib/adminRepo'
 import { useAuth } from '@/lib/auth'
 import type { Profile } from '@/lib/auth'
 import { BODEGA_DEFECTO_POR_AREA } from '@/lib/inventario/defaults'
+import { esTipoFerreteria, LOTE_FISICO_FERRETERIA } from '@/lib/inventario/esFerreteria'
 import { listMateriales, listUbicaciones, registrarMovimiento } from '@/lib/inventario/inventarioRepo'
 import type { Material, MovimientoTipoUI, Ubicacion } from '@/lib/inventario/types'
 import { LoteSelect } from './LoteSelect'
@@ -365,6 +366,12 @@ export function RegistrarMovimientoForm({ fixedProject, puntos, lockTipoUI, solo
 
       <div className="space-y-2">
         <span className={labelCls}>Material</span>
+        {esEntrada && (
+          <p className="text-[11px] text-slate-500">
+            Si conoces el lote real de SAP, indícalo — para Ferretería el físico siempre queda en "Físico"
+            (no distingue lote), pero ese lote también queda acreditado en digital, para que calce con SAP.
+          </p>
+        )}
         {/* Una fila por línea, mismo formato que Asignaciones. Las columnas de
             bodega son condicionales: solo los tipos que la piden por línea la
             muestran (Entrada la tiene una sola vez arriba, no por línea). */}
@@ -389,16 +396,30 @@ export function RegistrarMovimientoForm({ fixedProject, puntos, lockTipoUI, solo
                 const r = resultados[l.localId]
                 const ctx = loteContexto(l)
                 const totalCols = 4 + (necesitaBodegaPorLinea ? 1 : 0) + (necesitaBodegaDestinoPorLinea ? 1 : 0)
+                // Ferretería no tiene lote físico distinguible — se omite el
+                // selector SOLO del lado físico. En 'rebajado' (digital, SAP)
+                // el lote sigue importando y el selector se mantiene siempre.
+                // Entrada es la EXCEPCIÓN: aunque sea Ferretería, el material
+                // llega con un lote real de SAP y el servidor ya sabe partirlo
+                // (físico siempre a 'Físico', digital al lote indicado — ver
+                // 0066_entrada_ferreteria_con_lote.sql) — así que el selector
+                // se mantiene siempre en Entrada, sin importar el tipo.
+                const esFerreteriaFisico = !esEntrada && ctx.naturaleza === 'fisico'
+                  && esTipoFerreteria(materiales.find((m) => m.id === l.materialId)?.tipo?.nombre)
+                const loteReset = (materialId: string) =>
+                  (!esEntrada && esTipoFerreteria(materiales.find((m) => m.id === materialId)?.tipo?.nombre))
+                    ? LOTE_FISICO_FERRETERIA : ''
                 return (
                   <Fragment key={l.localId}>
                     <tr className="border-t border-slate-800 divide-x divide-slate-800">
                       <td className="px-2 py-1.5 min-w-[12rem]">
                         <MaterialSelect materiales={materiales} value={l.materialId}
-                          onChange={(id) => updateLinea(l.localId, { materialId: id, lote: '' })} />
+                          onChange={(id) => updateLinea(l.localId, { materialId: id, lote: loteReset(id) })} />
                       </td>
                       {necesitaBodegaPorLinea && (
                         <td className="px-2 py-1.5 min-w-[10rem]">
-                          <UbicacionSelect value={l.ubicacionBodegaId} onChange={(id) => updateLinea(l.localId, { ubicacionBodegaId: id, lote: '' })}
+                          <UbicacionSelect value={l.ubicacionBodegaId}
+                            onChange={(id) => updateLinea(l.localId, { ubicacionBodegaId: id, lote: loteReset(l.materialId) })}
                             tipo="bodega" placeholder={`Bodega de ${tipoUI === 'devuelto' ? 'destino' : 'origen'}…`}
                             className={`${inputCls} w-full`} />
                         </td>
@@ -410,9 +431,26 @@ export function RegistrarMovimientoForm({ fixedProject, puntos, lockTipoUI, solo
                         </td>
                       )}
                       <td className="px-2 py-1.5 min-w-[9rem]">
-                        <LoteSelect materialId={l.materialId} ubicacionId={ctx.ubicacionId} naturaleza={ctx.naturaleza}
-                          checkAvailability={ctx.checkAvailability} value={l.lote}
-                          onChange={(lote) => updateLinea(l.localId, { lote })} className={`${inputCls} w-full`} />
+                        {esFerreteriaFisico ? (
+                          <span className="text-slate-400 text-xs">Físico</span>
+                        ) : (
+                          // Entrada es un movimiento físico (ctx.naturaleza se
+                          // deja en 'fisico' arriba, para que el gate de
+                          // Ferretería siga funcionando), pero el lote que
+                          // tiene sentido ofrecer acá es el YA CONOCIDO en
+                          // digital (el código real de SAP) — Andrés: "debe
+                          // aparecer como desplegable de los ya existentes en
+                          // digital". Por eso naturaleza se pisa solo para
+                          // esta llamada, buscando en todas las bodegas (el
+                          // lote de SAP no depende de a cuál llega la
+                          // mercadería) y con "+ Lote nuevo…" para el caso de
+                          // un lote que todavía no existe en el sistema.
+                          <LoteSelect materialId={l.materialId} ubicacionId={ctx.ubicacionId}
+                            naturaleza={esEntrada ? 'digital' : ctx.naturaleza}
+                            checkAvailability={ctx.checkAvailability} value={l.lote}
+                            buscarTodasBodegas={esEntrada} soloConDisponible={esEntrada}
+                            onChange={(lote) => updateLinea(l.localId, { lote })} className={`${inputCls} w-full`} />
+                        )}
                       </td>
                       <td className="px-2 py-1.5">
                         <input type="number" min="0" step="any" placeholder="0" value={l.cantidad}

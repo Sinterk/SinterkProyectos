@@ -25,6 +25,7 @@ import { adminRepo } from '@/lib/adminRepo'
 import type { Profile } from '@/lib/auth'
 import { listMateriales, listUbicaciones, getStock, registrarMovimiento } from '@/lib/inventario/inventarioRepo'
 import type { Material, Ubicacion, StockRow } from '@/lib/inventario/types'
+import { esTipoFerreteria, LOTE_FISICO_FERRETERIA } from '@/lib/inventario/esFerreteria'
 import { LoteSelect } from '@/ui/LoteSelect'
 import { MaterialSelect } from '@/ui/MaterialSelect'
 import { UbicacionSelect } from '@/ui/UbicacionSelect'
@@ -353,25 +354,38 @@ export function AsignacionesForm({ onRegistered }: { onRegistered?: () => void }
               <tbody>
                 {lineas.map((l) => {
                   const r = resultados[l.localId]
+                  // Ferretería no tiene lote físico distinguible en la vida real
+                  // (cruceta, tornillería…) — obligar a elegir "cualquier lote
+                  // disponible" solo generaba descuadre. Todo su físico vive en
+                  // un único lote fijo; el selector ni se muestra.
+                  const esFerreteria = esTipoFerreteria(materiales.find((m) => m.id === l.materialId)?.tipo?.nombre)
                   return (
                     <Fragment key={l.localId}>
                       <tr className="border-t border-slate-800 divide-x divide-slate-800">
                         <td className="px-2 py-1.5 min-w-[12rem]">
                           <MaterialSelect materiales={materiales} value={l.materialId}
-                            onChange={(id) => updateLinea(l.localId, { materialId: id, lote: '' })} />
+                            onChange={(id) => updateLinea(l.localId, {
+                              materialId: id,
+                              lote: esTipoFerreteria(materiales.find((m) => m.id === id)?.tipo?.nombre) ? LOTE_FISICO_FERRETERIA : '',
+                            })} />
                         </td>
                         <td className="px-2 py-1.5 min-w-[10rem]">
-                          <UbicacionSelect value={l.ubicacionBodegaId} onChange={(id) => updateLinea(l.localId, { ubicacionBodegaId: id, lote: '' })}
+                          <UbicacionSelect value={l.ubicacionBodegaId}
+                            onChange={(id) => updateLinea(l.localId, { ubicacionBodegaId: id, lote: esFerreteria ? LOTE_FISICO_FERRETERIA : '' })}
                             tipo="bodega" placeholder="Bodega de origen…" className={`${inputCls} w-full`} />
                         </td>
                         <td className="px-2 py-1.5 min-w-[9rem]">
-                          {/* Recién acá se conoce la bodega: LoteSelect ya puede
-                              mostrarse como desplegable con los lotes disponibles,
-                              en vez de caer al campo de texto libre (mismo
-                              comportamiento que en Logística/Registrar Movimiento). */}
-                          <LoteSelect materialId={l.materialId} ubicacionId={l.ubicacionBodegaId || null} naturaleza="fisico"
-                            checkAvailability={tipo === 'entrega'} value={l.lote}
-                            onChange={(lote) => updateLinea(l.localId, { lote })} className={`${inputCls} w-full`} />
+                          {esFerreteria ? (
+                            <span className="text-slate-400 text-xs">Físico</span>
+                          ) : (
+                            // Recién acá se conoce la bodega: LoteSelect ya puede
+                            // mostrarse como desplegable con los lotes disponibles,
+                            // en vez de caer al campo de texto libre (mismo
+                            // comportamiento que en Logística/Registrar Movimiento).
+                            <LoteSelect materialId={l.materialId} ubicacionId={l.ubicacionBodegaId || null} naturaleza="fisico"
+                              checkAvailability={tipo === 'entrega'} value={l.lote}
+                              onChange={(lote) => updateLinea(l.localId, { lote })} className={`${inputCls} w-full`} />
+                          )}
                         </td>
                         <td className="px-2 py-1.5">
                           <input type="number" min="0" step="any" placeholder="0" value={l.cantidad}

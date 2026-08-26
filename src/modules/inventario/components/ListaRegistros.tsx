@@ -16,6 +16,7 @@ import { useAuth } from '@/lib/auth'
 import { listRegistros, corregirMovimiento, anularMovimiento } from '@/lib/inventario/inventarioRepo'
 import type { RegistroAgrupado } from '@/lib/inventario/inventarioRepo'
 import type { Movimiento } from '@/lib/inventario/types'
+import { LoteSelect } from '@/ui/LoteSelect'
 
 const LOTE_SIN_DEFINIR = 'SinDefinir'
 
@@ -326,11 +327,21 @@ function LineaRegistro({ linea, modo, puedeEditar, draft, autoFocus, error, guar
 
         <td className={tdCls}>
           {draft ? (
-            // Texto libre a propósito: el lote que hay que anotar acá muchas
-            // veces todavía no existe en `stock`, así que un desplegable de
-            // lotes conocidos (LoteSelect) no serviría justo para este caso.
-            <input value={draft.lote} onChange={(e) => onDraftChange({ lote: e.target.value })}
-              placeholder="Sin lote" autoFocus={autoFocus} className={`${inputCls} min-w-[7rem]`} />
+            modo === 'entrada' ? (
+              // Desplegable de lotes ya conocidos en digital (el código real
+              // de SAP) + "+ Lote nuevo…" para digitar uno que todavía no
+              // existe. Se muestra SIEMPRE, incluso para Ferretería — el
+              // físico de Ferretería sigue sin distinguir lote (el servidor
+              // lo deja fijo en 'Físico'), pero el lote real que entrega SAP
+              // igual importa para que el inventario digital calce con SAP
+              // (ver 0066_entrada_ferreteria_con_lote.sql).
+              <LoteSelect materialId={linea.materialId} ubicacionId={null} naturaleza="digital"
+                checkAvailability={false} value={draft.lote} onChange={(lote) => onDraftChange({ lote })}
+                buscarTodasBodegas soloConDisponible className={`${inputCls} min-w-[7rem]`} />
+            ) : (
+              <input value={draft.lote} onChange={(e) => onDraftChange({ lote: e.target.value })}
+                placeholder="Sin lote" autoFocus={autoFocus} className={`${inputCls} min-w-[7rem]`} />
+            )
           ) : linea.lote === LOTE_SIN_DEFINIR ? (
             <span className="text-amber-400">sin lote</span>
           ) : (

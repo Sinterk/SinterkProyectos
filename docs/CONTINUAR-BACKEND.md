@@ -1,11 +1,10 @@
 # Continuar — Migración a backend Supabase
 
-> Documento de retomada — LEER ESTO PRIMERO si se retoma en otra máquina o
-> sesión nueva. Última actualización: 11-08-2026 (noche, tarde-2).
+> sesión nueva. Última actualización: 25-08-2026.
 
-## ⚡ Estado ahora mismo (11-08-2026)
-- **`main` va atrás a propósito**: `main` está en `3145bd3` (v1.54) y `backend-supabase` en v1.59, con el commit `599bb86` (alta de trabajadores, v1.55) de por medio. Ese commit requiere desplegar la Edge Function `crear-usuario` antes de subir a producción — ver pendiente (1). Si se sube algo nuevo a `main` sin ese commit, hace falta `cherry-pick`, no push directo.
-- **Migraciones**: corridas y confirmadas hasta `0062`. Ninguna pendiente.
+## ⚡ Estado ahora mismo (25-08-2026)
+- **`main` y `backend-supabase` recién se sincronizaron** (merge del 25-08): ambos en v1.71, con las migraciones `0065`/`0066` ya corridas en Supabase. `main` ya no va atrás — a partir de acá, seguir mergeando `backend-supabase` a `main` cuando el trabajo esté listo para producción, en vez de dejarlo acumularse.
+- **Migraciones**: corridas y confirmadas hasta `0066`. Ninguna pendiente.
 - **Para retomar en otra máquina**: `git clone` (o `git fetch` + `git checkout backend-supabase`; si el `main` local quedó viejo, `git branch -f main origin/main`), `npm install`, recrear el `.env` a mano (los nombres de variable están en `src/lib/supabaseClient.ts` y `src/lib/auth.ts`; los valores NO están en el repo, es público — Andrés los tiene), `npm run dev`.
 - **Pendientes de Andrés** (no bloquean nada salvo lo marcado):
   1. Desplegar la Edge Function de alta de usuarios: `supabase functions deploy crear-usuario` (requiere CLI de Supabase y el proyecto enlazado). Sin esto el botón "➕ Agregar trabajador" en Administración falla.
@@ -13,9 +12,139 @@
   3. Corregir con el modo corrección los 2 "Asignado a técnico" que quedaron en la OTT de prueba.
   4. Decidir si se automatiza la reversión de resoluciones al anular (bloqueo conocido: `resolver_evento_parcial` no llena `movimientos.evento_resolucion_id`).
   5. Volver a guardar la contraseña en Firefox desde `about:logins` — las guardadas antes de v1.47 quedaron con campos anónimos y no se autocompletan.
-  6. **Falta un historial global de eventos resueltos** (ver la entrada del 11-08 sobre "Ignorar" más abajo) — decidir si vale la pena una pantalla nueva para eso o basta con lo que ya hay por conteo.
-  7. **Recuperar el levantamiento del colega** (ver entrada v1.59 abajo) — el ZIP le creó un informe vacío en el servidor (0 puntos). Con el fix ya arriba, borrar ese levantamiento local (o el registro server-side si ya no está en el store local de nadie) y volver a importar el mismo ZIP.
-- **Deploy**: sano. El desfase "producción en v1.28 con `main` en v1.44" que figuraba acá como sin resolver era un error de Andrés al mirar, no un problema del workflow — confirmado el 11-08. `.github/workflows/deploy.yml` publica bien en cada push a `main`.
+  6. **Falta un historial global de eventos resueltos** (ver la entrada sobre "Ignorar" más abajo) — decidir si vale la pena una pantalla nueva para eso o basta con lo que ya hay por conteo.
+  7. **Recuperar el levantamiento del colega** (ver entrada v1.59 más abajo) — el ZIP le creó un informe vacío en el servidor (0 puntos). Con el fix de esa versión, borrar ese levantamiento local (o el registro server-side si ya no está en el store local de nadie) y volver a importar el mismo ZIP.
+  8. **Pendiente para la semana (sin fecha fija)**: reescribir el texto de advertencia de "Corregir errores de tipeo" en Resumen de Proyecto — hoy dice "para arreglar un error de tipeo" y eso confunde con el caso real de "anoté 6, eran 5, ya hubo un movimiento real de 6". Corrección NUNCA revierte el movimiento ni el stock, solo pisa el número que se ve en la tabla — si el movimiento real fue mal registrado, hay que anularlo y volver a registrar con la cantidad correcta, o el stock queda mintiendo (técnico con más de lo que en verdad tiene). Andrés pidió dejarlo pendiente, no implementarlo ahora.
+- **Deploy**: sano. `.github/workflows/deploy.yml` publica bien en cada push a `main`.
+
+## v1.71 — Entrada de Ferretería SÍ pide lote (fix SQL 0065 + nueva 0066)
+Dos cosas en un mismo tiro, reportadas por Andrés después de probar v1.70:
+
+**1. Bug real en `0065`**: al correrla en el SQL editor de Supabase tiró `ERROR 42883: function max(uuid) does not exist` — Postgres no tiene `max()`/`min()` como agregado nativo para `uuid`. Estaba en las dos consultas de `proyecto_materiales` que agregaban `origen_ubicacion_id` con `max(...)` (esa columna no es parte de la clave única, solo se necesitaba "un valor cualquiera" por grupo). Cambiado a `(array_agg(origen_ubicacion_id))[1]`, que no tiene ese problema. Como el error rompía toda la migración (Supabase corre el script pegado como una sola transacción implícita — sin `BEGIN`/`COMMIT` propio, un error en cualquier statement revierte TODO, incluida la función que sí se había definido bien más arriba), `0065` no había aplicado ningún cambio — corregirla en el mismo archivo era seguro, nunca llegó a "correr" de verdad.
+
+**2. Cambio de diseño**: Andrés recordó que aunque Ferretería no distingue lote FÍSICO, el material sí está asociado a un lote real en SAP — "se debe poder ingresar un lote, aunque sea ferretería, para que calce el inventario interno con el de SAP. Que se grabe en stock físico como físico, que se grabe en stock digital bajo el lote indicado." v1.69/v1.70 habían hecho lo contrario: ocultar el selector de lote para Ferretería también en Entrada (heredado del gate que sí es correcto para Entrega/Devuelto/Instalado/Merma, que consumen del montón físico indistinguible) — de ahí el reclamo "no me deja editar los lotes".
+
+**Nueva migración `0066_entrada_ferreteria_con_lote.sql`** — toca `registrar_movimiento`, `corregir_movimiento` y `anular_movimiento` (reconstruidas completas a partir de sus últimas versiones reales — 0055/0059/**0058**, diffeadas contra el archivo nuevo para confirmar que el ÚNICO cambio real es la rama `entrada`, nada más se tocó de paso). Regla nueva, solo en `entrada` y solo si el material es Ferretería:
+- El físico SIEMPRE se acredita en `'Físico'` (eso no cambió).
+- Si además se indicó un lote real (no vacío, no `'Físico'`), ESE MISMO movimiento también acredita `cantidad_digital` bajo ese lote. La fila de `movimientos` guarda el lote real (no `'Físico'`) — es lo que tiene sentido ver/editar en pantalla.
+- `corregir_movimiento` (usado por "Editar líneas" en Entradas registradas) revierte el estado viejo con el mismo criterio antes de aplicar el nuevo — mover el lote de una entrada de Ferretería mueve el crédito digital de un lote a otro, sin duplicar ni perder nada. `anular_movimiento` revierte ambos lados igual.
+- **Depende de que `0065` ya haya corrido**: para movimientos viejos, `corregir`/`anular` deciden si hubo "lote real" mirando si `movimientos.lote` guardado no es `'SinDefinir'` ni `'Físico'` — eso solo es confiable una vez que 0065 normalizó el histórico a `'Físico'`. Correr 0065 antes que 0066.
+
+**Cliente** (`RegistrarMovimientoForm.tsx`, `ListaRegistros.tsx`): se sacó el gate de Ferretería SOLO para Entrada — el `LoteSelect` (desplegable de lotes digitales + "+ Lote nuevo…", de v1.69/v1.70) ahora se muestra siempre en Entrada, sea Ferretería o no. Nota nueva bajo "Material" en el formulario de Entrada explicando el porqué. `ListaRegistros.tsx` perdió la plomería que ya no servía (`listMateriales`/`esTipoFerreteria` — el gate para Entrada desapareció, no había otro uso).
+
+Verificado en el navegador (v1.71): en el formulario de Entrada, ABRAZADERA ALTA TENSION 1/2INCH (Ferretería) mostró el desplegable con lotes reales (`932717 (2)`, `939776 (1)`, etc.) + "+ Lote nuevo…", antes bloqueado en "Físico" fijo. En "Editar líneas" de una tanda ya registrada, FIERRO ANGULO (Ferretería) mostró el mismo desplegable con sus lotes reales + el valor ya guardado (`Físico (nuevo)`, porque esa fila específica no tenía lote real todavía). **El guardado real (`Registrar movimiento`/`Guardar cambios`) no se probó en el navegador** porque depende de `0065`/`0066`, que están escritas pero pendientes de correr en Supabase — falta que Andrés las corra y vuelva a probar el guardado de punta a punta.
+
+## v1.70 — el desplegable de lote de v1.69 también en "Entradas registradas" (editar)
+Corrección sobre v1.69: Andrés aclaró que el desplegable pedido no era (solo) para la fila nueva del formulario de arriba — era para el editor de tandas YA REGISTRADAS ("✎ Editar líneas" en "Entradas registradas", `ListaRegistros.tsx`), que es donde de verdad se completa el lote cuando Entel actualiza su stock (pedido original del 11-08, ver v1.18-era). Ese editor tenía a propósito un campo de texto libre — comentario en el código explicaba que "el lote muchas veces todavía no existe en `stock`, así que un desplegable no serviría" — razón que dejó de aplicar con el "+ Lote nuevo…" de v1.69 (cubre exactamente ese caso).
+
+**`ListaRegistros.tsx`**: en modo Entrada, la celda Lote de cada fila en edición ahora usa el mismo `LoteSelect` (naturaleza digital, todas las bodegas, `soloConDisponible`) que el formulario de arriba, con el mismo gate de Ferretería (estático "Físico", sin selector) — para eso el componente ahora carga `listMateriales()` una vez y lo pasa a través de `RegistroCard` → `LineaRegistro`. El modo Asignaciones no se tocó, sigue con el campo de texto libre de siempre (no era parte de lo pedido).
+
+Verificado en el navegador: en una tanda ya registrada (C132, 2026-08-10), la fila de MUFA_BC_FOSC-A_2_24_4R-1O_TERMO (no Ferretería) mostró el desplegable con los lotes reales `968415 (3)`, `971327 (8)`, `972198 (1)` + "+ Lote nuevo…"; las filas de Ferretería (FIERRO ANGULO, CRUCETA…) en la misma tanda siguieron mostrando "Físico" fijo, sin selector.
+
+## v1.69 — Entrada ahora permite elegir lote (desplegable de los ya conocidos en digital + "Lote nuevo…")
+Andrés retomó lo hablado sobre lote en entradas: "la idea es que a las entradas se les pueda poner lote. Debe aparecer como desplegable de los ya existentes en digital, aunque en físico quede como 'físico'. Dentro de los desplegables debe estar la opción de lote nuevo para digitarlo."
+
+**`LoteSelect.tsx`** (compartido por Entrada, Entrega, Rebajado, Devuelto, Instalado, Merma) gana dos capacidades genéricas, sin romper ningún uso existente porque son opt-in por prop:
+- `buscarTodasBodegas?: boolean` — ignora `ubicacionId` y busca el material en TODAS las bodegas (`getStock({ materialId })`), juntando en una sola opción los lotes repetidos entre bodegas (suma cantidades) — el código real de un lote de SAP no depende de a cuál bodega física llega la mercadería.
+- `soloConDisponible?: boolean` — filtra el desplegable a lotes que de verdad tienen algo en la naturaleza pedida, sacando los placeholders `'SinDefinir'`/`'Físico'` (no son lotes reales).
+- **"+ Lote nuevo…"** al final del desplegable, siempre disponible (no solo con las dos props de arriba): al elegirlo cambia a un campo de texto igual al patrón ya usado en `UbicacionSelect` ("+ Nueva bodega…"), para digitar un lote que todavía no existe en el sistema.
+
+**`RegistrarMovimientoForm.tsx`**, fila de Entrada: se le pasa `naturaleza="digital"` (pisando el `'fisico'` de `ctx.naturaleza`, que se deja intacto para que el gate de Ferretería — `ctx.naturaleza === 'fisico'` — siga funcionando igual que antes) más `buscarTodasBodegas` y `soloConDisponible`, ambos `true`. Para Ferretería el selector sigue sin mostrarse (queda fijo en "Físico", sin cambios) — así se cumple lo pedido: el desplegable ofrece los lotes ya conocidos en digital, pero en físico Ferretería sigue sin distinguir lote.
+
+Verificado en el navegador (v1.69): con el material SKU 51024 (no Ferretería) el desplegable mostró `972478 (4)` (el lote digital real, sumado entre bodegas) y `+ Lote nuevo…`; escribir `PLXC999999` en "Lote nuevo…" lo dejó seleccionado como `PLXC999999 (nuevo)`. Con SKU 6 (Ferretería, ABRAZADERA ALTA TENSION 1/2INCH) la celda siguió mostrando el texto fijo "Físico", sin selector — sin regresión.
+
+## v1.68 — bug real: el buscador de Movimientos no encontraba OTTs viejas + Anular movimiento desde la OTT
+Andrés reportó que el buscador de la pestaña Movimientos no mostraba OTTs anteriores al 13-08. Confirmado con datos reales de la BD: no es un problema de guardado (los 344 movimientos existen, sin huecos reales — solo el 18-08, un martes, quedó sin ninguno, el resto de "huecos" eran sábados). El bug es de la pantalla:
+
+**Causa**: `listMovimientos()` siempre traía como máximo 200 filas (`order(fecha desc).limit(200)`), y el buscador de texto filtraba SOLO sobre esas 200 ya cargadas — nunca volvía a pedir al servidor. Con ~250 movimientos entre el 13-08 y hoy, el corte de 200 caía justo a mitad del propio 13-08: todo lo anterior a esa fecha nunca llegaba a bajarse, así que buscar un OTT viejo no encontraba nada aunque sí existiera en la base.
+
+**Fix** (`inventarioRepo.ts` + `Home.tsx`): `ListMovimientosFilters.limit` ahora acepta `null` = sin límite. Mientras el campo de búsqueda tiene texto, `MovimientosTab` pide sin límite (antes solo reaccionaba a los filtros de fecha, nunca al buscador); sin texto, sigue trayendo 200 para que la vista por defecto cargue rápido.
+
+**De paso, pedido de Andrés**: "pon la opción de anular movimientos desde OTTs, para no tener que andar buscando en movimientos". Nueva sección **"▸ Movimientos de esta OTT"** en `LogisticaTab.tsx`, después de Material digital — colapsada por defecto (es una herramienta de auditoría, no algo para ver en cada entrada a la OTT), oculta para técnico igual que Técnicos asignados. Al abrirla, `listMovimientos({ projectId })` (sin problema de límite, un proyecto nunca tiene cientos de movimientos) y el mismo botón "🗑 Anular" con el mismo diálogo de confirmación y el mismo aviso de `requiereRevision` que ya existía en la pestaña Movimientos de Inventario (mismo `TIPO_LABELS_MOV`, ahora exportado desde `inventarioRepo.ts` en vez de vivir duplicado en `Home.tsx`).
+
+## Migración 0065 — traspaso de Ferretería ahora es SOLO físico (pendiente de correr)
+Andrés revisó lo hecho en 0064 (v1.62): "haz el traspaso de todos los lotes de items marcados como ferretería a físico, pero solo en stock físico, en digital se deben mantener los lotes que indica SAP." Dos ajustes, sin tocar 0064 (ya corrida) — se escribió `0065_ferreteria_traspaso_solo_fisico.sql` nueva:
+
+1. **Alcance más amplio en lo físico**: 0064 solo traspasaba el lote `'SinDefinir'`. 0065 traspasa CUALQUIER lote físico (no solo `'SinDefinir'`) a `'Físico'` — el físico de Ferretería nunca se distingue por lote, sin importar en qué lote haya llegado originalmente.
+2. **Alcance más angosto en lo digital (el cambio importante)**: el traspaso deja de tocar el lado digital. `stock.cantidad_digital`, `proyecto_materiales.cant_rebajada` y los `movimientos` con `naturaleza='digital'` quedan intactos, bajo el lote real que entrega SAP.
+
+**Es posible** porque físico y digital nunca dependen de filas separadas para poder tratarse por separado — son COLUMNAS separadas en la misma fila: `stock.cantidad_fisico`/`cantidad_digital`, y en `proyecto_materiales` las 4 columnas físicas (`cant_entregada/instalada/devuelta/rezagada`) vs. la columna digital (`cant_rebajada`). En `movimientos` cada fila ya trae `naturaleza` ('fisico'/'digital'), así que ahí ni siquiera hace falta separar columnas. La función nueva (`traspasar_fisico_ferreteria_a_lote_unico`, reemplaza a `traspasar_lote_sindefinir_a_fisico` que queda `drop`eada) mueve solo las columnas físicas hacia la fila `'Físico'` (sumando si ya existía saldo ahí) y las deja en 0 en el lote de origen — si al lote de origen le queda algo digital (`cantidad_digital`/`cant_rebajada` ≠ 0), la fila NO se borra, sigue viva con su lote real y solo la parte física en 0.
+
+Trigger y bloque retroactivo (los mismos de 0064) se actualizan para llamar a la función nueva — **falta correr esta migración en Supabase** (no la corrí yo, sigue el mismo flujo manual de las anteriores). Sin cambios de cliente: `esFerreteria.ts`/`LoteSelect` ya solo tocaban el lado físico desde v1.62, no hace falta tocar nada ahí.
+
+## v1.67 — copiado como TSV puro + fecha en formato Excel real
+Andrés aclaró lo pedido en v1.64/v1.66 sobre "formato Excel": no bastaba con que las columnas calzaran — pidió que el TIPO de cada celda calce (no se vean "fuera de lugar" al pegar), y notó que pegar con formato vs. "pegar sin formato" pegaba distinto.
+
+**Causa de las dos cosas:**
+- Copiar una `<table>` HTML deja DOS versiones en el portapapeles: una con el HTML (fuente/colores/bordes de esta app, que se ven fuera de lugar en una planilla Excel) y una de texto plano derivada de ella. "Pegar normal" en Excel prefiere la versión HTML; "pegar sin formato" fuerza la de texto plano — son dos rutas de parseo distintas dentro de Excel, así que un mismo dato puede terminar tipado distinto según cuál uses (una fecha reconocida como fecha real por un lado, como texto suelto por el otro).
+- La fecha de instalación se pasaba en `yyyy-mm-dd` (formato de un `<input type="date">`). El Excel de Entel usa `dd.mm.yyyy` — Excel no reconoce `2026-01-20` como fecha bajo ese formato, así que quedaba como texto plano: sin alinear a la derecha, sin ordenar ni calcular como el resto de la columna. Ahí estaba el "fuera de lugar".
+
+**Fix — `TablaDigital` y `RebajaPendienteSection`:**
+- Botón nuevo "📋 Copiar tabla" en las dos, escribiendo el portapapeles con `navigator.clipboard.writeText()` — TSV puro, SIN HTML. Al no existir una versión con estilos, "pegar" y "pegar sin formato" quedan idénticos: no hay dos rutas de parseo entre las que Excel tenga que elegir.
+- Sin fila de encabezado — se pega al final de las filas que ya existen en el control de Entel, no las repite.
+- Nuevo `formatFechaExcel()`: `yyyy-mm-dd` → `dd.mm.yyyy`, aplicado tanto en lo que se ve en pantalla como en lo que se copia — mismo string en los dos lados, para que lo que ves sea justo lo que se pega.
+
+No hay forma de forzar que Excel trate un valor pegado como texto plano EXACTAMENTE como un tipo de celda nativo de Excel (eso solo lo logra un copiado Excel→Excel real, vía su portapapeles OLE propio) — lo que sí se puede, y se hizo, es dejar el string en un formato que el parser de Excel reconoce de forma confiable como el tipo correcto.
+
+## v1.66 — cable no se reparte entre lotes + "Rebaja pendiente" con formato Excel
+Dos ajustes de Andrés sobre `sugerirRebaja()`/`RebajaPendienteSection` de v1.64-v1.65:
+
+**1. Cable es un caso aparte en la sugerencia.** El resto de materiales sigue repartiéndose entre varios lotes digitales (menor a mayor cantidad) si hace falta — cable NUNCA se fracciona:
+  - Si el físico ya tiene un lote real conocido (no `'SinDefinir'`) — el caso normal, cable siempre se instala de un lote específico — la rebaja va contra ESE MISMO lote, siempre, sin comparar disponible ni buscar otro. El digital ya permite quedar negativo (0055), así que no hace falta que "alcance".
+  - Solo si el físico todavía no tiene lote (`'SinDefinir'`) se busca un lote digital — pero UNO SOLO que cubra toda la cantidad (filtro `cantidadDigital >= necesario`, no `> 0`), priorizando igual la bodega del área y, entre los que alcanzan, el más ajustado. Si ninguno alcanza solo, queda una línea sin lote con el total — nunca se fracciona en varias líneas más chicas.
+  - Cable tampoco se agrupa por material entre lotes distintos como el resto: cada fila física (material+lote) es su propia línea, 1 a 1.
+  - `esTipoCable` (`esCable.ts`, ya existía) decide qué material es cable — mismo criterio que EP/lista de ATT.
+
+**2. "Rebaja pendiente" (`RebajaPendienteSection`) reformateada** con las mismas 9 columnas y orden que "Material digital" (OTT, Dirección de trabajos, Fecha de instalación, RUT empresa, Dirección empresa, SKU, Material, Lote, Cantidad) — antes solo tenía Material/Lote/Bodega/Cantidad/Origen. Bodega/Origen/Acción quedan como columnas extra al final (uso interno, no están en el Excel de Entel). Recibe `ott`/`direccion`/`fechaInstalacion` igual que `TablaDigital` — mismos props ya threaded desde v1.64, solo faltaba pasarlos a este componente también.
+
+## v1.65 — guardar rebaja pendiente reventaba: "Rebajado requiere proyecto, técnico y bodega de origen"
+Bug de la v1.64 recién subida: `RebajaPendienteSection` arma cada línea con material/lote/bodega/cantidad pero SIN técnico (con razón — Andrés: "técnico no es relevante para rebajas desde C088"), y el loop de guardado llamaba `registrarMovimiento({tipoUI:'rebajado', ...})` sin mandar `tecnicoUserId`.
+
+**No es un problema nuevo del servidor ni faltó SQL** — `registrar_movimiento` exige técnico para `rebajado` desde `0005_registrar_movimiento.sql` (la primera versión de la función), sin cambios desde entonces. `tecnico_user_id` ahí no mueve stock de nadie — solo queda como `usuario_id` del movimiento, el campo de trazabilidad de "quién lo registró". El bug fue puramente del cliente nuevo: se armó `RebajaPendienteSection` sin ese campo, porque conceptualmente una rebaja SAP no es de un técnico particular.
+
+**Fix**: se manda quien está guardando (`useAuth` → `session.user.id`, ya el admin/JP logueado) como `tecnicoUserId` — sin agregar un selector de técnico a `RebajaPendienteSection`, que habría sido pedirle un dato sin sentido para este flujo. `ResumenProyectoTable.tsx`, sin migración.
+
+## v1.64 — orden de Logística + rebaja multi-bodega + formato copiable a Excel de Entel
+Andrés compartió `CONTROL DE REBAJAS C088.xlsx` (pestaña 2026) — el control de rebajas real que usa Entel — y pidió 3 cosas sobre lo construido en v1.62:
+
+1. **Orden de secciones en Logística confirmado**: Técnicos (`EquipoSection`) → Material físico → **Rebaja pendiente** → Material digital. Antes Material digital iba ANTES que Rebaja pendiente; se invirtió el orden de render en `ResumenProyectoTable.tsx` (ambos componentes seguían intactos, solo cambió el orden en que se llaman).
+2. **`sugerirRebaja()` ahora busca en TODAS las bodegas**, no solo la elegida en la barra de abajo — antes exigía elegir una bodega primero. Por material, junta el stock digital de cualquier bodega vía `getStock({ materialId })` (sin `ubicacionId`), y ordena: primero los lotes de la bodega del área (`defaultBodegaId` — C088 en ATT, C132 en OyM), de menor a mayor cantidad; agotada esa bodega, sigue con el resto también de menor a mayor. Pedido explícito de Andrés: "ordena primero los de C088 y después los de otras bodegas".
+3. **`TablaDigital` ("Material digital") reformateada** para calzar columna por columna con la pestaña 2026 del Excel — orden exacto: OTT, Dirección de trabajos, Fecha de instalación, RUT empresa, Dirección empresa, SKU, Material, Lote, Cantidad. Seleccionar filas y pegarlas directo en el Excel de Entel cae en su lugar sin reacomodar nada.
+   - RUT empresa / Dirección empresa son constantes (`76.512.898-6` / `Primero de Mayo 3425`, iguales en las ~2200 filas del Excel de referencia — el RUT/dirección de Sinterk como contratista, no del proyecto).
+   - OTT/Dirección/Fecha de instalación son del proyecto completo (mismo valor en cada fila) — nuevos props opcionales en `LogisticaTab`/`ResumenProyectoTable` (`ott`, `direccion`, `fechaInicio`), pasados desde `Editor.tsx` de ATT únicamente (`record.ott`, `record.direccion`, `fechaInicioDe(record)`). Preventivos/Incidencias no los mandan — esas 3 columnas quedan en blanco ahí, no rompe nada.
+   - "Fecha de instalación" usa la Fecha de inicio de la OTT (confirmado con Andrés) — no hay una fecha de instalación real por fila (la rebaja suma instalaciones de varios días/puntos).
+   - La tabla ahora filtra a `cantRebajada > 0` (antes mostraba toda fila del proyecto, incluso con 0 rebajado) — es un log de rebajas confirmadas, no el inventario completo.
+
+De paso: nueva columna **Descripción** en la tabla de Material físico de la OTT (junto al SKU), pedido explícito de Andrés, sin relación con lo de arriba.
+
+## v1.62-v1.63 — Ferretería sin lote físico + rebaja sugerida
+Pedido de Andrés, con plan aprobado en la conversación (ver el mensaje "Plan:" del 11-08). Problema real: materiales como cruceta/tornillería no tienen lote físico distinguible — obligar a elegir "cualquier lote disponible" en cada Entrega/Instalado generaba descuadre.
+
+**Parte 1 — sin lote en movimientos físicos.** Nuevo `src/lib/inventario/esFerreteria.ts` (`esTipoFerreteria`, mismo patrón que `esCable.ts`: por nombre del Tipo del Catálogo, no por id) y `LOTE_FISICO_FERRETERIA = 'Físico'`. En los 3 sitios reales donde se elige lote físico (`AsignacionesForm.tsx` Entrega/Conteo, `RegistrarMovimientoForm.tsx` Entrada, `ResumenProyectoTable.tsx` filas físicas nueva/existente), si el material es Ferretería no se muestra `LoteSelect` — se fija `'Físico'` directo. El valor real guardado en `lote` pasa a ser ese string, así que fluye solo a Bodega/Movimientos/Técnico sin tocar esas pantallas. La rama `naturaleza='digital'` de `RegistrarMovimientoForm` (rebajado) queda intacta a propósito — ahí el lote real sigue importando (hoy es código muerto de todos modos: el único render real de ese componente es `soloEntrada`, ver `Home.tsx:118`).
+
+**Parte 2 — migración `0064_ferreteria_traspaso_lote.sql`.** Decisión de Andrés: traspasar lo histórico Y que el traspaso ocurra solo hacia adelante. Trigger `after update of tipo_id on materiales` — si el tipo nuevo resuelve a Ferretería y el anterior no, llama `traspasar_lote_sindefinir_a_fisico(material_id)`, que renombra `lote='SinDefinir'` → `'Físico'` en `stock`/`movimientos`/`proyecto_materiales`. En `stock` y `proyecto_materiales` (con unique constraint sobre lote) usa upsert-con-suma para no reventar si ya existiera una fila `'Físico'` con saldo propio — un cruce ahí "se cuadra a mano con Conteo después" (palabras de Andrés), no hay lógica de merge más fina. Retroactivo para lo ya clasificado hoy vía un `do` block (no por el trigger — `tipo_id` no cambia, así que "antes no lo era" sería falso).
+
+**Parte 3 — rediseño de "Material digital (SAP)" en `ResumenProyectoTable.tsx`.** `TablaDigital` se simplifica a SOLO mostrar/corregir lo YA rebajado (se le sacó bodega/disponible/el "+" de edición libre — ya no hace falta, ver abajo). Nueva sección `RebajaPendienteSection`: botón "↻ Sugerir rebaja" (mismo patrón que "Regenerar avance" del EP, `EstadoPagoTab.tsx:62`) calcula por material `necesario = instalado total − ya rebajado`, y reparte esa cantidad entre los lotes digitales disponibles en la bodega elegida ordenados de MENOR a MAYOR — vacía primero el lote más chico, sigue con el siguiente, hasta cubrir lo necesario (algoritmo confirmado con Andrés: "vaciar el lote más vacío y luego empezar a consumir el 2do con menos unidades"). Si ni sumando todo alcanza, la línea final queda con el faltante y sin lote, marcada en ámbar. Las líneas quedan editables (lote/bodega/cantidad) y se puede agregar una suelta a mano ("+ Agregar línea de rebaja"); nada se guarda hasta el mismo botón "Guardar cambios" que ya existía para el resto de la tabla — no hizo falta un mecanismo de borrador nuevo, ya estaba.
+
+## v1.61 — terreno (técnico) puede agregar y editar puntos de Preventivos
+Pedido de Andrés: terreno no debe poder cambiar la info del proyecto (cuadrante/zona/responsable/etc.), pero SÍ debe poder agregar puntos y editarlos por completo — antes ni siquiera veía el botón "Agregar punto".
+
+Causa: `Editor.tsx` pasaba `soloFotos={isTecnico}` tanto a `CuadranteSection` (correcto, la info de proyecto debe quedar bloqueada) como a cada `PuntoCard` (INCORRECTO — dejaba los puntos en modo solo-fotos para técnico: nombre/descripción/dirección/hallazgo de solo lectura, sin poder reordenar ni eliminar), y además ocultaba el botón "➕ Agregar punto" entero con `{!isTecnico && (...)}`.
+
+Fix: se dejó de pasar `soloFotos` a `PuntoCard` (queda en su default `false` para todos los roles) y se sacó el gate `!isTecnico` del botón de agregar. `CuadranteSection` no se tocó — sigue bloqueada para técnico. Sin cambios de RLS: `puntos_all` (0002) ya permitía insert/update/delete a cualquier miembro del proyecto (`is_member`), esto era puramente una restricción de la interfaz, no del servidor.
+
+## v1.60 — nombre de cuadrante/incidencia repetido entre períodos rompía la sincronización
+Reportado por Andrés: subió el ZIP de un colega y "no se guarda bien"; además, el avance de ese colega trabajando en vivo tampoco le aparecía. Pista suya, clave para encontrarlo: "como esto se hace periódicamente, es común nombres iguales".
+
+**Causa raíz.** `projects` es una tabla compartida entre ATT, Preventivos e Incidencias. El `unique(ott, version)` de `0001_init.sql` tenía sentido para ATT (un número de OTT no debería repetirse, salvo una "versión" explícita vía "copiar proyecto"). Pero en Preventivos/Incidencias, `ott` guarda el CÓDIGO DE CUADRANTE/de la incidencia — un nombre que se reutiliza cada período por diseño — y ninguna de las dos áreas usa jamás el mecanismo de versión (`version` queda en 1 para siempre). En la práctica, la constraint actuaba como `unique(ott)` puro para esas dos áreas, bloqueando el caso normal que describió Andrés.
+
+**Por qué explica los dos síntomas a la vez.** Crear/importar un cuadrante con un nombre ya usado en un período anterior hace que el primer `insert` en `projects` (`insertProjectIdempotente`) choque contra esa constraint (23505). El código de recuperación de ese error asumía que un 23505 SIEMPRE es el reintento por `client_local_id` (0046) y volvía a buscar por esa columna — que no encuentra nada, porque el conflicto real fue por el OTT, no por el reintento — y revienta con un error de "no rows" que no dice en ningún lado "ya existe un cuadrante con ese nombre". Pasa igual si el colega lo hace en vivo: su autoguardado repite el mismo `insert`, choca igual, y su trabajo se queda local en su máquina para siempre — nunca llega al servidor, así que Andrés nunca lo ve.
+
+**Fix — `0063_ott_unico_solo_att.sql`**: la unicidad de `(ott, version)` queda restringida a ATT vía índice único parcial (`where area = 'ATT'`). Preventivos e Incidencias quedan libres de repetir nombres entre períodos.
+
+**Defensa en profundidad** (`attRepo.ts`, `incidenciaRepo.ts`, `preventivoRepo.ts`): el manejo de 23505 en `insertProjectIdempotente` ya no asume ciegamente que es el reintento por `client_local_id` — si la búsqueda por esa columna no encuentra nada, tira un error honesto ("ya existe un proyecto con el OTT/código …") en vez del error de "no rows" sin contexto. Relevante sobre todo para ATT, donde la constraint de nombre único SÍ sigue aplicando.
+
+**Recuperación**: después de correr la 0063, NO hace falta re-importar el ZIP del colega — su levantamiento debería seguir en el store local (de quien lo haya intentado subir) marcado "sin sincronizar"; con reintentar desde el botón de guardado del Editor (o esperar el próximo autoguardado) alcanza, porque el `record.id` local nunca cambió y el mismo insert que antes chocaba ahora debería pasar limpio.
 
 ## v1.59 — ZIP de una versión vieja del sitio: "puntos.delete: invalid input syntax for type uuid"
 Reportado por Andrés: subió un ZIP de un cuadrante hecho por un colega en la versión vieja del sitio (otro PC) y obtuvo ese error al guardar — pero el levantamiento "sí se subió" (a medias).

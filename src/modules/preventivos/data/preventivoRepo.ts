@@ -70,11 +70,19 @@ async function insertProjectIdempotente(clientLocalId: string, patch: Record<str
 
   // Carrera: otro intento (u otra pestaña con el mismo borrador) insertó con
   // este mismo client_local_id un instante antes — se usa esa fila en vez de fallar.
+  //
+  // Antes de 0063, un 23505 acá también podía ser un choque por nombre de
+  // cuadrante repetido (`unique(ott, version)`) — normal en Preventivos,
+  // donde el mismo código se reusa cada período. Esa búsqueda por
+  // client_local_id no encontraba nada (el conflicto era otra constraint)
+  // y reventaba con un error de "no rows" que no explicaba nada. 0063 saca
+  // esa constraint para esta área; el fallback de abajo queda como red de
+  // seguridad honesta por si algún día vuelve a haber otra causa de 23505.
   if (error.code === '23505') {
-    const { data: existente2, error: errBuscar2 } = await supabase
-      .from('projects').select('id').eq('client_local_id', clientLocalId).single()
-    if (errBuscar2) throw new Error(`projects.insert (tras choque de duplicado): ${errBuscar2.message}`)
-    return existente2.id
+    const { data: existente2 } = await supabase
+      .from('projects').select('id').eq('client_local_id', clientLocalId).maybeSingle()
+    if (existente2) return existente2.id
+    throw new Error(`projects.insert: ya existe un proyecto con el código "${String(patch.ott ?? '')}"`)
   }
   throw new Error(`projects.insert: ${error.message}`)
 }

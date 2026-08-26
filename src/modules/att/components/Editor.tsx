@@ -146,7 +146,8 @@ export function Editor() {
         )
       ) : tab === 'logistica' ? (
         isUuid(id) ? (
-          <LogisticaTab projectId={id} area="ATT" />
+          <LogisticaTab projectId={id} area="ATT"
+            ott={record.ott} direccion={record.direccion} fechaInicio={fechaInicioDe(record)} />
         ) : (
           <p className="text-xs text-slate-500 text-center py-8">Guarda el informe primero para gestionar logística.</p>
         )
