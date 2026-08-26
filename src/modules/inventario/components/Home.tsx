@@ -763,7 +763,11 @@ function TecnicoTab() {
   useEffect(() => {
     adminRepo.listProfiles()
       .then((all) => {
-        const cs = all.filter((p) => p.activo && (p.rol === 'tecnico' || p.rol === 'log'))
+        // Cualquier trabajador activo, sin importar su rol (antes solo
+        // Terreno y Logística) — mismo criterio que "Técnicos asignados" en
+        // Logística y "Equipo por proyecto" en Administración: cualquiera
+        // puede tener stock propio a su nombre.
+        const cs = all.filter((p) => p.activo)
         setTecnicos(cs)
         if (cs.length > 0) setUserId(cs[0].id)
       })
