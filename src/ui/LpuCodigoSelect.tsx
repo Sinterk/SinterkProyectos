@@ -3,7 +3,7 @@
 // códigos un <select> nativo es impráctico. Los "ELIMINADO" se ocultan por
 // defecto (siguen existiendo por si una línea vieja los referencia).
 
-import { useMemo, useRef, useState } from 'react'
+import { useEffect, useMemo, useRef, useState } from 'react'
 import { createPortal } from 'react-dom'
 import type { LpuCodigo } from '@/lib/lpu/types'
 
@@ -20,6 +20,14 @@ export function LpuCodigoSelect({ codigos, value, onChange, placeholder = 'Códi
   const [query, setQuery] = useState('')
   const [pos, setPos] = useState<{ top: number; left: number } | null>(null)
   const btnRef = useRef<HTMLButtonElement>(null)
+  const inputRef = useRef<HTMLInputElement>(null)
+
+  // Ver MaterialSelect.tsx: autoFocus + position:fixed hacía que el
+  // navegador scrolleara la página entera al abrir en celular, dejando el
+  // contenido real fuera de vista. `preventScroll` lo corta.
+  useEffect(() => {
+    if (open) inputRef.current?.focus({ preventScroll: true })
+  }, [open])
 
   const disponibles = useMemo(
     () => codigos.filter((c) => (c.estado ?? '').trim().toLowerCase() !== 'eliminado'),
@@ -61,7 +69,7 @@ export function LpuCodigoSelect({ codigos, value, onChange, placeholder = 'Códi
           <div className="fixed inset-0 z-40" onClick={() => setOpen(false)} />
           <div style={{ top: pos.top, left: pos.left }}
             className="fixed z-50 w-80 max-w-[90vw] bg-slate-800 border border-slate-600 rounded-lg shadow-lg p-2 space-y-1.5">
-            <input autoFocus value={query} onChange={(e) => setQuery(e.target.value)} placeholder="Buscar código, partida o descripción…"
+            <input ref={inputRef} value={query} onChange={(e) => setQuery(e.target.value)} placeholder="Buscar código, partida o descripción…"
               onClick={(e) => e.stopPropagation()}
               className="w-full bg-slate-700 text-white text-xs rounded-lg px-2 py-1.5 border border-slate-600 focus:border-brand-500 focus:outline-none" />
             <div className="max-h-64 overflow-y-auto space-y-0.5">

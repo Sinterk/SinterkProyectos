@@ -10,7 +10,7 @@
 // mismo motivo que el filtro de columna de la pestaña Bodega (contenedor con
 // overflow-x-auto). Mismo fix que ese caso.
 
-import { useMemo, useRef, useState } from 'react'
+import { useEffect, useMemo, useRef, useState } from 'react'
 import { createPortal } from 'react-dom'
 import { compareSku } from '@/lib/inventario/sku'
 import type { Material } from '@/lib/inventario/types'
@@ -28,6 +28,19 @@ export function MaterialSelect({ materiales, value, onChange, placeholder = 'Mat
   const [query, setQuery] = useState('')
   const [pos, setPos] = useState<{ top: number; left: number } | null>(null)
   const btnRef = useRef<HTMLButtonElement>(null)
+  const inputRef = useRef<HTMLInputElement>(null)
+
+  // Reportado en celular: al abrir el panel, el campo con autoFocus hacía
+  // que el navegador scrolleara TODA la página para "mostrar el input
+  // enfocado" — pero el panel ya está en position:fixed (para no quedar
+  // recortado dentro de la tabla, ver arriba), así que ese scroll nativo
+  // solo lograba correr el contenido real de la página a un área en blanco,
+  // dejando la tabla fuera de vista. `preventScroll` corta ese scroll
+  // automático — el panel ya se posiciona solo, no necesita que el
+  // navegador "ayude" a centrarlo.
+  useEffect(() => {
+    if (open) inputRef.current?.focus({ preventScroll: true })
+  }, [open])
 
   const sorted = useMemo(() => [...materiales].sort((a, b) => compareSku(a.sku, b.sku)), [materiales])
   const selected = materiales.find((m) => m.id === value) ?? null
@@ -63,7 +76,7 @@ export function MaterialSelect({ materiales, value, onChange, placeholder = 'Mat
           <div className="fixed inset-0 z-40" onClick={() => setOpen(false)} />
           <div style={{ top: pos.top, left: pos.left }}
             className="fixed z-50 w-72 max-w-[90vw] bg-slate-800 border border-slate-600 rounded-lg shadow-lg p-2 space-y-1.5">
-            <input autoFocus value={query} onChange={(e) => setQuery(e.target.value)} placeholder="Buscar SKU o nombre…"
+            <input ref={inputRef} value={query} onChange={(e) => setQuery(e.target.value)} placeholder="Buscar SKU o nombre…"
               onClick={(e) => e.stopPropagation()}
               className="w-full bg-slate-700 text-white text-xs rounded-lg px-2 py-1.5 border border-slate-600 focus:border-brand-500 focus:outline-none" />
             <div className="max-h-56 overflow-y-auto space-y-0.5">

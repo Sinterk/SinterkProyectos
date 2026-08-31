@@ -3,7 +3,7 @@
 // (Bodega/Movimientos/Técnico, ver src/modules/inventario/components/Home.tsx)
 // y las tablas del Panel de KPIs.
 
-import { useRef, useState } from 'react'
+import { useEffect, useRef, useState } from 'react'
 import { createPortal } from 'react-dom'
 
 export interface ChecklistFilter {
@@ -27,6 +27,15 @@ export function ColumnHeader<K extends string>({ col, sort, onSort, checklist, o
   const [search, setSearch] = useState('')
   const [pos, setPos] = useState<{ top: number; left: number } | null>(null)
   const btnRef = useRef<HTMLButtonElement>(null)
+  const searchRef = useRef<HTMLInputElement>(null)
+
+  // Mismo problema que en MaterialSelect: con autoFocus, el navegador
+  // scrollea la PÁGINA para "mostrar" el input enfocado, pero el popover ya
+  // está en position:fixed — ese scroll solo corre el contenido real fuera
+  // de vista (reportado en celular). `preventScroll` lo corta.
+  useEffect(() => {
+    if (open) searchRef.current?.focus({ preventScroll: true })
+  }, [open])
 
   // El popover se porta al <body> con position:fixed en vez de vivir dentro
   // del <th> (position:absolute): el contenedor de la tabla tiene
@@ -78,7 +87,7 @@ export function ColumnHeader<K extends string>({ col, sort, onSort, checklist, o
             )}
             <div className="border-t border-slate-700 pt-1.5 space-y-1">
               {checklist.values.length > 8 && (
-                <input value={search} onChange={(e) => setSearch(e.target.value)} placeholder="Buscar…" autoFocus
+                <input ref={searchRef} value={search} onChange={(e) => setSearch(e.target.value)} placeholder="Buscar…"
                   onClick={(e) => e.stopPropagation()}
                   className="w-full bg-slate-700 text-white text-[11px] rounded px-2 py-1 border border-slate-600 focus:border-brand-500 focus:outline-none" />
               )}

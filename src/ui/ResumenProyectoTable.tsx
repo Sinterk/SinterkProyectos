@@ -299,12 +299,19 @@ export function ResumenProyectoTable({ projectId, area, puntos, refreshKey = 0, 
   }
 
   // Al elegir material para una fila nueva, la bodega parte en la bodega por
-  // defecto del área (C088/C132) sin importar si el material realmente vive
-  // ahí — si no tiene stock en esa bodega pero sí en otra (ej. un material
-  // de OyM elegido desde una OTT ATT, o de la bodega Insumos), la fila
-  // saltaba una "salida" de una bodega donde el material nunca estuvo,
+  // defecto del área (C088/C132) — pero SOLO si el SKU ya tiene algo de
+  // stock digital registrado en alguna bodega (es un material real que ya
+  // pasó por SAP). Si nunca se movió digitalmente, asumir que vive en la
+  // bodega del área es adivinar; se deja sin bodega para que el usuario
+  // elija a mano (pedido de Andrés).
+  //
+  // Además, si no tiene stock en esa bodega pero sí en otra (ej. un
+  // material de OyM elegido desde una OTT ATT, o de la bodega Insumos), la
+  // fila saltaba una "salida" de una bodega donde el material nunca estuvo,
   // generando negativos falsos. Se corrige buscando dónde el material
-  // realmente tiene stock y saltando la bodega de la fila para allá.
+  // realmente tiene stock y saltando la bodega de la fila para allá — esto
+  // sigue aplicando aunque no tenga stock digital, con tal de que tenga
+  // stock FÍSICO en alguna bodega.
   async function handleMaterialSeleccionado(fila: NuevaFila, materialId: string) {
     // Ferretería no tiene lote físico distinguible — se fija directo, sin
     // pasar por el selector (ver esFerreteria.ts).
@@ -315,10 +322,18 @@ export function ResumenProyectoTable({ projectId, area, puntos, refreshKey = 0, 
       const stockRows = await getStock({ materialId })
       const bodegaIds = new Set(bodegas.map((b) => b.id))
       const enBodegas = stockRows.filter((s) => bodegaIds.has(s.ubicacionId))
-      const tieneStockActual = enBodegas.some((s) => s.ubicacionId === fila.ubicacionBodegaId && (s.cantidadFisico > 0 || s.cantidadDigital > 0))
+
+      const tieneStockDigital = enBodegas.some((s) => s.cantidadDigital > 0)
+      let bodegaActual = fila.ubicacionBodegaId
+      if (!tieneStockDigital && bodegaActual) {
+        bodegaActual = ''
+        actualizarFilaNueva(fila.localId, { ubicacionBodegaId: '' })
+      }
+
+      const tieneStockActual = enBodegas.some((s) => s.ubicacionId === bodegaActual && (s.cantidadFisico > 0 || s.cantidadDigital > 0))
       if (tieneStockActual) return
       const mejor = [...enBodegas].sort((a, b) => (b.cantidadFisico + b.cantidadDigital) - (a.cantidadFisico + a.cantidadDigital))[0]
-      if (mejor && (mejor.cantidadFisico > 0 || mejor.cantidadDigital > 0) && mejor.ubicacionId !== fila.ubicacionBodegaId) {
+      if (mejor && (mejor.cantidadFisico > 0 || mejor.cantidadDigital > 0) && mejor.ubicacionId !== bodegaActual) {
         actualizarFilaNueva(fila.localId, { ubicacionBodegaId: mejor.ubicacionId })
       }
     } catch {
@@ -737,8 +752,8 @@ export function ResumenProyectoTable({ projectId, area, puntos, refreshKey = 0, 
                   <th className="px-2 py-2 font-medium whitespace-nowrap">Técnico</th>
                   <th className="px-2 py-2 font-medium whitespace-nowrap">SKU</th>
                   <th className="px-2 py-2 font-medium">Descripción</th>
-                  <th className="px-2 py-2 font-medium whitespace-nowrap">Lote</th>
                   <th className="px-2 py-2 font-medium whitespace-nowrap">Bodega</th>
+                  <th className="px-2 py-2 font-medium whitespace-nowrap">Lote</th>
                   <th className="px-2 py-2 font-medium text-center whitespace-nowrap">Solicitado</th>
                   <th className="px-2 py-2 font-medium text-center whitespace-nowrap">Entregado</th>
                   <th className="px-2 py-2 font-medium text-center whitespace-nowrap">Instalado</th>
@@ -781,14 +796,12 @@ export function ResumenProyectoTable({ projectId, area, puntos, refreshKey = 0, 
                         <p className="text-slate-400 truncate">{materiales.find((m) => m.id === fila.materialId)?.descripcion ?? ''}</p>
                       </td>
                       <td className="px-2 py-2 align-top space-y-1">
-                        {esFerreteriaFila ? (
-                          <span className="text-slate-400 text-xs">Físico</span>
-                        ) : (
-                          <LoteSelect materialId={fila.materialId} ubicacionId={fila.ubicacionBodegaId || null} naturaleza="fisico"
-                            checkAvailability={false} value={fila.lote}
-                            onChange={(lote) => actualizarFilaNueva(fila.localId, { lote })}
-                            className="w-24 bg-slate-700 text-white text-xs rounded px-1.5 py-1 border border-slate-600 focus:border-brand-500 focus:outline-none" />
-                        )}
+                        <select value={fila.ubicacionBodegaId}
+                          onChange={(e) => actualizarFilaNueva(fila.localId, { ubicacionBodegaId: e.target.value, lote: esFerreteriaFila ? LOTE_FISICO_FERRETERIA : '' })}
+                          className="w-24 bg-slate-700 text-white text-xs rounded px-1.5 py-1 border border-slate-600 focus:border-brand-500 focus:outline-none">
+                          <option value="">Bodega…</option>
+                          {bodegas.map((b) => <option key={b.id} value={b.id}>{b.nombre}</option>)}
+                        </select>
                         {puntos && (
                           <select value={fila.puntoId ?? NINGUN_PUNTO}
                             onChange={(e) => actualizarFilaNueva(fila.localId, { puntoId: e.target.value || null })}
@@ -799,12 +812,14 @@ export function ResumenProyectoTable({ projectId, area, puntos, refreshKey = 0, 
                         )}
                       </td>
                       <td className="px-2 py-2 align-top">
-                        <select value={fila.ubicacionBodegaId}
-                          onChange={(e) => actualizarFilaNueva(fila.localId, { ubicacionBodegaId: e.target.value, lote: esFerreteriaFila ? LOTE_FISICO_FERRETERIA : '' })}
-                          className="w-24 bg-slate-700 text-white text-xs rounded px-1.5 py-1 border border-slate-600 focus:border-brand-500 focus:outline-none">
-                          <option value="">Bodega…</option>
-                          {bodegas.map((b) => <option key={b.id} value={b.id}>{b.nombre}</option>)}
-                        </select>
+                        {esFerreteriaFila ? (
+                          <span className="text-slate-400 text-xs">Físico</span>
+                        ) : (
+                          <LoteSelect materialId={fila.materialId} ubicacionId={fila.ubicacionBodegaId || null} naturaleza="fisico"
+                            checkAvailability={false} value={fila.lote}
+                            onChange={(lote) => actualizarFilaNueva(fila.localId, { lote })}
+                            className="w-24 bg-slate-700 text-white text-xs rounded px-1.5 py-1 border border-slate-600 focus:border-brand-500 focus:outline-none" />
+                        )}
                       </td>
                       {CAMPOS_FISICOS.map((campo) => {
                         // "Asignado a técnico" no aplica a una fila nueva: no hay
@@ -852,6 +867,13 @@ export function ResumenProyectoTable({ projectId, area, puntos, refreshKey = 0, 
                       </td>
                       <td className="px-2 py-2 text-slate-300 whitespace-nowrap">{row.materialSku}</td>
                       <td className="px-2 py-2 max-w-[200px]"><p className="text-white truncate">{row.materialDescripcion}</p></td>
+                      <td className="px-2 py-2 align-top">
+                        <select value={getRowBodega(key)} onChange={(e) => setRowBodega(key, e.target.value)}
+                          className="w-24 bg-slate-700 text-white text-xs rounded px-1.5 py-1 border border-slate-600 focus:border-brand-500 focus:outline-none">
+                          <option value="">Bodega…</option>
+                          {bodegas.map((b) => <option key={b.id} value={b.id}>{b.nombre}</option>)}
+                        </select>
+                      </td>
                       <td className="px-2 py-2 align-top space-y-1">
                         {esFerreteriaFila ? (
                           <span className="text-slate-400 text-xs">Físico</span>
@@ -861,13 +883,6 @@ export function ResumenProyectoTable({ projectId, area, puntos, refreshKey = 0, 
                             onChange={(lote) => setRowLote(key, lote)}
                             className="w-24 bg-slate-700 text-white text-xs rounded px-1.5 py-1 border border-slate-600 focus:border-brand-500 focus:outline-none" />
                         )}
-                      </td>
-                      <td className="px-2 py-2 align-top">
-                        <select value={getRowBodega(key)} onChange={(e) => setRowBodega(key, e.target.value)}
-                          className="w-24 bg-slate-700 text-white text-xs rounded px-1.5 py-1 border border-slate-600 focus:border-brand-500 focus:outline-none">
-                          <option value="">Bodega…</option>
-                          {bodegas.map((b) => <option key={b.id} value={b.id}>{b.nombre}</option>)}
-                        </select>
                       </td>
                       {CAMPOS_FISICOS.map((campo) => {
                         const valor = row[campo]
