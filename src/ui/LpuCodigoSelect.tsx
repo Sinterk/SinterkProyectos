@@ -18,8 +18,6 @@ interface Props {
 export function LpuCodigoSelect({ codigos, value, onChange, placeholder = 'Código LPU…', className }: Props) {
   const [open, setOpen] = useState(false)
   const [query, setQuery] = useState('')
-  const [pos, setPos] = useState<{ top: number; left: number } | null>(null)
-  const btnRef = useRef<HTMLButtonElement>(null)
   const inputRef = useRef<HTMLInputElement>(null)
 
   // Ver MaterialSelect.tsx: autoFocus + position:fixed hacía que el
@@ -44,10 +42,6 @@ export function LpuCodigoSelect({ codigos, value, onChange, placeholder = 'Códi
     : disponibles
 
   function toggle() {
-    if (!open && btnRef.current) {
-      const r = btnRef.current.getBoundingClientRect()
-      setPos({ top: r.bottom + 4, left: Math.min(r.left, window.innerWidth - 340) })
-    }
     setQuery('')
     setOpen((v) => !v)
   }
@@ -60,19 +54,19 @@ export function LpuCodigoSelect({ codigos, value, onChange, placeholder = 'Códi
 
   return (
     <div className={className}>
-      <button ref={btnRef} type="button" onClick={toggle}
+      <button type="button" onClick={toggle}
         className="w-full text-left bg-slate-700 text-white text-sm rounded-lg px-2 py-1.5 border border-slate-600 focus:border-brand-500 focus:outline-none truncate">
         {selected ? `${selected.codigoAtt} — ${selected.partida || selected.descripcion}` : <span className="text-slate-400">{placeholder}</span>}
       </button>
-      {open && pos && createPortal(
+      {open && createPortal(
         <>
-          <div className="fixed inset-0 z-40" onClick={() => setOpen(false)} />
-          <div style={{ top: pos.top, left: pos.left }}
-            className="fixed z-50 w-80 max-w-[90vw] bg-slate-800 border border-slate-600 rounded-lg shadow-lg p-2 space-y-1.5">
+          <div className="fixed inset-0 z-40 bg-black/30" onClick={() => setOpen(false)} />
+          <div className="fixed z-50 top-3 left-1/2 -translate-x-1/2 w-[min(94vw,26rem)] max-h-[85vh] flex flex-col
+            bg-slate-800 border border-slate-600 rounded-lg shadow-lg p-2 gap-1.5">
             <input ref={inputRef} value={query} onChange={(e) => setQuery(e.target.value)} placeholder="Buscar código, partida o descripción…"
               onClick={(e) => e.stopPropagation()}
-              className="w-full bg-slate-700 text-white text-xs rounded-lg px-2 py-1.5 border border-slate-600 focus:border-brand-500 focus:outline-none" />
-            <div className="max-h-64 overflow-y-auto space-y-0.5">
+              className="w-full shrink-0 bg-slate-700 text-white text-xs rounded-lg px-2 py-1.5 border border-slate-600 focus:border-brand-500 focus:outline-none" />
+            <div className="overflow-y-auto space-y-0.5">
               {filtered.length === 0 && <p className="text-xs text-slate-500 px-1 py-1">Sin coincidencias.</p>}
               {filtered.map((c) => (
                 <button key={c.id} type="button" onClick={() => select(c.id)}
