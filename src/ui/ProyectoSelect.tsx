@@ -5,7 +5,7 @@
 // cuando `puedeCrear` es true, porque la RLS de `projects` solo permite
 // insertar a admin/jp (rol log puede leer todos los proyectos pero no crear).
 
-import { useMemo, useRef, useState } from 'react'
+import { useEffect, useMemo, useRef, useState } from 'react'
 import { createPortal } from 'react-dom'
 import { adminRepo } from '@/lib/adminRepo'
 import type { ProjectSummary } from '@/lib/adminRepo'
@@ -27,6 +27,14 @@ export function ProyectoSelect({ proyectos, value, onChange, onCreated, puedeCre
   const [creando, setCreando] = useState<'ATT' | 'OyM' | null>(null)
   const [error, setError] = useState<string | null>(null)
   const btnRef = useRef<HTMLButtonElement>(null)
+  const inputRef = useRef<HTMLInputElement>(null)
+
+  // Ver MaterialSelect.tsx: autoFocus + position:fixed hacía que el
+  // navegador scrolleara la página entera al abrir en celular, dejando el
+  // contenido real fuera de vista. `preventScroll` lo corta.
+  useEffect(() => {
+    if (open) inputRef.current?.focus({ preventScroll: true })
+  }, [open])
 
   const selected = proyectos.find((p) => p.id === value) ?? null
 
@@ -81,7 +89,7 @@ export function ProyectoSelect({ proyectos, value, onChange, onCreated, puedeCre
           <div className="fixed inset-0 z-40" onClick={() => setOpen(false)} />
           <div style={{ top: pos.top, left: pos.left }}
             className="fixed z-50 w-80 max-w-[90vw] bg-slate-800 border border-slate-600 rounded-lg shadow-lg p-2 space-y-1.5">
-            <input autoFocus value={query} onChange={(e) => setQuery(e.target.value)} placeholder="Buscar código o nombre…"
+            <input ref={inputRef} value={query} onChange={(e) => setQuery(e.target.value)} placeholder="Buscar código o nombre…"
               onClick={(e) => e.stopPropagation()}
               className="w-full bg-slate-700 text-white text-xs rounded-lg px-2 py-1.5 border border-slate-600 focus:border-brand-500 focus:outline-none" />
             <div className="max-h-56 overflow-y-auto space-y-0.5">

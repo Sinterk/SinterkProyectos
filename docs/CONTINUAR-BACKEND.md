@@ -17,6 +17,15 @@
   7. **Pendiente para la semana (sin fecha fija)**: reescribir el texto de advertencia de "Corregir errores de tipeo" en Resumen de Proyecto — hoy dice "para arreglar un error de tipeo" y eso confunde con el caso real de "anoté 6, eran 5, ya hubo un movimiento real de 6". Corrección NUNCA revierte el movimiento ni el stock, solo pisa el número que se ve en la tabla — si el movimiento real fue mal registrado, hay que anularlo y volver a registrar con la cantidad correcta, o el stock queda mintiendo (técnico con más de lo que en verdad tiene). Andrés pidió dejarlo pendiente, no implementarlo ahora.
 - **Deploy**: el push del 26-08 a `main` falló al desplegar por una interrupción real de GitHub Actions/Pages (confirmada en githubstatus.com, no un problema del repo) — falta reintentar el workflow ("Re-run all jobs") una vez que GitHub se recupere. Fuera de eso, `.github/workflows/deploy.yml` publica bien en cada push a `main`.
 
+## v1.74 — bug en celular: los buscadores flotantes (Material, LPU, Proyecto, filtro de columna) escondían la página
+Andrés reportó en celular: al usar "Registro de material (físico)" — tras crear una fila en la tabla — "el cuadro hace que se vaya la visión a una parte del sitio sin información".
+
+**Causa**: `MaterialSelect.tsx` (y los otros 3 selectores con el mismo patrón: `LpuCodigoSelect.tsx`, `ProyectoSelect.tsx`, `ColumnHeader.tsx`) portan su panel de búsqueda a `document.body` con `position: fixed` — necesario para no quedar recortado dentro de una celda de tabla con `overflow-x-auto` (ver comentario original en `MaterialSelect.tsx`). El campo de búsqueda de ese panel tenía `autoFocus`. En celular, al enfocarse un input aparece el teclado, y el navegador intenta hacer scroll de la PÁGINA para "mostrar" el input enfocado — pero el panel ya está fijo en pantalla (no depende del scroll), así que ese scroll nativo solo lograba correr el contenido real (la tabla) a un área en blanco del documento, dejando la vista "perdida".
+
+**Fix**: se saca `autoFocus` en los 4 componentes y se reemplaza por `ref` + `useEffect(() => { if (open) ref.current?.focus({ preventScroll: true }) }, [open])` — mismo resultado (el campo queda enfocado al abrir, listo para escribir) pero sin el scroll automático del navegador que lo rompía.
+
+Verificado en el navegador: en celular (375px) no reproduje el síntoma original ni antes ni después del fix (probablemente porque este entorno no dispara el mismo comportamiento del teclado nativo que un celular real), pero confirmé que el foco sigue funcionando igual (`document.activeElement` es el input de búsqueda al abrir el panel) — **falta que Andrés confirme en su celular real** que ya no pasa.
+
 ## v1.73 — tabla física: Bodega antes que Lote + bodega por defecto solo si hay stock digital
 Andrés pidió dos cambios en la tabla de Material físico de la OTT (`ResumenProyectoTable.tsx`):
 
