@@ -17,6 +17,15 @@
   7. **Pendiente para la semana (sin fecha fija)**: reescribir el texto de advertencia de "Corregir errores de tipeo" en Resumen de Proyecto — hoy dice "para arreglar un error de tipeo" y eso confunde con el caso real de "anoté 6, eran 5, ya hubo un movimiento real de 6". Corrección NUNCA revierte el movimiento ni el stock, solo pisa el número que se ve en la tabla — si el movimiento real fue mal registrado, hay que anularlo y volver a registrar con la cantidad correcta, o el stock queda mintiendo (técnico con más de lo que en verdad tiene). Andrés pidió dejarlo pendiente, no implementarlo ahora.
 - **Deploy**: el push del 26-08 a `main` falló al desplegar por una interrupción real de GitHub Actions/Pages (confirmada en githubstatus.com, no un problema del repo) — falta reintentar el workflow ("Re-run all jobs") una vez que GitHub se recupere. Fuera de eso, `.github/workflows/deploy.yml` publica bien en cada push a `main`.
 
+## v1.76 — tabla física: Descripción fija (sticky) al escrollear, Técnico al final
+Andrés en celular: "aún se puede escrollear a la derecha fuera de pantalla" — y aclaró el pedido de legibilidad de v1.75: en la tabla de Material físico, por defecto se ve técnico/SKU/descripción bien, pero al escrollear a la derecha para llegar a los campos Solicitado/Entregado/etc. (para tipear números), esas columnas se pierden de vista y no se sabe de qué material se trata la fila.
+
+**Confirmado que NO es un bug de página**: revisé `document.body.scrollWidth` vs `window.innerWidth` en celular (375px) y son iguales — no hay overflow horizontal del documento, es el scroll INTERNO de la tabla (`overflow-x-auto`, 1281px de tabla en 307px de ancho visible), que es el comportamiento esperado de una tabla ancha. El problema real es de contexto: al escrollear esa tabla, se pierde de vista qué fila es cuál.
+
+**Fix**: la columna **Descripción queda fija (`position: sticky; left: 0`)** — no importa cuánto se escrollee la tabla a la derecha, el nombre del material se sigue viendo. **Técnico se movió al final** ("al fondo a la derecha", tal como pidió Andrés) — no hace falta verlo mientras se tipean números, a diferencia del material. Nuevo orden: Descripción (fija) → SKU → Bodega → Lote → Solicitado → Entregado → Instalado → Devuelto → Merma → Asignado a técnico → Tránsito → Nota → Técnico. Aplicado en el encabezado, las filas ya guardadas y "+ Nuevo material".
+
+Verificado en el navegador (v1.76, 375px): `document.body.scrollWidth === innerWidth` (375 = 375, sin overflow de página); tras escrollear la tabla 500px a la derecha, la celda de Descripción ("ODF 12 FIBRAS") seguía pegada al borde izquierdo visible; Técnico confirmado como última columna del encabezado.
+
 ## v1.75 — asignar técnico en un solo paso + buscadores anclados al viewport (no al botón) + info de material más legible
 Andrés probó v1.74 en celular: "la vista ya no deja el espacio en blanco por defecto, pero se crea un espacio blanco igual" — el fix de `preventScroll` ayudó pero no alcanzaba. Junto con eso pidió dos cosas más.
 
