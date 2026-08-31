@@ -17,6 +17,11 @@
   7. **Pendiente para la semana (sin fecha fija)**: reescribir el texto de advertencia de "Corregir errores de tipeo" en Resumen de Proyecto — hoy dice "para arreglar un error de tipeo" y eso confunde con el caso real de "anoté 6, eran 5, ya hubo un movimiento real de 6". Corrección NUNCA revierte el movimiento ni el stock, solo pisa el número que se ve en la tabla — si el movimiento real fue mal registrado, hay que anularlo y volver a registrar con la cantidad correcta, o el stock queda mintiendo (técnico con más de lo que en verdad tiene). Andrés pidió dejarlo pendiente, no implementarlo ahora.
 - **Deploy**: el push del 26-08 a `main` falló al desplegar por una interrupción real de GitHub Actions/Pages (confirmada en githubstatus.com, no un problema del repo) — falta reintentar el workflow ("Re-run all jobs") una vez que GitHub se recupere. Fuera de eso, `.github/workflows/deploy.yml` publica bien en cada push a `main`.
 
+## v1.77 — columna fija de Descripción, angosta (~10 caracteres)
+Andrés probó v1.76 en celular: la columna fija de Descripción quedaba tan ancha que, con nombres largos, no dejaba espacio útil visible hacia la derecha. Se angosta a `w-20` (~80px, unas 10-12 letras según el texto) en el encabezado y las dos filas de datos, con `truncate` + `title` (para poder ver el nombre completo pasando el mouse en escritorio, ya que ahora se corta más agresivo).
+
+Verificado en el navegador (v1.77, 375px): la celda fija mide ~96px de los 307px visibles (antes ocupaba mucho más), dejando ~210px libres para el resto de la tabla; `text-overflow: ellipsis` confirmado activo.
+
 ## v1.76 — tabla física: Descripción fija (sticky) al escrollear, Técnico al final
 Andrés en celular: "aún se puede escrollear a la derecha fuera de pantalla" — y aclaró el pedido de legibilidad de v1.75: en la tabla de Material físico, por defecto se ve técnico/SKU/descripción bien, pero al escrollear a la derecha para llegar a los campos Solicitado/Entregado/etc. (para tipear números), esas columnas se pierden de vista y no se sabe de qué material se trata la fila.
 

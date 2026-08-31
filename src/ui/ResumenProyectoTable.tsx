@@ -755,7 +755,7 @@ export function ResumenProyectoTable({ projectId, area, puntos, refreshKey = 0, 
                       celular. Técnico se movió al final ("al fondo a la
                       derecha") porque no hace falta verlo mientras se tipean
                       números, a diferencia del material. */}
-                  <th className="px-2 py-2 font-medium sticky left-0 z-10 bg-slate-900">Descripción</th>
+                  <th className="px-2 py-2 font-medium sticky left-0 z-10 bg-slate-900 w-20 truncate">Descripción</th>
                   <th className="px-2 py-2 font-medium whitespace-nowrap">SKU</th>
                   <th className="px-2 py-2 font-medium whitespace-nowrap">Bodega</th>
                   <th className="px-2 py-2 font-medium whitespace-nowrap">Lote</th>
@@ -783,8 +783,10 @@ export function ResumenProyectoTable({ projectId, area, puntos, refreshKey = 0, 
                   const esFerreteriaFila = esTipoFerreteria(materiales.find((m) => m.id === fila.materialId)?.tipo?.nombre)
                   return (
                     <tr key={fila.localId} className="border-t border-slate-700 divide-x divide-slate-700 bg-brand-950/20">
-                      <td className="px-2 py-2 max-w-[200px] align-top sticky left-0 z-10 bg-brand-950">
-                        <p className="text-slate-400 truncate">{materiales.find((m) => m.id === fila.materialId)?.descripcion ?? ''}</p>
+                      <td className="px-2 py-2 w-20 align-top sticky left-0 z-10 bg-brand-950">
+                        <p className="text-slate-400 truncate" title={materiales.find((m) => m.id === fila.materialId)?.descripcion ?? ''}>
+                          {materiales.find((m) => m.id === fila.materialId)?.descripcion ?? ''}
+                        </p>
                       </td>
                       <td className="px-2 py-2 align-top">
                         <MaterialSelect materiales={materiales} value={fila.materialId}
@@ -863,8 +865,8 @@ export function ResumenProyectoTable({ projectId, area, puntos, refreshKey = 0, 
                   const esFerreteriaFila = esTipoFerreteria(materiales.find((m) => m.id === row.materialId)?.tipo?.nombre)
                   return (
                     <tr key={key} className="border-t border-slate-700 divide-x divide-slate-700 bg-slate-800/60">
-                      <td className="px-2 py-2 max-w-[200px] sticky left-0 z-10 bg-slate-800">
-                        <p className="text-white truncate">{row.materialDescripcion}</p>
+                      <td className="px-2 py-2 w-20 sticky left-0 z-10 bg-slate-800">
+                        <p className="text-white truncate" title={row.materialDescripcion}>{row.materialDescripcion}</p>
                       </td>
                       <td className="px-2 py-2 text-slate-300 whitespace-nowrap">{row.materialSku}</td>
                       <td className="px-2 py-2 align-top">
