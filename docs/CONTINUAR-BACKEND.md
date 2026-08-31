@@ -17,6 +17,15 @@
   7. **Pendiente para la semana (sin fecha fija)**: reescribir el texto de advertencia de "Corregir errores de tipeo" en Resumen de Proyecto — hoy dice "para arreglar un error de tipeo" y eso confunde con el caso real de "anoté 6, eran 5, ya hubo un movimiento real de 6". Corrección NUNCA revierte el movimiento ni el stock, solo pisa el número que se ve en la tabla — si el movimiento real fue mal registrado, hay que anularlo y volver a registrar con la cantidad correcta, o el stock queda mintiendo (técnico con más de lo que en verdad tiene). Andrés pidió dejarlo pendiente, no implementarlo ahora.
 - **Deploy**: el push del 26-08 a `main` falló al desplegar por una interrupción real de GitHub Actions/Pages (confirmada en githubstatus.com, no un problema del repo) — falta reintentar el workflow ("Re-run all jobs") una vez que GitHub se recupere. Fuera de eso, `.github/workflows/deploy.yml` publica bien en cada push a `main`.
 
+## v1.78 — fix real de truncado: v1.77 no cortaba el texto en el celular de Andrés
+Andrés mandó un pantallazo real: la columna fija de Descripción se veía casi a todo ancho, con "CAJA C-MIC-12 6FO COMPLETA C/JUMP-PRENSA" completo, sin cortar — v1.77 no estaba funcionando en su celular pese a que en las pruebas de este entorno sí truncaba.
+
+**Causa**: el `w-20` de v1.77 estaba en el `<td>`, no en el `<p>` que tiene `truncate`. En una tabla con layout automático (`<table>` sin `table-layout: fixed`, que es como está esta), un `width` en la CELDA es solo una sugerencia — el algoritmo de layout puede seguir agrandando la columna según el contenido, sobre todo con `white-space: nowrap` (parte de `truncate`), que le dice "mi ancho mínimo es todo el texto sin cortar". El `<p>` mismo no tenía ancho propio, así que terminaba ocupando lo que la columna decidiera darle — en este entorno de pruebas la columna sí quedaba angosta, pero en el navegador real de Andrés no.
+
+**Fix real**: el `w-20` se pone directo en el `<p>` (y el `<span>` del encabezado) — el elemento que tiene `overflow:hidden` necesita su propio ancho explícito para que el corte sea confiable en cualquier navegador, sin depender de cómo la tabla decida repartir el espacio.
+
+Verificado en el navegador con el MISMO material del pantallazo de Andrés ("CAJA C-MIC-12 6FO COMPLETA C/JUMP-PRENSA", 262px de ancho natural): la celda renderiza en 80px con corte real confirmado (`scrollWidth > renderedWidth`), no solo el CSS puesto — antes solo había verificado que la propiedad `text-overflow` estuviera activa, sin confirmar que de verdad cortara.
+
 ## v1.77 — columna fija de Descripción, angosta (~10 caracteres)
 Andrés probó v1.76 en celular: la columna fija de Descripción quedaba tan ancha que, con nombres largos, no dejaba espacio útil visible hacia la derecha. Se angosta a `w-20` (~80px, unas 10-12 letras según el texto) en el encabezado y las dos filas de datos, con `truncate` + `title` (para poder ver el nombre completo pasando el mouse en escritorio, ya que ahora se corta más agresivo).
 
