@@ -146,19 +146,15 @@ function EquipoSection({ projectId, onMembersChanged }: { projectId: string; onM
           {disponibles.length === 0 ? (
             members.length === 0 && <p className="text-xs text-slate-500">No hay trabajadores registrados todavía.</p>
           ) : (
-            <div className="flex gap-2">
-              <select value={selectedId} onChange={(e) => setSelectedId(e.target.value)}
-                className="flex-1 min-w-0 bg-slate-700 text-white text-sm rounded-lg px-2 py-1.5 border border-slate-600 focus:border-brand-500 focus:outline-none">
-                <option value="">Elegir trabajador…</option>
-                {disponibles.map((c) => (
-                  <option key={c.id} value={c.id}>{c.nombre?.trim() || c.email} ({ROL_LABELS[c.rol]})</option>
-                ))}
-              </select>
-              <button type="button" onClick={() => add(selectedId)} disabled={!selectedId || busyUserId === selectedId}
-                className="shrink-0 px-3 py-1.5 rounded-lg bg-brand-600 hover:bg-brand-700 disabled:opacity-40 text-white text-sm font-semibold">
-                + Agregar
-              </button>
-            </div>
+            // Elegir ya agrega — antes hacía falta elegir y además apretar
+            // "+ Agregar" aparte (pedido de Andrés: que sea solo elegir).
+            <select value={selectedId} disabled={!!busyUserId} onChange={(e) => add(e.target.value)}
+              className="w-full bg-slate-700 text-white text-sm rounded-lg px-2 py-1.5 border border-slate-600 focus:border-brand-500 focus:outline-none disabled:opacity-60">
+              <option value="">Elegir trabajador…</option>
+              {disponibles.map((c) => (
+                <option key={c.id} value={c.id}>{c.nombre?.trim() || c.email} ({ROL_LABELS[c.rol]})</option>
+              ))}
+            </select>
           )}
         </>
       )}

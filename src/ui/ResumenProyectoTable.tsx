@@ -746,12 +746,29 @@ export function ResumenProyectoTable({ projectId, area, puntos, refreshKey = 0, 
       ) : (
         <>
           <div className="overflow-x-auto rounded-xl border border-slate-700">
-            <table className="w-full text-xs border-collapse">
+            {/* border-separate (no border-collapse): la columna fija
+                (Descripción) usaba position:sticky sobre una tabla con
+                border-collapse, una combinación con bugs conocidos de
+                pintado en varios navegadores — Andrés lo vio en su celular
+                como contenido "transparente" asomando detrás del texto fijo.
+                Con bordes separados el fondo sólido de la celda sticky pinta
+                de forma confiable. Como contrapartida, un <tr> ya no puede
+                tener su propio `border` (no se pinta en modo "separate") —
+                el borde entre filas se simula con `shadow-[inset...]` en vez
+                de `border-t`, que sí funciona en cualquier modo. */}
+            <table className="w-full text-xs border-separate border-spacing-0">
               <thead>
                 <tr className="bg-slate-900/60 text-slate-400 text-left divide-x divide-slate-700">
-                  <th className="px-2 py-2 font-medium whitespace-nowrap">Técnico</th>
+                  {/* Descripción fija a la izquierda (sticky): al escrollear para
+                      llegar a Solicitado/Entregado/etc. antes se perdía de vista
+                      qué material era esa fila — pedido de Andrés, probado en
+                      celular. Técnico se movió al final ("al fondo a la
+                      derecha") porque no hace falta verlo mientras se tipean
+                      números, a diferencia del material. */}
+                  <th className="px-2 py-2 font-medium sticky left-0 z-10 bg-slate-900 w-20 max-w-[5rem] isolate">
+                    <span className="block truncate w-20">Descripción</span>
+                  </th>
                   <th className="px-2 py-2 font-medium whitespace-nowrap">SKU</th>
-                  <th className="px-2 py-2 font-medium">Descripción</th>
                   <th className="px-2 py-2 font-medium whitespace-nowrap">Bodega</th>
                   <th className="px-2 py-2 font-medium whitespace-nowrap">Lote</th>
                   <th className="px-2 py-2 font-medium text-center whitespace-nowrap">Solicitado</th>
@@ -768,6 +785,7 @@ export function ResumenProyectoTable({ projectId, area, puntos, refreshKey = 0, 
                   <th className="px-2 py-2 font-medium text-center whitespace-nowrap">Asignado a técnico</th>
                   <th className="px-2 py-2 font-medium text-center whitespace-nowrap">Tránsito</th>
                   <th className="px-2 py-2 font-medium whitespace-nowrap">Nota</th>
+                  <th className="px-2 py-2 font-medium whitespace-nowrap">Técnico</th>
                 </tr>
               </thead>
               <tbody>
@@ -776,24 +794,17 @@ export function ResumenProyectoTable({ projectId, area, puntos, refreshKey = 0, 
                   const errTecnico = cellErrors[`${fila.localId}|__tecnico__`]
                   const esFerreteriaFila = esTipoFerreteria(materiales.find((m) => m.id === fila.materialId)?.tipo?.nombre)
                   return (
-                    <tr key={fila.localId} className="border-t border-slate-700 divide-x divide-slate-700 bg-brand-950/20">
-                      <td className="px-2 py-2 align-top">
-                        <select value={fila.tecnicoUserId}
-                          onChange={(e) => actualizarFilaNueva(fila.localId, { tecnicoUserId: e.target.value })}
-                          className="w-28 bg-slate-700 text-white text-xs rounded px-1.5 py-1 border border-slate-600 focus:border-brand-500 focus:outline-none">
-                          <option value="">Técnico…</option>
-                          {members.map((m) => <option key={m.id} value={m.id}>{m.nombre?.trim() || m.email}</option>)}
-                        </select>
-                        {errTecnico && <p className="text-[9px] text-red-400 mt-0.5">{errTecnico}</p>}
+                    <tr key={fila.localId} className="shadow-[inset_0_1px_0_0_#334155] divide-x divide-slate-700 bg-brand-950/20">
+                      <td className="px-2 py-2 w-20 max-w-[5rem] align-top sticky left-0 z-10 bg-brand-950 isolate">
+                        <p className="text-slate-400 truncate w-20" title={materiales.find((m) => m.id === fila.materialId)?.descripcion ?? ''}>
+                          {materiales.find((m) => m.id === fila.materialId)?.descripcion ?? ''}
+                        </p>
                       </td>
                       <td className="px-2 py-2 align-top">
                         <MaterialSelect materiales={materiales} value={fila.materialId}
                           onChange={(id) => { handleMaterialSeleccionado(fila, id).catch(() => {}) }}
                           className="w-36" />
                         {errMaterial && <p className="text-[9px] text-red-400 mt-0.5">{errMaterial}</p>}
-                      </td>
-                      <td className="px-2 py-2 max-w-[200px] align-top">
-                        <p className="text-slate-400 truncate">{materiales.find((m) => m.id === fila.materialId)?.descripcion ?? ''}</p>
                       </td>
                       <td className="px-2 py-2 align-top space-y-1">
                         <select value={fila.ubicacionBodegaId}
@@ -846,6 +857,15 @@ export function ResumenProyectoTable({ projectId, area, puntos, refreshKey = 0, 
                           placeholder="Nota…"
                           className="w-32 bg-slate-700 text-white text-xs rounded px-1.5 py-1 border border-slate-600 focus:border-brand-500 focus:outline-none" />
                       </td>
+                      <td className="px-2 py-2 align-top">
+                        <select value={fila.tecnicoUserId}
+                          onChange={(e) => actualizarFilaNueva(fila.localId, { tecnicoUserId: e.target.value })}
+                          className="w-28 bg-slate-700 text-white text-xs rounded px-1.5 py-1 border border-slate-600 focus:border-brand-500 focus:outline-none">
+                          <option value="">Técnico…</option>
+                          {members.map((m) => <option key={m.id} value={m.id}>{m.nombre?.trim() || m.email}</option>)}
+                        </select>
+                        {errTecnico && <p className="text-[9px] text-red-400 mt-0.5">{errTecnico}</p>}
+                      </td>
                     </tr>
                   )
                 })}
@@ -856,17 +876,11 @@ export function ResumenProyectoTable({ projectId, area, puntos, refreshKey = 0, 
                   const errTecnicoFila = cellErrors[`${key}|__tecnico__`]
                   const esFerreteriaFila = esTipoFerreteria(materiales.find((m) => m.id === row.materialId)?.tipo?.nombre)
                   return (
-                    <tr key={key} className="border-t border-slate-700 divide-x divide-slate-700 bg-slate-800/60">
-                      <td className="px-2 py-2 align-top">
-                        <select value={getRowTecnico(key)} onChange={(e) => setRowTecnico(key, e.target.value)}
-                          className="w-28 bg-slate-700 text-white text-xs rounded px-1.5 py-1 border border-slate-600 focus:border-brand-500 focus:outline-none">
-                          <option value="">Técnico…</option>
-                          {members.map((m) => <option key={m.id} value={m.id}>{m.nombre?.trim() || m.email}</option>)}
-                        </select>
-                        {errTecnicoFila && <p className="text-[9px] text-red-400 mt-0.5">{errTecnicoFila}</p>}
+                    <tr key={key} className="shadow-[inset_0_1px_0_0_#334155] divide-x divide-slate-700 bg-slate-800/60">
+                      <td className="px-2 py-2 w-20 max-w-[5rem] sticky left-0 z-10 bg-slate-800 isolate">
+                        <p className="text-white truncate w-20" title={row.materialDescripcion}>{row.materialDescripcion}</p>
                       </td>
                       <td className="px-2 py-2 text-slate-300 whitespace-nowrap">{row.materialSku}</td>
-                      <td className="px-2 py-2 max-w-[200px]"><p className="text-white truncate">{row.materialDescripcion}</p></td>
                       <td className="px-2 py-2 align-top">
                         <select value={getRowBodega(key)} onChange={(e) => setRowBodega(key, e.target.value)}
                           className="w-24 bg-slate-700 text-white text-xs rounded px-1.5 py-1 border border-slate-600 focus:border-brand-500 focus:outline-none">
@@ -930,6 +944,14 @@ export function ResumenProyectoTable({ projectId, area, puntos, refreshKey = 0, 
                         <input value={rowNota[key] ?? ''} onChange={(e) => setRowNota((prev) => ({ ...prev, [key]: e.target.value }))}
                           placeholder="Nota…"
                           className="w-32 bg-slate-700 text-white text-xs rounded px-1.5 py-1 border border-slate-600 focus:border-brand-500 focus:outline-none" />
+                      </td>
+                      <td className="px-2 py-2 align-top">
+                        <select value={getRowTecnico(key)} onChange={(e) => setRowTecnico(key, e.target.value)}
+                          className="w-28 bg-slate-700 text-white text-xs rounded px-1.5 py-1 border border-slate-600 focus:border-brand-500 focus:outline-none">
+                          <option value="">Técnico…</option>
+                          {members.map((m) => <option key={m.id} value={m.id}>{m.nombre?.trim() || m.email}</option>)}
+                        </select>
+                        {errTecnicoFila && <p className="text-[9px] text-red-400 mt-0.5">{errTecnicoFila}</p>}
                       </td>
                     </tr>
                   )

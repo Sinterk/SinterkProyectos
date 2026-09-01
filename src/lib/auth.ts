@@ -89,12 +89,32 @@ export const useAuth = create<AuthState>((set, get) => ({
     if (initialized) return
     initialized = true
 
-    supabase.auth.getSession().then(async ({ data }) => {
-      const session = data.session
-      const profile = session ? await fetchProfile(session.user.id) : null
-      const guestKind = computeGuestKind(session)
-      set({ session, profile, isGuest: guestKind !== null, guestKind, loading: false })
+    // Reportado por Andrés: el sitio se queda colgado en la pantalla de
+    // carga (📡), sobre todo la primera vez que se abre. `loading` solo
+    // pasaba a `false` dentro del `.then()` de `getSession()` — sin
+    // `.catch()` ni límite de tiempo, así que si esa llamada nunca resuelve
+    // (o revienta con una excepción no manejada, ej. `fetchProfile` fallando
+    // por red en el primer intento sin conexión estable) la pantalla de
+    // carga quedaba así para siempre, sin caer nunca al login. Con
+    // `Promise.race` contra un timeout, si `getSession()` no resuelve en 8s
+    // se sigue igual — en el peor caso, se muestra el login para entrar de
+    // nuevo, en vez de colgarse sin salida.
+    const TIMEOUT_MS = 8000
+    const timeout = new Promise<never>((_, reject) => {
+      setTimeout(() => reject(new Error('Tiempo de espera agotado resolviendo la sesión')), TIMEOUT_MS)
     })
+
+    Promise.race([supabase.auth.getSession(), timeout])
+      .then(async ({ data }) => {
+        const session = data.session
+        const profile = session ? await fetchProfile(session.user.id) : null
+        const guestKind = computeGuestKind(session)
+        set({ session, profile, isGuest: guestKind !== null, guestKind, loading: false })
+      })
+      .catch((err) => {
+        console.error('[auth] no se pudo resolver la sesión inicial:', err)
+        set({ loading: false })
+      })
 
     supabase.auth.onAuthStateChange(async (_event, session) => {
       const profile = session ? await fetchProfile(session.user.id) : null
