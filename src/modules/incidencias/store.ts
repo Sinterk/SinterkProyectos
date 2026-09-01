@@ -1,6 +1,7 @@
 import { create } from 'zustand'
 import { persist } from 'zustand/middleware'
 import { nanoid } from '@/core/utils/nanoid'
+import { monotonicNow } from '@/core/utils/monotonicNow'
 import { useAuth } from '@/lib/auth'
 import { incidenciaRepo, isUuid } from './data/incidenciaRepo'
 import { uploadRecordPhotos } from './data/photoStorage'
@@ -78,7 +79,7 @@ interface IncidenciaState {
 }
 
 function touch(rec: Incidencia, extra?: Partial<Incidencia>): Incidencia {
-  return { ...rec, ...extra, updatedAt: Date.now() }
+  return { ...rec, ...extra, updatedAt: monotonicNow() }
 }
 
 export const useIncidenciaStore = create<IncidenciaState>()(

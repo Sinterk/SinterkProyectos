@@ -1,6 +1,7 @@
 import { create } from 'zustand'
 import { persist } from 'zustand/middleware'
 import { nanoid } from '@/core/utils/nanoid'
+import { monotonicNow } from '@/core/utils/monotonicNow'
 import { useAuth } from '@/lib/auth'
 import { attRepo, isUuid } from './data/attRepo'
 import { uploadRecordPhotos } from './data/photoStorage'
@@ -175,7 +176,7 @@ interface AttState {
 }
 
 function touch(rec: AttRecord, extra?: Partial<AttRecord>): AttRecord {
-  return { ...rec, ...extra, updatedAt: Date.now() }
+  return { ...rec, ...extra, updatedAt: monotonicNow() }
 }
 
 export const useAttStore = create<AttState>()(

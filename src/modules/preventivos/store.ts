@@ -1,6 +1,7 @@
 import { create } from 'zustand'
 import { persist } from 'zustand/middleware'
 import { nanoid } from '@/core/utils/nanoid'
+import { monotonicNow } from '@/core/utils/monotonicNow'
 import { useAuth } from '@/lib/auth'
 import { preventivoRepo, isUuid } from './data/preventivoRepo'
 import { uploadRecordPhotos } from './data/photoStorage'
@@ -123,7 +124,7 @@ export function emptyPreventivo(id: string, now: number): Preventivo {
 }
 
 function touch(rec: Preventivo, extra?: Partial<Preventivo>): Preventivo {
-  return { ...rec, ...extra, updatedAt: Date.now() }
+  return { ...rec, ...extra, updatedAt: monotonicNow() }
 }
 
 function todayISO(): string {
