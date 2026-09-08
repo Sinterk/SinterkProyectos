@@ -355,7 +355,10 @@ function MovimientosTab({ refreshKey }: { refreshKey: number }) {
                   <td className="px-2 py-2 text-slate-300 whitespace-nowrap">{TIPO_LABELS_MOV[m.tipo] ?? m.tipo}</td>
                   <td className="px-2 py-2 text-slate-300 whitespace-nowrap">{m.materialSku}</td>
                   <td className="px-2 py-2 max-w-[220px]"><p className="text-white truncate">{m.materialDescripcion}</p></td>
-                  <td className="px-2 py-2 text-slate-300 whitespace-nowrap">{m.lote}</td>
+                  <td className="px-2 py-2 text-slate-300 whitespace-nowrap">
+                    {m.lote}
+                    {m.soloFisico && <span title="Compra propia — no toca el stock digital de SAP" className="ml-1 text-amber-400">🏷️</span>}
+                  </td>
                   <td className="px-2 py-2 text-right font-semibold text-white whitespace-nowrap">{m.cantidad}</td>
                   <td className="px-2 py-2 text-slate-300 whitespace-nowrap">
                     {m.ubicacionDestinoNombre ? `${m.ubicacionNombre} → ${m.ubicacionDestinoNombre}` : m.ubicacionNombre}

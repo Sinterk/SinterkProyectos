@@ -7,7 +7,6 @@ import { PhotoCapture } from './PhotoCapture'
 import { PuntoMaterialSection } from './PuntoMaterialSection'
 import { usePreventivoStore } from '../store'
 import { isPuntoCerrado } from '../utils/puntoEstado'
-import { HALLAZGOS } from '../hallazgos'
 import type { Punto, FotoKey } from '../types'
 
 /**
@@ -42,6 +41,8 @@ interface Props {
    * contexto de solo-lectura-salvo-fotos más adelante.
    */
   soloFotos?: boolean
+  /** Catálogo de tipos de hallazgo activos (Administración → 0068_catalogo_hallazgos.sql) — lo carga el Editor una sola vez para todos los puntos, ordenado. */
+  hallazgos: string[]
   /** Texto de Corrección por hallazgo, editable desde Administración (ver correccionesRepo.ts) — lo carga el Editor una sola vez para todos los puntos. */
   correccionesPorHallazgo: Record<string, string>
   onSave: () => Promise<void>
@@ -49,9 +50,17 @@ interface Props {
   onPhotoCapture: (file: File, key: FotoKey) => Promise<void>
 }
 
-export function PuntoCard({ preventivoId, punto, index, total, editable = true, soloFotos = false, correccionesPorHallazgo, onMove, onPhotoCapture }: Props) {
+export function PuntoCard({ preventivoId, punto, index, total, editable = true, soloFotos = false, hallazgos, correccionesPorHallazgo, onMove, onPhotoCapture }: Props) {
   const { updatePunto, removePunto, removeFoto } = usePreventivoStore()
   const [expanded, setExpanded] = useState(true)
+
+  // Si el punto ya tiene asignado un hallazgo que Administración desactivó
+  // después, se lo agrega igual al final de las opciones — desactivar solo
+  // saca la opción para asignaciones NUEVAS, no debe hacer desaparecer la
+  // que ya está guardada acá.
+  const opcionesHallazgo = punto.hallazgo && !hallazgos.includes(punto.hallazgo)
+    ? [...hallazgos, punto.hallazgo]
+    : hallazgos
 
   const { attributes, listeners, setNodeRef, transform, transition, isDragging } = useSortable({ id: punto.id })
 
@@ -231,7 +240,7 @@ export function PuntoCard({ preventivoId, punto, index, total, editable = true, 
               className={inputCls}
             >
               <option value="">Sin hallazgo</option>
-              {HALLAZGOS.map((h, i) => (
+              {opcionesHallazgo.map((h, i) => (
                 <option key={h} value={h}>{i + 1}. {h}</option>
               ))}
             </select>

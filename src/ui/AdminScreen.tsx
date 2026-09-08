@@ -3,8 +3,8 @@ import { useAuth, ROL_LABELS } from '@/lib/auth'
 import type { Rol, Profile } from '@/lib/auth'
 import { adminRepo } from '@/lib/adminRepo'
 import type { ProjectSummary, MemberProfile } from '@/lib/adminRepo'
-import { listCorreccionesHallazgo, guardarCorreccionHallazgo } from '@/lib/correccionesRepo'
-import { HALLAZGOS } from '@/modules/preventivos/hallazgos'
+import { listCorreccionesHallazgo, guardarCorreccionHallazgo, crearHallazgo, setHallazgoActivo } from '@/lib/correccionesRepo'
+import type { CorreccionHallazgo } from '@/lib/correccionesRepo'
 
 const ROLES: Rol[] = ['admin', 'jp', 'tecnico', 'log']
 const AREAS = ['ATT', 'OyM'] as const
@@ -375,42 +375,71 @@ function TeamsSection() {
 }
 
 /**
- * Texto de "Corrección" que se autocompleta al elegir un hallazgo en
- * Preventivos (PuntoCard.tsx) — editable acá por si llega feedback más
- * adelante y hay que ajustarlo sin pedir un cambio de código.
+ * Catálogo de tipos de hallazgo de Preventivos — antes un array fijo en
+ * código (hallazgos.ts), ahora la tabla `correcciones_hallazgo` (ver
+ * 0068_catalogo_hallazgos.sql). Acá se puede agregar un hallazgo nuevo,
+ * sacarlo del selector sin borrarlo (los puntos que ya lo tengan asignado lo
+ * siguen mostrando) y editar el texto de "Corrección" que se autocompleta
+ * en Preventivos al elegirlo.
  *
- * Se recorre `HALLAZGOS` (la lista fija del <select>), no las filas de la
- * tabla: así un hallazgo sin fila sembrada todavía aparece igual, con su
- * campo vacío listo para completar, en vez de faltar de la lista.
+ * OJO: un hallazgo agregado acá aparece en Preventivos y en el informe
+ * Levantamiento, pero NO en la tabla resumen del Acta Entel — esa plantilla
+ * tiene un formato oficial fijo (ver generarInformeEntel.ts) que solo
+ * reconoce los 23 hallazgos ya mapeados ahí; agregar uno nuevo a esa tabla
+ * sigue necesitando un cambio de código.
  */
 function CorreccionesHallazgoSection() {
-  const [correcciones, setCorrecciones] = useState<Record<string, string> | null>(null)
+  const [filas, setFilas] = useState<CorreccionHallazgo[] | null>(null)
   const [error, setError] = useState<string | null>(null)
+  const [nuevo, setNuevo] = useState('')
+  const [creando, setCreando] = useState(false)
 
   async function reload() {
     try {
-      const filas = await listCorreccionesHallazgo()
-      setCorrecciones(Object.fromEntries(filas.map((f) => [f.hallazgo, f.correccion])))
+      setFilas(await listCorreccionesHallazgo())
     } catch (err) {
       setError(err instanceof Error ? err.message : String(err))
     }
   }
   useEffect(() => { reload() }, [])
 
+  async function agregar() {
+    if (!nuevo.trim()) return
+    setCreando(true)
+    setError(null)
+    try {
+      await crearHallazgo(nuevo)
+      setNuevo('')
+      await reload()
+    } catch (err) {
+      setError(err instanceof Error ? err.message : String(err))
+    } finally {
+      setCreando(false)
+    }
+  }
+
   return (
     <div className="bg-slate-800 rounded-2xl border border-slate-700 p-4 space-y-3">
-      <h2 className="text-xs font-semibold text-brand-400 uppercase tracking-wide">Correcciones por hallazgo</h2>
+      <h2 className="text-xs font-semibold text-brand-400 uppercase tracking-wide">Tipos de hallazgo (Preventivos)</h2>
       <p className="text-[11px] text-slate-500 leading-relaxed">
-        Texto que se autocompleta en Preventivos al elegir cada tipo de hallazgo. Sigue siendo editable a mano en cada punto — esto solo cambia el valor por defecto.
+        Selector de "Tipo de hallazgo" en Preventivos, con el texto de "Corrección" que se autocompleta al elegir cada uno (sigue siendo editable a mano en cada punto). "Ocultar" saca un hallazgo del selector sin borrarlo. Un hallazgo agregado acá NO cuenta en el resumen del Acta Entel (formato fijo, ajeno) hasta que también se actualice esa plantilla.
       </p>
       {error && <p className="text-xs text-red-400">{error}</p>}
-      {!correcciones ? (
+      <div className="flex gap-2">
+        <input value={nuevo} onChange={(e) => setNuevo(e.target.value)} placeholder="Nombre del hallazgo nuevo…"
+          onKeyDown={(e) => e.key === 'Enter' && agregar()}
+          className="flex-1 bg-slate-700 text-white text-sm rounded-lg px-2 py-1.5 border border-slate-600 focus:border-brand-500 focus:outline-none" />
+        <button type="button" onClick={agregar} disabled={creando || !nuevo.trim()}
+          className="text-xs font-semibold px-3 py-1.5 rounded-lg bg-brand-600 hover:bg-brand-700 disabled:opacity-40 text-white shrink-0">
+          {creando ? 'Agregando…' : '+ Agregar'}
+        </button>
+      </div>
+      {!filas ? (
         <p className="text-xs text-slate-500">Cargando…</p>
       ) : (
         <div className="space-y-2">
-          {HALLAZGOS.map((hallazgo) => (
-            <CorreccionHallazgoRow key={hallazgo} hallazgo={hallazgo}
-              value={correcciones[hallazgo] ?? ''} onSaved={reload} />
+          {filas.map((f) => (
+            <CorreccionHallazgoRow key={f.hallazgo} fila={f} onSaved={reload} />
           ))}
         </div>
       )}
@@ -418,9 +447,11 @@ function CorreccionesHallazgoSection() {
   )
 }
 
-function CorreccionHallazgoRow({ hallazgo, value, onSaved }: { hallazgo: string; value: string; onSaved: () => void }) {
+function CorreccionHallazgoRow({ fila, onSaved }: { fila: CorreccionHallazgo; onSaved: () => void }) {
+  const { hallazgo, correccion: value, orden, activo } = fila
   const [draft, setDraft] = useState(value)
   const [saving, setSaving] = useState(false)
+  const [togglingActivo, setTogglingActivo] = useState(false)
   const [error, setError] = useState<string | null>(null)
 
   useEffect(() => { setDraft(value) }, [value])
@@ -439,9 +470,28 @@ function CorreccionHallazgoRow({ hallazgo, value, onSaved }: { hallazgo: string;
     }
   }
 
+  async function toggleActivo() {
+    setTogglingActivo(true)
+    setError(null)
+    try {
+      await setHallazgoActivo(hallazgo, !activo)
+      onSaved()
+    } catch (err) {
+      setError(err instanceof Error ? err.message : String(err))
+    } finally {
+      setTogglingActivo(false)
+    }
+  }
+
   return (
-    <div className="space-y-1">
-      <p className="text-xs text-slate-300">{hallazgo}</p>
+    <div className={`space-y-1 ${!activo ? 'opacity-50' : ''}`}>
+      <div className="flex items-center justify-between gap-2">
+        <p className="text-xs text-slate-300">{orden}. {hallazgo}</p>
+        <button type="button" onClick={toggleActivo} disabled={togglingActivo}
+          className="text-[10px] text-slate-400 hover:text-white disabled:opacity-40 shrink-0">
+          {togglingActivo ? '…' : activo ? 'Ocultar del selector' : 'Reactivar'}
+        </button>
+      </div>
       <div className="flex items-center gap-2">
         <input value={draft} onChange={(e) => setDraft(e.target.value)} onBlur={guardar}
           placeholder="Sin corrección definida — se guardará como texto vacío"

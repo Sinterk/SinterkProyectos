@@ -90,6 +90,12 @@ export function RegistrarMovimientoForm({ fixedProject, puntos, lockTipoUI, solo
   const [ubicacionEntradaId, setUbicacionEntradaId] = useState('')
   const [proveedor, setProveedor] = useState('')
   const [documento, setDocumento] = useState('')
+  // Compra propia (Sinterk cubre un faltante con su plata, no pasa por SAP):
+  // se acredita solo en físico, nunca en digital, sin importar el lote que
+  // se indique — ver 0067_entrada_solo_fisico.sql. Andrés: "si compramos
+  // abrazaderas para suplir una diferencia, no se suman a stock de sap,
+  // solo al nuestro como bodega física".
+  const [soloFisico, setSoloFisico] = useState(false)
 
   // Datos — Salida
   const [projectSel, setProjectSel] = useState(fixedProject ? fixedProject.id : '')
@@ -240,6 +246,7 @@ export function RegistrarMovimientoForm({ fixedProject, puntos, lockTipoUI, solo
           ubicacionBodegaDestinoId: necesitaBodegaDestinoPorLinea ? l.ubicacionBodegaDestinoId : undefined,
           proveedor: esEntrada ? (proveedor.trim() || undefined) : undefined,
           documento: esEntrada ? (documento.trim() || undefined) : undefined,
+          soloFisico: esEntrada ? soloFisico : undefined,
           projectId: (esEntrada || esTraslado) ? undefined : (proyectoIdEfectivo ?? undefined),
           puntoId: esEntrada ? undefined : (puntos ? (puntoId || null) : undefined),
           tecnicoUserId: (esEntrada || esTraslado) ? undefined : tecnicoUserId,
@@ -255,6 +262,7 @@ export function RegistrarMovimientoForm({ fixedProject, puntos, lockTipoUI, solo
     setSubmitting(false)
     if (restantes.length === 0) {
       setLineas([emptyLinea(defaultBodegaId)])
+      setSoloFisico(false)
       onRegistered?.()
     } else {
       setLineas(restantes)
@@ -296,6 +304,11 @@ export function RegistrarMovimientoForm({ fixedProject, puntos, lockTipoUI, solo
             <label className="space-y-1">
               <span className={labelCls}>N° documento</span>
               <input value={documento} onChange={(e) => setDocumento(e.target.value)} className={`${inputCls} w-full`} />
+            </label>
+            <label className="col-span-2 flex items-center gap-2 text-xs text-slate-300">
+              <input type="checkbox" checked={soloFisico} onChange={(e) => setSoloFisico(e.target.checked)}
+                className="rounded border-slate-600 bg-slate-700" />
+              Compra propia — solo sumar a físico (no afecta el stock digital de SAP)
             </label>
           </>
         ) : (
@@ -370,6 +383,7 @@ export function RegistrarMovimientoForm({ fixedProject, puntos, lockTipoUI, solo
           <p className="text-[11px] text-slate-500">
             Si conoces el lote real de SAP, indícalo — para Ferretería el físico siempre queda en "Físico"
             (no distingue lote), pero ese lote también queda acreditado en digital, para que calce con SAP.
+            {soloFisico && ' Con "Compra propia" marcado, esta entrada NO toca el stock digital sin importar el lote que pongas.'}
           </p>
         )}
         {/* Una fila por línea, mismo formato que Asignaciones. Las columnas de

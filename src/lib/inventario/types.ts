@@ -99,6 +99,8 @@ export interface Movimiento {
    *  un `eventos_inventario` de revisión (ver 0025/0040). Se usa para avisar
    *  al anularlo, porque ahí también se borra ese evento y sus resoluciones. */
   requiereRevision: boolean
+  /** Solo Entrada: compra propia (no SAP) — nunca acreditó digital. */
+  soloFisico: boolean
   createdAt: string
 }
 
@@ -121,6 +123,10 @@ export interface RegistrarMovimientoInput {
   tecnicoUserId?: string
   /** Solo se usa cuando no hay proyecto (salida preventiva/insumos) — con proyecto, el área se deriva sola. */
   area?: 'ATT' | 'OyM'
+  /** Solo Entrada: material comprado por Sinterk (no por SAP) para cubrir un
+   *  faltante — se acredita SOLO en cantidad_fisico, nunca en digital, sin
+   *  importar el lote indicado (ver 0067_entrada_solo_fisico.sql). */
+  soloFisico?: boolean
 }
 
 export interface ReasignarTransitoInput {

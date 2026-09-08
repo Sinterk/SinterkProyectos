@@ -1,11 +1,11 @@
 # Continuar — Migración a backend Supabase
 
 > Documento de retomada — LEER ESTO PRIMERO si se retoma en otra máquina o
-> sesión nueva. Última actualización: 26-08-2026.
+> sesión nueva. Última actualización: 08-09-2026.
 
-## ⚡ Estado ahora mismo (26-08-2026)
-- **`main` y `backend-supabase` están sincronizados** (merge del 25-08, push confirmado a `main` el 26-08) — ambos en v1.72. Seguir mergeando `backend-supabase` a `main` cuando el trabajo esté listo para producción, en vez de dejarlo acumularse.
-- **Migraciones**: corridas y confirmadas hasta `0066`. Ninguna pendiente.
+## ⚡ Estado ahora mismo (08-09-2026)
+- **`backend-supabase` tiene trabajo sin mergear a `main`** (última sincronización confirmada: v1.72 el 26-08). Seguir mergeando `backend-supabase` a `main` cuando el trabajo esté listo para producción, en vez de dejarlo acumularse.
+- **Migraciones**: `0068` nueva, todavía SIN correr en Supabase — correrla antes de dar por buena la sección "Tipos de hallazgo" de Administración y el hallazgo 23 (ver v1.82). Hasta `0067` confirmadas (0067 corrida el 08-09).
 - **Para retomar en otra máquina**: `git clone` (o `git fetch` + `git checkout backend-supabase`), `npm install`, recrear el `.env` a mano (los nombres de variable están en `src/lib/supabaseClient.ts` y `src/lib/auth.ts`; los valores NO están en el repo, es público — Andrés los tiene), `npm run dev`.
 - **Pendientes de Andrés** (no bloquean nada salvo lo marcado):
   1. ~~Desplegar la Edge Function de alta de usuarios~~ — **hecho y confirmado el 26-08** (probada sin sesión y con token inválido, responde el gate de auth de la función, no un 404 — está desplegada de verdad).
@@ -17,6 +17,31 @@
   7. **Recuperar el levantamiento del colega** (ver entrada v1.59 más abajo) — el ZIP le creó un informe vacío en el servidor (0 puntos). Con el fix de esa versión, borrar ese levantamiento local (o el registro server-side si ya no está en el store local de nadie) y volver a importar el mismo ZIP.
   8. **Pendiente para la semana (sin fecha fija)**: reescribir el texto de advertencia de "Corregir errores de tipeo" en Resumen de Proyecto — hoy dice "para arreglar un error de tipeo" y eso confunde con el caso real de "anoté 6, eran 5, ya hubo un movimiento real de 6". Corrección NUNCA revierte el movimiento ni el stock, solo pisa el número que se ve en la tabla — si el movimiento real fue mal registrado, hay que anularlo y volver a registrar con la cantidad correcta, o el stock queda mintiendo (técnico con más de lo que en verdad tiene). Andrés pidió dejarlo pendiente, no implementarlo ahora.
 - **Deploy**: el push del 26-08 a `main` falló al desplegar por una interrupción real de GitHub Actions/Pages (confirmada en githubstatus.com, no un problema del repo) — falta reintentar el workflow ("Re-run all jobs") una vez que GitHub se recupere. Fuera de eso, `.github/workflows/deploy.yml` publica bien en cada push a `main`.
+
+## v1.82 — Preventivos: hallazgo 23 "Gabinete sin tapa" + catálogo de hallazgos editable desde Administración (mejora, requiere migración 0068)
+Andrés pidió evaluar agregar un tipo de hallazgo nuevo ("23. Gabinete sin tapa") e, idealmente, que la lista se pudiera mantener desde Administración en vez de por código.
+
+**Hallazgo 23 en los 3 lugares donde importa**:
+- `src/modules/preventivos/hallazgos.ts` → ahora eliminado (ver catálogo abajo).
+- Informe **Levantamiento** (xlsx): no necesitaba nada, arma sus filas por punto sin depender de una lista fija.
+- Informe **ACTA Entel** (xlsx): este era el caso difícil. La plantilla oficial embebida (`templateEntelB64.ts`) tiene las 22 categorías impresas fila por fila (filas 24-45) con sus propios merges de celda y una fórmula `SUM(G24:H45)` en la fila 46. Se insertó una fila 46 nueva (ítem 23, mismo estilo/merges que las anteriores, copiados de la fila 22), la fila de suma pasó a la 47 con su rango ampliado a `SUM(G24:H46)`, y todo lo que iba debajo (firma/aprobación) se corrió una fila — verificado columna por columna contra la plantilla original y con una simulación completa del llenado (`generarInformeEntel.ts`) antes de dar por bueno el cambio. `HALLAZGO_PWA` y el loop de conteo ahora van de 1 a 23.
+
+**Catálogo editable desde Administración** (`0068_catalogo_hallazgos.sql`): la tabla `correcciones_hallazgo` (hasta ahora solo el texto de "Corrección", ver v-anterior) pasa a ser también el catálogo de tipos de hallazgo — se le agregan `orden` (el número que se ve en el selector) y `activo` (para sacar un hallazgo del selector de Preventivos sin borrarlo — los puntos que ya lo tengan asignado lo siguen mostrando, vía un merge defensivo en `PuntoCard.tsx`). Administración ahora tiene un campo "+ Agregar" para crear hallazgos nuevos sin deploy, y un botón "Ocultar del selector"/"Reactivar" por fila. `hallazgos.ts` se borró (ya no tiene consumidores).
+
+**Ojo, límite real que no se puede evitar**: un hallazgo agregado desde Administración aparece en el selector de Preventivos y en el informe Levantamiento, pero NO en el resumen del Acta Entel — esa plantilla es un formato oficial fijo de Entel, no algo que la app controle, así que agregar una fila ahí seguirá necesitando el mismo tipo de cambio de código que se hizo para el ítem 23. Se lo dejé explícito a Andrés antes de implementar (confirmó que sí quería agregarlo también al formato Entel para este caso puntual).
+
+**Verificado**: `tsc`/build limpios, cirugía de la plantilla Entel probada con una simulación de llenado completa (conteos + fórmula), y en el navegador (login real) se confirmó que el editor de Preventivos NO se cae aunque la migración 0068 todavía no esté corrida — la consulta falla con 400 (columnas `orden`/`activo` no existen todavía), el catch la absorbe y el selector queda con las opciones vacías salvo el hallazgo que el punto ya tuviera asignado (fallback defensivo funcionando como se esperaba).
+
+**Pendiente**: correr `0068` en Supabase.
+
+## v1.81 — Entrada: opción "Compra propia" que solo suma a físico, nunca a digital (mejora, requiere migración 0067)
+Parte de la conversación sobre el "número de descuadre": Andrés compra material por su cuenta (ej. abrazaderas) para cubrir un faltante puntual — esa compra NO pasa por SAP, así que no debe inflar el stock digital. Hoy (desde 0066), si el material es Ferretería y se le pone un lote real en la Entrada, ese lote también se acredita en digital — correcto para una compra real reportada a SAP, pero falso para una compra propia.
+
+**Fix**: checkbox nuevo en el formulario de Entrada, "Compra propia — solo sumar a físico (no afecta el stock digital de SAP)". Server-side (`0067_entrada_solo_fisico.sql`): nuevo parámetro `p_solo_fisico` en `registrar_movimiento`, que cuando viene en true se salta la acreditación digital sin importar el lote indicado. Se guarda en una columna nueva `movimientos.solo_fisico` (no se puede inferir después: es un hecho del momento del registro), que `corregir_movimiento` y `anular_movimiento` usan para saber si hay algo que revertir en digital. Las filas de Movimientos muestran un 🏷️ junto al lote cuando el movimiento fue compra propia.
+
+Como `registrar_movimiento` ganó un parámetro nuevo, la migración dropea explícitamente la firma vigente de 0066 antes de crear la nueva (mismo problema de sobrecargas ya documentado en `0038_registrar_movimiento_overloads_fix.sql` — agregar un parámetro con `create or replace` NO reemplaza la función anterior, la deja conviviendo).
+
+**Pendiente**: correr `0067` en Supabase antes de usar la opción en producción.
 
 ## v1.80 — dos bugs reales: pantalla de carga colgada + texto de OTT cortado a medias (mejora)
 Andrés reportó dos cosas nuevas, sin relación con la tabla física de las últimas versiones.
