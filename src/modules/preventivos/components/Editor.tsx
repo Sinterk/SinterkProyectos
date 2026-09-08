@@ -32,14 +32,26 @@ export function Editor() {
   useRestorePhotoPreviews()
   useResolvePhotoUrls()
 
-  // Se carga una sola vez para todos los puntos, no por PuntoCard — son 22
+  // Se carga una sola vez para todos los puntos, no por PuntoCard — son ~23
   // filas como mucho y no cambian mientras se edita el levantamiento. Si
-  // falla (ej. sin conexión) el mapa queda vacío: la Corrección simplemente
-  // no se autocompleta, sigue siendo editable a mano como siempre.
+  // falla (ej. sin conexión) el mapa/lista quedan vacíos: la Corrección
+  // simplemente no se autocompleta (sigue siendo editable a mano) y el
+  // selector de hallazgo queda sin opciones hasta recargar.
+  //
+  // Mismo fetch alimenta dos cosas (antes `hallazgos.ts` era un array fijo
+  // en el cliente, ver 0068_catalogo_hallazgos.sql): la lista de nombres
+  // activos para el <select> de PuntoCard, y el texto de Corrección de cada
+  // uno. Si el punto ya tiene asignado un hallazgo que fue desactivado
+  // después, se lo agrega igual a la lista (al final) para no perderlo del
+  // selector — desactivar solo saca la opción para hallazgos NUEVOS.
+  const [hallazgosActivos, setHallazgosActivos] = useState<string[]>([])
   const [correccionesPorHallazgo, setCorreccionesPorHallazgo] = useState<Record<string, string>>({})
   useEffect(() => {
     listCorreccionesHallazgo()
-      .then((filas) => setCorreccionesPorHallazgo(Object.fromEntries(filas.map((f) => [f.hallazgo, f.correccion]))))
+      .then((filas) => {
+        setHallazgosActivos(filas.filter((f) => f.activo).map((f) => f.hallazgo))
+        setCorreccionesPorHallazgo(Object.fromEntries(filas.map((f) => [f.hallazgo, f.correccion])))
+      })
       .catch(() => {})
   }, [])
 
@@ -164,6 +176,7 @@ export function Editor() {
                 {puntos.map((punto, i) => (
                   <PuntoCard key={punto.id} preventivoId={record.id} punto={punto} index={i} total={puntos.length}
                     editable={true}
+                    hallazgos={hallazgosActivos}
                     correccionesPorHallazgo={correccionesPorHallazgo}
                     onSave={async () => {}}
                     onMove={(from, to) => movePunto(record.id, from, to)}

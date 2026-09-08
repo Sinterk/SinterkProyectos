@@ -1,7 +1,11 @@
 import type { Preventivo, Punto } from '../types'
 import { TEMPLATE_ENTEL_B64 } from './templateEntelB64'
 
-// ── Hallazgo → ítem 1-22 ─────────────────────────────────────────────────────
+// ── Hallazgo → ítem 1-23 ─────────────────────────────────────────────────────
+// Ítem 23 ("Gabinete sin tapa") agregado a la plantilla ACTA (fila 46, ver
+// templateEntelB64.ts) insertando una fila nueva antes de la fila de sumas
+// (que por eso pasó de la 46 a la 47, con su fórmula SUM ampliada para
+// incluirla) — mismo criterio de estilo/merges que las 22 filas anteriores.
 
 const HALLAZGO_PWA: Record<number, string> = {
   1:  'Altura de cable Cruce de calles "4,5 mts"',
@@ -26,6 +30,7 @@ const HALLAZGO_PWA: Record<number, string> = {
   20: 'Falta cruceta o Cruceta Dañada',
   21: 'Falta Planimetria',
   22: 'CTO en condición insegura o no autorizada',
+  23: 'Gabinete sin tapa',
 }
 
 function normalize(s: string): string {
@@ -153,7 +158,7 @@ function llenarActa(ws: any, preventivo: Preventivo) {
   ws.getCell('E16').value = cuadrante.zona             || null
   ws.getCell('E18').value = cuadrante.responsable      || null
 
-  // Hallazgo counts per item 1-22
+  // Hallazgo counts per item 1-23
   const conteos = new Map<number, { hallazgos: number; solucionados: number }>()
   for (const p of puntos) {
     const item = getItem(p.hallazgo || '')
@@ -164,8 +169,8 @@ function llenarActa(ws: any, preventivo: Preventivo) {
     conteos.set(item, e)
   }
 
-  for (let item = 1; item <= 22; item++) {
-    const row = 23 + item // item 1 → row 24; item 22 → row 45
+  for (let item = 1; item <= 23; item++) {
+    const row = 23 + item // item 1 → row 24; item 22 → row 45; item 23 → row 46
     const e = conteos.get(item)
     ws.getCell(row, 7).value  = e?.hallazgos    ?? 0
     ws.getCell(row, 9).value  = e?.solucionados ?? 0
