@@ -303,6 +303,7 @@ interface MovimientoJoinRow {
   proveedor: string | null
   documento: string | null
   requiere_revision: boolean | null
+  solo_fisico: boolean | null
   created_at: string
   materiales: { sku: string; descripcion: string } | null
   origen: { nombre: string } | null
@@ -336,6 +337,7 @@ function movimientoFromJoinRow(r: MovimientoJoinRow): Movimiento {
     proveedor: r.proveedor,
     documento: r.documento,
     requiereRevision: !!r.requiere_revision,
+    soloFisico: !!r.solo_fisico,
     createdAt: r.created_at,
   }
 }
@@ -554,6 +556,7 @@ export interface MovimientoCreado {
   fecha: string
   /** true solo para 'instalado' forzado en negativo (sin stock en el proyecto ni el equipo) — ver 0025_prioridad_instalado.sql. */
   requiereRevision: boolean
+  soloFisico: boolean
 }
 
 interface MovimientoRpcRow {
@@ -562,6 +565,7 @@ interface MovimientoRpcRow {
   project_id: string | null; area: 'ATT' | 'OyM' | null
   punto_id: string | null; usuario_id: string | null; fecha: string
   requiere_revision: boolean
+  solo_fisico: boolean
 }
 
 /** Sube el movimiento vía la función de BD (atómica: stock + movimientos + proyecto_materiales). */
@@ -581,6 +585,7 @@ export async function registrarMovimiento(input: RegistrarMovimientoInput): Prom
     p_tecnico_user_id: input.tecnicoUserId ?? null,
     p_area: input.area ?? null,
     p_ubicacion_bodega_destino_id: input.ubicacionBodegaDestinoId ?? null,
+    p_solo_fisico: input.soloFisico ?? false,
   })
   if (error) throw new Error(`registrar_movimiento: ${error.message}`)
   const row = data as MovimientoRpcRow
@@ -589,6 +594,7 @@ export async function registrarMovimiento(input: RegistrarMovimientoInput): Prom
     naturaleza: row.naturaleza, tipo: row.tipo, cantidad: Number(row.cantidad),
     projectId: row.project_id, area: row.area, puntoId: row.punto_id, usuarioId: row.usuario_id, fecha: row.fecha,
     requiereRevision: row.requiere_revision,
+    soloFisico: !!row.solo_fisico,
   }
 }
 

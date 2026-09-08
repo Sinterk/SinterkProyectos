@@ -1,11 +1,11 @@
 # Continuar — Migración a backend Supabase
 
 > Documento de retomada — LEER ESTO PRIMERO si se retoma en otra máquina o
-> sesión nueva. Última actualización: 26-08-2026.
+> sesión nueva. Última actualización: 08-09-2026.
 
-## ⚡ Estado ahora mismo (26-08-2026)
-- **`main` y `backend-supabase` están sincronizados** (merge del 25-08, push confirmado a `main` el 26-08) — ambos en v1.72. Seguir mergeando `backend-supabase` a `main` cuando el trabajo esté listo para producción, en vez de dejarlo acumularse.
-- **Migraciones**: corridas y confirmadas hasta `0066`. Ninguna pendiente.
+## ⚡ Estado ahora mismo (08-09-2026)
+- **`backend-supabase` tiene trabajo sin mergear a `main`** (última sincronización confirmada: v1.72 el 26-08). Seguir mergeando `backend-supabase` a `main` cuando el trabajo esté listo para producción, en vez de dejarlo acumularse.
+- **Migraciones**: `0067` nueva, todavía SIN correr en Supabase — correrla antes de dar por buena la opción "Compra propia" de Entradas (ver v1.81). Hasta `0066` confirmadas.
 - **Para retomar en otra máquina**: `git clone` (o `git fetch` + `git checkout backend-supabase`), `npm install`, recrear el `.env` a mano (los nombres de variable están en `src/lib/supabaseClient.ts` y `src/lib/auth.ts`; los valores NO están en el repo, es público — Andrés los tiene), `npm run dev`.
 - **Pendientes de Andrés** (no bloquean nada salvo lo marcado):
   1. ~~Desplegar la Edge Function de alta de usuarios~~ — **hecho y confirmado el 26-08** (probada sin sesión y con token inválido, responde el gate de auth de la función, no un 404 — está desplegada de verdad).
@@ -16,6 +16,15 @@
   6. **Falta un historial global de eventos resueltos** (ver la entrada sobre "Ignorar" más abajo) — decidir si vale la pena una pantalla nueva para eso o basta con lo que ya hay por conteo.
   7. **Pendiente para la semana (sin fecha fija)**: reescribir el texto de advertencia de "Corregir errores de tipeo" en Resumen de Proyecto — hoy dice "para arreglar un error de tipeo" y eso confunde con el caso real de "anoté 6, eran 5, ya hubo un movimiento real de 6". Corrección NUNCA revierte el movimiento ni el stock, solo pisa el número que se ve en la tabla — si el movimiento real fue mal registrado, hay que anularlo y volver a registrar con la cantidad correcta, o el stock queda mintiendo (técnico con más de lo que en verdad tiene). Andrés pidió dejarlo pendiente, no implementarlo ahora.
 - **Deploy**: el push del 26-08 a `main` falló al desplegar por una interrupción real de GitHub Actions/Pages (confirmada en githubstatus.com, no un problema del repo) — falta reintentar el workflow ("Re-run all jobs") una vez que GitHub se recupere. Fuera de eso, `.github/workflows/deploy.yml` publica bien en cada push a `main`.
+
+## v1.81 — Entrada: opción "Compra propia" que solo suma a físico, nunca a digital (mejora, requiere migración 0067)
+Parte de la conversación sobre el "número de descuadre": Andrés compra material por su cuenta (ej. abrazaderas) para cubrir un faltante puntual — esa compra NO pasa por SAP, así que no debe inflar el stock digital. Hoy (desde 0066), si el material es Ferretería y se le pone un lote real en la Entrada, ese lote también se acredita en digital — correcto para una compra real reportada a SAP, pero falso para una compra propia.
+
+**Fix**: checkbox nuevo en el formulario de Entrada, "Compra propia — solo sumar a físico (no afecta el stock digital de SAP)". Server-side (`0067_entrada_solo_fisico.sql`): nuevo parámetro `p_solo_fisico` en `registrar_movimiento`, que cuando viene en true se salta la acreditación digital sin importar el lote indicado. Se guarda en una columna nueva `movimientos.solo_fisico` (no se puede inferir después: es un hecho del momento del registro), que `corregir_movimiento` y `anular_movimiento` usan para saber si hay algo que revertir en digital. Las filas de Movimientos muestran un 🏷️ junto al lote cuando el movimiento fue compra propia.
+
+Como `registrar_movimiento` ganó un parámetro nuevo, la migración dropea explícitamente la firma vigente de 0066 antes de crear la nueva (mismo problema de sobrecargas ya documentado en `0038_registrar_movimiento_overloads_fix.sql` — agregar un parámetro con `create or replace` NO reemplaza la función anterior, la deja conviviendo).
+
+**Pendiente**: correr `0067` en Supabase antes de usar la opción en producción.
 
 ## v1.80 — dos bugs reales: pantalla de carga colgada + texto de OTT cortado a medias (mejora)
 Andrés reportó dos cosas nuevas, sin relación con la tabla física de las últimas versiones.
