@@ -1071,6 +1071,18 @@ function celdaTsv(v: string | number | null | undefined): string {
 }
 
 /**
+ * Igual que `celdaTsv`, pero fuerza texto plano al pegar en Sheets/Excel —
+ * el apóstrofo inicial es la convención que ambos reconocen como "esto es
+ * texto, no lo interpretes como número" (no queda visible en la celda
+ * pegada). Sin esto, un SKU que se ve numérico pierde ceros a la izquierda o
+ * queda como número, y no calza con la columna SKU (texto) del control de
+ * rebajas en Drive.
+ */
+function celdaTextoTsv(v: string | number | null | undefined): string {
+  return `'${celdaTsv(v)}`
+}
+
+/**
  * Tabla DIGITAL del proyecto (baja contable en SAP). Muestra lo YA
  * rebajado — comparte filas con la física de arriba (mismo SKU y lote de
  * `proyecto_materiales`), así que una fila cargada allá aparece sola acá,
@@ -1116,7 +1128,7 @@ function TablaDigital({
     // sobre la otra.
     const texto = filas.map((row) => [
       celdaTsv(ott), celdaTsv(direccion), celdaTsv(fechaInstalacion), celdaTsv(RUT_EMPRESA), celdaTsv(DIRECCION_EMPRESA),
-      celdaTsv(row.materialSku), celdaTsv(row.materialDescripcion), celdaTsv(row.lote), row.cantRebajada,
+      celdaTextoTsv(row.materialSku), celdaTsv(row.materialDescripcion), celdaTsv(row.lote), row.cantRebajada,
     ].join('\t')).join('\n')
     navigator.clipboard.writeText(texto)
       .then(() => setCopyMsg(`${filas.length} fila(s) copiada(s) — pega al final del control de rebajas.`))
@@ -1234,7 +1246,7 @@ function RebajaPendienteSection({
     const listas = lineas.filter((l) => l.materialId && Number(l.cantidad) > 0)
     const texto = listas.map((l) => [
       celdaTsv(ott), celdaTsv(direccion), celdaTsv(fechaInstalacion), celdaTsv(RUT_EMPRESA), celdaTsv(DIRECCION_EMPRESA),
-      celdaTsv(l.materialSku), celdaTsv(l.materialDescripcion), celdaTsv(l.lote), l.cantidad,
+      celdaTextoTsv(l.materialSku), celdaTsv(l.materialDescripcion), celdaTsv(l.lote), l.cantidad,
     ].join('\t')).join('\n')
     navigator.clipboard.writeText(texto)
       .then(() => setCopyMsg(`${listas.length} fila(s) copiada(s) — pega al final del control de rebajas.`))

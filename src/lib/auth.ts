@@ -76,6 +76,37 @@ async function fetchProfile(userId: string): Promise<Profile | null> {
   return data as Profile
 }
 
+const AUTH_TIMEOUT_MS = 8000
+
+/**
+ * Reportado por Andrés DESPUÉS del fix de v1.80 (`Promise.race` en
+ * `getSession()`, más abajo): ese fix no alcanzaba — seguía quedando pegado
+ * en 📡 al abrir el sitio, y AHORA TAMBIÉN reportó quedarse pegado en
+ * "Ingresando…" al hacer login (mismo síntoma, otro gatillo). La causa real
+ * es esta: tanto `init()` como `onAuthStateChange` (abajo) hacían
+ * `await fetchProfile(...)` SIN ninguna protección — v1.80 solo cubría
+ * `getSession()`, no lo que viene después. Si esa consulta se cuelga (visto
+ * en vivo en esta sesión: login exitoso, pero `onAuthStateChange` nunca
+ * termina de resolver el perfil, así que `session`/`loading` nunca se
+ * actualizan y `LoginScreen` se queda en "Ingresando…" para siempre — F5
+ * "arregla" porque reinicia todo el flujo de cero, no porque el problema se
+ * resuelva solo).
+ *
+ * Mismo criterio que el timeout de `getSession()`: si no resuelve a tiempo,
+ * se sigue igual con perfil `null` en vez de colgarse sin salida.
+ */
+async function fetchProfileSafe(userId: string): Promise<Profile | null> {
+  const timeout = new Promise<null>((resolve) => {
+    setTimeout(() => resolve(null), AUTH_TIMEOUT_MS)
+  })
+  try {
+    return await Promise.race([fetchProfile(userId), timeout])
+  } catch (err) {
+    console.error('[auth] no se pudo cargar el perfil (excepción):', err)
+    return null
+  }
+}
+
 let initialized = false
 
 export const useAuth = create<AuthState>((set, get) => ({
@@ -99,15 +130,14 @@ export const useAuth = create<AuthState>((set, get) => ({
     // `Promise.race` contra un timeout, si `getSession()` no resuelve en 8s
     // se sigue igual — en el peor caso, se muestra el login para entrar de
     // nuevo, en vez de colgarse sin salida.
-    const TIMEOUT_MS = 8000
     const timeout = new Promise<never>((_, reject) => {
-      setTimeout(() => reject(new Error('Tiempo de espera agotado resolviendo la sesión')), TIMEOUT_MS)
+      setTimeout(() => reject(new Error('Tiempo de espera agotado resolviendo la sesión')), AUTH_TIMEOUT_MS)
     })
 
     Promise.race([supabase.auth.getSession(), timeout])
       .then(async ({ data }) => {
         const session = data.session
-        const profile = session ? await fetchProfile(session.user.id) : null
+        const profile = session ? await fetchProfileSafe(session.user.id) : null
         const guestKind = computeGuestKind(session)
         set({ session, profile, isGuest: guestKind !== null, guestKind, loading: false })
       })
@@ -116,8 +146,14 @@ export const useAuth = create<AuthState>((set, get) => ({
         set({ loading: false })
       })
 
+    // `fetchProfile` acá usa la versión con timeout (`fetchProfileSafe`) por
+    // el mismo motivo que arriba — ver el comentario de esa función. Este
+    // callback dispara con CUALQUIER cambio de sesión, login incluido: sin
+    // el timeout, un login exitoso con `fetchProfile` colgado dejaba
+    // `LoginScreen` pegado en "Ingresando…" para siempre (nunca llega este
+    // `set`, así que `session` sigue `null` en el store).
     supabase.auth.onAuthStateChange(async (_event, session) => {
-      const profile = session ? await fetchProfile(session.user.id) : null
+      const profile = session ? await fetchProfileSafe(session.user.id) : null
       const guestKind = computeGuestKind(session)
       set({ session, profile, isGuest: guestKind !== null, guestKind, loading: false })
     })
