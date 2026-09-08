@@ -18,6 +18,11 @@
   8. **Pendiente para la semana (sin fecha fija)**: reescribir el texto de advertencia de "Corregir errores de tipeo" en Resumen de Proyecto — hoy dice "para arreglar un error de tipeo" y eso confunde con el caso real de "anoté 6, eran 5, ya hubo un movimiento real de 6". Corrección NUNCA revierte el movimiento ni el stock, solo pisa el número que se ve en la tabla — si el movimiento real fue mal registrado, hay que anularlo y volver a registrar con la cantidad correcta, o el stock queda mintiendo (técnico con más de lo que en verdad tiene). Andrés pidió dejarlo pendiente, no implementarlo ahora.
 - **Deploy**: el push del 26-08 a `main` falló al desplegar por una interrupción real de GitHub Actions/Pages (confirmada en githubstatus.com, no un problema del repo) — falta reintentar el workflow ("Re-run all jobs") una vez que GitHub se recupere. Fuera de eso, `.github/workflows/deploy.yml` publica bien en cada push a `main`.
 
+## v1.83 — SKU como texto plano al copiar la tabla de rebajas (fix, sin migración)
+Andrés: el SKU en la tabla que se copia al pegar en el control de rebajas de Entel (Drive) no calzaba — esa tabla externa tiene la columna SKU como texto, pero al pegar el TSV que genera "📋 Copiar tabla" (`ResumenProyectoTable.tsx`, `TablaDigital` y `RebajaPendienteSection`), Excel/Sheets auto-detecta un SKU que se ve numérico y lo convierte a número (puede perder ceros a la izquierda, y ya no calza por tipo con la columna de destino).
+
+**Fix**: nuevo helper `celdaTextoTsv()` — antepone un apóstrofo a la celda del SKU antes de armar el TSV. Es la convención que tanto Excel como Google Sheets reconocen al pegar texto plano como "esto es texto, no lo interpretes como número" (el apóstrofo no queda visible en la celda pegada). Solo se aplicó a SKU, que es lo que se pidió — el resto de columnas (OTT, Lote, etc.) sigue igual.
+
 ## v1.82 — Preventivos: hallazgo 23 "Gabinete sin tapa" + catálogo de hallazgos editable desde Administración (mejora, requiere migración 0068)
 Andrés pidió evaluar agregar un tipo de hallazgo nuevo ("23. Gabinete sin tapa") e, idealmente, que la lista se pudiera mantener desde Administración en vez de por código.
 
