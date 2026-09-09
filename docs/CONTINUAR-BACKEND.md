@@ -1,11 +1,11 @@
 # Continuar — Migración a backend Supabase
 
 > Documento de retomada — LEER ESTO PRIMERO si se retoma en otra máquina o
-> sesión nueva. Última actualización: 08-09-2026.
+> sesión nueva. Última actualización: 09-09-2026.
 
-## ⚡ Estado ahora mismo (08-09-2026)
-- **`main` y `backend-supabase` están sincronizados** (merge y push del 08-09) — ambos en v1.84. Seguir mergeando `backend-supabase` a `main` cuando el trabajo esté listo para producción, en vez de dejarlo acumularse.
-- **Migraciones**: corridas y confirmadas hasta `0068`. Ninguna pendiente.
+## ⚡ Estado ahora mismo (09-09-2026)
+- **`backend-supabase` tiene trabajo sin mergear a `main`** (última sincronización confirmada: v1.84 el 08-09). Seguir mergeando `backend-supabase` a `main` cuando el trabajo esté listo para producción, en vez de dejarlo acumularse.
+- **Migraciones**: `0069` nueva, todavía SIN correr en Supabase — correrla antes de dar por buena la sección "Paquetes de materiales" de Catálogo (ver v1.85). Hasta `0068` confirmadas.
 - **Para retomar en otra máquina**: `git clone` (o `git fetch` + `git checkout backend-supabase`), `npm install`, recrear el `.env` a mano (los nombres de variable están en `src/lib/supabaseClient.ts` y `src/lib/auth.ts`; los valores NO están en el repo, es público — Andrés los tiene), `npm run dev`.
 - **Pendientes de Andrés** (no bloquean nada salvo lo marcado):
   1. ~~Desplegar la Edge Function de alta de usuarios~~ — **hecho y confirmado el 26-08** (probada sin sesión y con token inválido, responde el gate de auth de la función, no un 404 — está desplegada de verdad).
@@ -17,6 +17,23 @@
   7. **Recuperar el levantamiento del colega** (ver entrada v1.59 más abajo) — el ZIP le creó un informe vacío en el servidor (0 puntos). Con el fix de esa versión, borrar ese levantamiento local (o el registro server-side si ya no está en el store local de nadie) y volver a importar el mismo ZIP.
   8. **Pendiente para la semana (sin fecha fija)**: reescribir el texto de advertencia de "Corregir errores de tipeo" en Resumen de Proyecto — hoy dice "para arreglar un error de tipeo" y eso confunde con el caso real de "anoté 6, eran 5, ya hubo un movimiento real de 6". Corrección NUNCA revierte el movimiento ni el stock, solo pisa el número que se ve en la tabla — si el movimiento real fue mal registrado, hay que anularlo y volver a registrar con la cantidad correcta, o el stock queda mintiendo (técnico con más de lo que en verdad tiene). Andrés pidió dejarlo pendiente, no implementarlo ahora.
 - **Deploy**: el push del 26-08 a `main` falló al desplegar por una interrupción real de GitHub Actions/Pages (confirmada en githubstatus.com, no un problema del repo) — falta reintentar el workflow ("Re-run all jobs") una vez que GitHub se recupere. Fuera de eso, `.github/workflows/deploy.yml` publica bien en cada push a `main`.
+
+## v1.85 — Paquetes de materiales: un "kit" (ej. cruceta + 6 piezas) se agrega completo desde cualquier selector de material (mejora, requiere migración 0069)
+Andrés: "hay un tipo de cruceta, que su instalación incluye 6 materiales. Agrega una sección en catálogo de ingresar materiales en 'paquete', cosa que al buscar material para ingresar, la descripción sea el paquete completo, y con esta se ingresen todos los sku asociados." Aclarado en la conversación: el paquete va en el desplegable de material de **todas** las pantallas (al final, después de los SKU sueltos), y elegirlo agrega los SKU **sin cantidad** — el usuario la completa a mano por línea.
+
+**Catálogo → Paquetes de materiales** (`0069_paquetes_material.sql`, tablas `paquetes_material` + `paquete_material_items`, mismo patrón abierto que Tipo/Proveedor): nueva sección para crear paquetes (solo nombre + un buscador para ir agregando SKU, sin cantidad por SKU) y sacar/agregar SKU con un chip removible por cada uno.
+
+**`MaterialSelect.tsx`** (el selector compartido que usan las 5 pantallas donde se busca material) ahora carga los paquetes por su cuenta —mismo patrón que `LoteSelect` con el stock— y los muestra al final de los resultados con 📦. Nuevo callback `onSelectPaquete(materialIds)`, separado de `onChange`: se dispara en vez de reemplazar la línea por un solo material, entregando TODOS los material_id del paquete para que quien arma el formulario decida cómo expandirlos.
+
+**Las 5 pantallas** ahora expanden la línea elegida en tantas líneas como SKU tenga el paquete (todas sin cantidad, mismo lugar en la lista — nuevo util compartido `reemplazarLineaPorVarias`, `src/core/utils/lineas.ts`):
+- `RegistrarMovimientoForm.tsx` (Logística ATT/Preventivos, Inventario → Registro → Entrada).
+- `AsignacionesForm.tsx` (Inventario → Asignaciones).
+- `ResumenProyectoTable.tsx` — dos lugares: "+ Nuevo material" de la tabla física (cada SKU nuevo pasa por el mismo auto-detectado de bodega que si se agregara a mano) y "Rebaja pendiente" (Material digital).
+- `PuntoMaterialSection.tsx` (Preventivos, material instalado en un punto) — este necesitó un rediseño real: antes era un formulario de una sola línea con guardado inmediato: no había dónde meter 6 SKU a la vez. Pasa a ser una lista de líneas pendientes (mismo patrón `lineas`/`updateLinea`/`addLinea` que el resto de la app), con un solo botón "+ Agregar" que registra todas las líneas con cantidad puesta al final.
+
+**Verificado**: `tsc`/build limpios, y en el navegador (login real, migración 0069 todavía sin correr): el selector de material sigue funcionando normal (los paquetes fallan en silencio con 404, capturado), y la nueva sección de Catálogo se degrada a "Cargando…" sin romper el resto de la pantalla — confirma que el feature es seguro de desplegar antes de correr la migración.
+
+**Pendiente**: correr `0069` en Supabase.
 
 ## v1.84 — fix real del cuelgue en 📡/"Ingresando…": faltaba proteger `fetchProfile`, no solo `getSession()` (fix, sin migración)
 Andrés reportó que el bug de la pantalla de carga colgada (ver v1.80) seguía pasando — tanto al abrir el sitio (📡) como AHORA TAMBIÉN al hacer login (queda pegado en "Ingresando…"). En ambos casos avanzaba con F5.

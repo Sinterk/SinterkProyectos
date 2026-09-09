@@ -25,6 +25,7 @@ import { adminRepo } from '@/lib/adminRepo'
 import type { MemberProfile } from '@/lib/adminRepo'
 import { useAuth } from '@/lib/auth'
 import { nanoid } from '@/core/utils/nanoid'
+import { reemplazarLineaPorVarias } from '@/core/utils/lineas'
 import { BODEGA_DEFECTO_POR_AREA } from '@/lib/inventario/defaults'
 import { esTipoCable } from '@/lib/inventario/esCable'
 import { esTipoFerreteria, LOTE_FISICO_FERRETERIA } from '@/lib/inventario/esFerreteria'
@@ -346,6 +347,22 @@ export function ResumenProyectoTable({ projectId, area, puntos, refreshKey = 0, 
   function quitarFilaNueva(localId: string) {
     setNuevasFilas((prev) => prev.filter((f) => f.localId !== localId))
   }
+  /**
+   * Paquete de materiales elegido en la fila `fila` (ver MaterialSelect →
+   * onSelectPaquete): la reemplaza por una fila nueva por cada SKU, todas
+   * SIN ninguna cantidad tecleada (Solicitado/Entregado/etc. quedan vacíos,
+   * el usuario los completa a mano por fila). Cada una pasa por
+   * `handleMaterialSeleccionado` para heredar el mismo auto-detectado de
+   * bodega que una fila agregada a mano.
+   */
+  async function handlePaqueteSeleccionado(fila: NuevaFila, materialIds: string[]) {
+    if (materialIds.length === 0) return
+    const nuevas = materialIds.map((_, i) => (i === 0 ? fila : filaVacia(fila.tecnicoUserId, fila.ubicacionBodegaId)))
+    setNuevasFilas((prev) => reemplazarLineaPorVarias(prev, fila.localId, nuevas))
+    for (let i = 0; i < materialIds.length; i++) {
+      await handleMaterialSeleccionado(nuevas[i], materialIds[i])
+    }
+  }
 
   // Rebaja pendiente (Material digital / SAP) — ver RebajaPendienteSection.
   const [lineasRebaja, setLineasRebaja] = useState<LineaRebaja[]>([])
@@ -362,6 +379,18 @@ export function ResumenProyectoTable({ projectId, area, puntos, refreshKey = 0, 
   }
   function quitarLineaRebaja(localId: string) {
     setLineasRebaja((prev) => prev.filter((l) => l.localId !== localId))
+  }
+  /** Paquete de materiales elegido en la línea `localId` — mismo mecanismo que en el resto del formulario. */
+  function agregarPaqueteRebaja(localId: string, materialIds: string[]) {
+    setLineasRebaja((prev) => {
+      const actual = prev.find((l) => l.localId === localId)
+      const base = actual ?? { localId, materialId: '', materialSku: '', materialDescripcion: '', lote: '', ubicacionBodegaId: bodegaEdicion, cantidad: '', origen: 'manual' as const }
+      const nuevas = materialIds.map((materialId) => {
+        const m = materiales.find((mm) => mm.id === materialId)
+        return { ...base, localId: nanoid(8), materialId, materialSku: m?.sku ?? '', materialDescripcion: m?.descripcion ?? '', lote: '', cantidad: '' }
+      })
+      return reemplazarLineaPorVarias(prev, localId, nuevas)
+    })
   }
 
   /**
@@ -803,6 +832,7 @@ export function ResumenProyectoTable({ projectId, area, puntos, refreshKey = 0, 
                       <td className="px-2 py-2 align-top">
                         <MaterialSelect materiales={materiales} value={fila.materialId}
                           onChange={(id) => { handleMaterialSeleccionado(fila, id).catch(() => {}) }}
+                          onSelectPaquete={(materialIds) => { handlePaqueteSeleccionado(fila, materialIds).catch(() => {}) }}
                           className="w-36" />
                         {errMaterial && <p className="text-[9px] text-red-400 mt-0.5">{errMaterial}</p>}
                       </td>
@@ -977,6 +1007,7 @@ export function ResumenProyectoTable({ projectId, area, puntos, refreshKey = 0, 
               onAgregarManual={agregarLineaRebajaManual}
               onActualizar={actualizarLineaRebaja}
               onQuitar={quitarLineaRebaja}
+              onAgregarPaquete={agregarPaqueteRebaja}
             />
           )}
 
@@ -1219,7 +1250,7 @@ function TablaDigital({
 function RebajaPendienteSection({
   lineas, materiales, bodegas, cellErrors, saving, sugiriendo,
   ott, direccion, fechaInstalacion,
-  onSugerir, onAgregarManual, onActualizar, onQuitar,
+  onSugerir, onAgregarManual, onActualizar, onQuitar, onAgregarPaquete,
 }: {
   lineas: LineaRebaja[]
   materiales: Material[]
@@ -1234,6 +1265,7 @@ function RebajaPendienteSection({
   onAgregarManual: () => void
   onActualizar: (localId: string, patch: Partial<LineaRebaja>) => void
   onQuitar: (localId: string) => void
+  onAgregarPaquete: (localId: string, materialIds: string[]) => void
 }) {
   const selectCls = 'bg-slate-700 text-white text-xs rounded-lg px-2 py-1 border border-slate-600 focus:border-brand-500 focus:outline-none'
   const [copyMsg, setCopyMsg] = useState<string | null>(null)
@@ -1322,6 +1354,7 @@ function RebajaPendienteSection({
                             const m = materiales.find((mm) => mm.id === id)
                             onActualizar(l.localId, { materialId: id, materialSku: m?.sku ?? '', materialDescripcion: m?.descripcion ?? '', lote: '' })
                           }}
+                          onSelectPaquete={(materialIds) => onAgregarPaquete(l.localId, materialIds)}
                           className="w-36" />
                       )}
                       {errMaterial && <p className="text-[9px] text-red-400 mt-0.5">{errMaterial}</p>}

@@ -21,6 +21,7 @@
 
 import { Fragment, useEffect, useState } from 'react'
 import { nanoid } from '@/core/utils/nanoid'
+import { reemplazarLineaPorVarias } from '@/core/utils/lineas'
 import { adminRepo } from '@/lib/adminRepo'
 import type { Profile } from '@/lib/auth'
 import { listMateriales, listUbicaciones, getStock, registrarMovimiento } from '@/lib/inventario/inventarioRepo'
@@ -129,6 +130,14 @@ export function AsignacionesForm({ onRegistered }: { onRegistered?: () => void }
   }
   function removeLinea(localId: string) {
     setLineas((prev) => (prev.length > 1 ? prev.filter((l) => l.localId !== localId) : prev))
+  }
+  /** Paquete de materiales elegido en la línea `l` — ver el mismo mecanismo en RegistrarMovimientoForm.tsx. */
+  function handlePaqueteSeleccionado(l: Linea, materialIds: string[]) {
+    const nuevas = materialIds.map((materialId) => ({
+      ...l, localId: nanoid(8), materialId, cantidad: '',
+      lote: esTipoFerreteria(materiales.find((m) => m.id === materialId)?.tipo?.nombre) ? LOTE_FISICO_FERRETERIA : '',
+    }))
+    setLineas((prev) => reemplazarLineaPorVarias(prev, l.localId, nuevas))
   }
 
   function validarLineas(): string | null {
@@ -367,7 +376,8 @@ export function AsignacionesForm({ onRegistered }: { onRegistered?: () => void }
                             onChange={(id) => updateLinea(l.localId, {
                               materialId: id,
                               lote: esTipoFerreteria(materiales.find((m) => m.id === id)?.tipo?.nombre) ? LOTE_FISICO_FERRETERIA : '',
-                            })} />
+                            })}
+                            onSelectPaquete={(materialIds) => handlePaqueteSeleccionado(l, materialIds)} />
                         </td>
                         <td className="px-2 py-1.5 min-w-[10rem]">
                           <UbicacionSelect value={l.ubicacionBodegaId}

@@ -8,6 +8,7 @@
 
 import { Fragment, useEffect, useRef, useState } from 'react'
 import { nanoid } from '@/core/utils/nanoid'
+import { reemplazarLineaPorVarias } from '@/core/utils/lineas'
 import { adminRepo } from '@/lib/adminRepo'
 import type { MemberProfile, ProjectSummary } from '@/lib/adminRepo'
 import { useAuth } from '@/lib/auth'
@@ -191,6 +192,15 @@ export function RegistrarMovimientoForm({ fixedProject, puntos, lockTipoUI, solo
     }
   }
 
+  // Ferretería no tiene lote físico distinguible — se resetea a 'Físico' al
+  // cambiar de material. Entrada es la excepción (ver el comentario en el
+  // render, junto al selector de lote): ahí el lote sigue siendo libre
+  // incluso para Ferretería, porque el servidor sabe partirlo (0066).
+  function loteReset(materialId: string): string {
+    return (!esEntrada && esTipoFerreteria(materiales.find((m) => m.id === materialId)?.tipo?.nombre))
+      ? LOTE_FISICO_FERRETERIA : ''
+  }
+
   function updateLinea(localId: string, patch: Partial<MaterialLinea>) {
     setLineas((prev) => prev.map((l) => (l.localId === localId ? { ...l, ...patch } : l)))
   }
@@ -199,6 +209,19 @@ export function RegistrarMovimientoForm({ fixedProject, puntos, lockTipoUI, solo
   }
   function removeLinea(localId: string) {
     setLineas((prev) => (prev.length > 1 ? prev.filter((l) => l.localId !== localId) : prev))
+  }
+  /**
+   * Paquete de materiales elegido en la línea `l` (ver MaterialSelect →
+   * onSelectPaquete): reemplaza esa línea por una por cada SKU del paquete,
+   * en el mismo lugar — todas SIN cantidad, el usuario la completa a mano
+   * por línea (pedido explícito: "deben aparecer todos los skus asociados
+   * sin cantidad"). Mantiene la bodega/destino que ya tuviera esa línea.
+   */
+  function handlePaqueteSeleccionado(l: MaterialLinea, materialIds: string[]) {
+    const nuevas = materialIds.map((materialId) => ({
+      ...l, localId: nanoid(8), materialId, cantidad: '', lote: loteReset(materialId),
+    }))
+    setLineas((prev) => reemplazarLineaPorVarias(prev, l.localId, nuevas))
   }
 
   function validar(): string | null {
@@ -420,15 +443,13 @@ export function RegistrarMovimientoForm({ fixedProject, puntos, lockTipoUI, solo
                 // se mantiene siempre en Entrada, sin importar el tipo.
                 const esFerreteriaFisico = !esEntrada && ctx.naturaleza === 'fisico'
                   && esTipoFerreteria(materiales.find((m) => m.id === l.materialId)?.tipo?.nombre)
-                const loteReset = (materialId: string) =>
-                  (!esEntrada && esTipoFerreteria(materiales.find((m) => m.id === materialId)?.tipo?.nombre))
-                    ? LOTE_FISICO_FERRETERIA : ''
                 return (
                   <Fragment key={l.localId}>
                     <tr className="border-t border-slate-800 divide-x divide-slate-800">
                       <td className="px-2 py-1.5 min-w-[12rem]">
                         <MaterialSelect materiales={materiales} value={l.materialId}
-                          onChange={(id) => updateLinea(l.localId, { materialId: id, lote: loteReset(id) })} />
+                          onChange={(id) => updateLinea(l.localId, { materialId: id, lote: loteReset(id) })}
+                          onSelectPaquete={(materialIds) => handlePaqueteSeleccionado(l, materialIds)} />
                       </td>
                       {necesitaBodegaPorLinea && (
                         <td className="px-2 py-1.5 min-w-[10rem]">

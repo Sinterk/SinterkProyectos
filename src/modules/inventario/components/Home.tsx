@@ -18,12 +18,13 @@ import {
   updateMaterialStockMinimo, updateMaterialComentario, updateMaterialTendido, crearMaterial,
   listMaterialTipos, crearMaterialTipo, updateMaterialApodo, updateMaterialDescripcion, updateMaterialTipo,
   listProveedores, crearProveedor, updateMaterialProveedores,
+  listPaquetes, crearPaquete, eliminarPaquete, updatePaqueteMateriales,
   listConteos, getConteoLineas, abrirConteo, agregarLineaConteo, actualizarLineaConteo, cerrarConteo, descartarConteo,
   listEventosInventario, listEventosPorConteo, resolverEvento, importarFilasSapAConteo,
 } from '@/lib/inventario/inventarioRepo'
 import type { ListMovimientosFilters, ImportarSapResultado } from '@/lib/inventario/inventarioRepo'
 import type {
-  Movimiento, StockRow, TecnicoLedgerRow, Ubicacion, Material, MaterialTipo, Proveedor,
+  Movimiento, StockRow, TecnicoLedgerRow, Ubicacion, Material, MaterialTipo, Proveedor, Paquete,
   Conteo, ConteoLinea, EventoInventario, EventoResolucion, ResolucionTipo, ConsumoArea,
 } from '@/lib/inventario/types'
 import { parseArchivoXlsx, parseTextoPegado } from '@/lib/inventario/importarSap'
@@ -1855,6 +1856,7 @@ function CatalogoTab() {
   const [materiales, setMateriales] = useState<Material[] | null>(null)
   const [tipos, setTipos] = useState<MaterialTipo[]>([])
   const [proveedoresCatalogo, setProveedoresCatalogo] = useState<Proveedor[]>([])
+  const [paquetes, setPaquetes] = useState<Paquete[] | null>(null)
   const [codigosLpu, setCodigosLpu] = useState<LpuCodigo[] | null>(null)
   const [error, setError] = useState<string | null>(null)
   const [q, setQ] = useState('')
@@ -1870,6 +1872,7 @@ function CatalogoTab() {
     }
   }
   useEffect(() => { reload() }, [])
+  useEffect(() => { listPaquetes().then(setPaquetes).catch((err) => setError(err instanceof Error ? err.message : String(err))) }, [])
   useEffect(() => { listLpuCodigos().then(setCodigosLpu).catch((err) => setError(err instanceof Error ? err.message : String(err))) }, [])
 
   const filtrados = useMemo(() => {
@@ -1971,6 +1974,22 @@ function CatalogoTab() {
 
       <div className="bg-slate-800 rounded-2xl border border-slate-700 p-4 space-y-3">
         <div>
+          <h2 className="text-xs font-semibold text-brand-400 uppercase tracking-wide">Paquetes de materiales</h2>
+          <p className="text-[11px] text-slate-500 leading-relaxed mt-1">
+            Grupos de SKU que casi siempre se ingresan juntos (ej. "Kit cruceta 6 piezas"). Aparecen al final de
+            cualquier buscador de material — elegir uno agrega todos sus SKU de una vez, sin cantidad (se completa a
+            mano por línea, igual que agregándolos uno por uno).
+          </p>
+        </div>
+        {!materiales || !paquetes ? (
+          <p className="text-xs text-slate-500">Cargando…</p>
+        ) : (
+          <PaquetesSection materiales={materiales} paquetes={paquetes} onChange={setPaquetes} onError={setError} />
+        )}
+      </div>
+
+      <div className="bg-slate-800 rounded-2xl border border-slate-700 p-4 space-y-3">
+        <div>
           <h2 className="text-xs font-semibold text-brand-400 uppercase tracking-wide">Material → Código LPU</h2>
           <p className="text-[11px] text-slate-500 leading-relaxed mt-1">
             Qué línea del Estado de Pago sugiere cada material instalado (ej. mufa → confección + fusión), y el tipo de tendido/capacidad de los SKUs de cable.
@@ -1992,6 +2011,97 @@ function CatalogoTab() {
         </div>
         {!codigosLpu ? <p className="text-xs text-slate-500">Cargando…</p> : <LpuTendidoMapEditor codigos={codigosLpu} />}
       </div>
+    </div>
+  )
+}
+
+function PaquetesSection({ materiales, paquetes, onChange, onError }: {
+  materiales: Material[]
+  paquetes: Paquete[]
+  onChange: (paquetes: Paquete[]) => void
+  onError: (msg: string) => void
+}) {
+  const [nombreNuevo, setNombreNuevo] = useState('')
+  const [creando, setCreando] = useState(false)
+
+  async function crear() {
+    if (!nombreNuevo.trim()) return
+    setCreando(true)
+    try {
+      const nuevo = await crearPaquete(nombreNuevo)
+      onChange([...paquetes, nuevo].sort((a, b) => a.nombre.localeCompare(b.nombre)))
+      setNombreNuevo('')
+    } catch (err) {
+      onError(err instanceof Error ? err.message : String(err))
+    } finally {
+      setCreando(false)
+    }
+  }
+
+  async function borrar(paquete: Paquete) {
+    if (!confirm(`¿Eliminar el paquete "${paquete.nombre}"? No borra los SKU, solo el agrupamiento.`)) return
+    try {
+      await eliminarPaquete(paquete.id)
+      onChange(paquetes.filter((p) => p.id !== paquete.id))
+    } catch (err) {
+      onError(err instanceof Error ? err.message : String(err))
+    }
+  }
+
+  async function actualizarMateriales(paquete: Paquete, materialIds: string[]) {
+    // Optimista: la sección de abajo (MaterialSelect) depende de que
+    // `paquetes` refleje el cambio al toque para no ofrecer agregar el mismo
+    // SKU dos veces.
+    onChange(paquetes.map((p) => (p.id === paquete.id ? { ...p, materialIds } : p)))
+    try {
+      await updatePaqueteMateriales(paquete.id, materialIds)
+    } catch (err) {
+      onError(err instanceof Error ? err.message : String(err))
+      onChange(paquetes) // revierte si falló
+    }
+  }
+
+  return (
+    <div className="space-y-3">
+      <div className="flex gap-2">
+        <input value={nombreNuevo} onChange={(e) => setNombreNuevo(e.target.value)} placeholder="Nombre del paquete nuevo…"
+          onKeyDown={(e) => e.key === 'Enter' && crear()}
+          className={`${inputCls} flex-1`} />
+        <button type="button" onClick={crear} disabled={creando || !nombreNuevo.trim()}
+          className="text-xs font-semibold px-3 py-1.5 rounded-lg bg-brand-600 hover:bg-brand-700 disabled:opacity-40 text-white shrink-0">
+          {creando ? 'Creando…' : '+ Nuevo paquete'}
+        </button>
+      </div>
+
+      {paquetes.length === 0 && <p className="text-xs text-slate-500">Sin paquetes todavía.</p>}
+
+      {paquetes.map((paquete) => (
+        <div key={paquete.id} className="bg-slate-900/40 rounded-xl border border-slate-700 p-3 space-y-2">
+          <div className="flex items-center justify-between gap-2">
+            <p className="text-sm font-semibold text-white">📦 {paquete.nombre}</p>
+            <button type="button" onClick={() => borrar(paquete)} className="text-[10px] text-red-400 hover:text-red-300 shrink-0">
+              Eliminar paquete
+            </button>
+          </div>
+          <div className="flex flex-wrap gap-1.5">
+            {paquete.materialIds.map((materialId) => {
+              const m = materiales.find((mm) => mm.id === materialId)
+              return (
+                <span key={materialId} className="inline-flex items-center gap-1 bg-slate-700 text-slate-200 text-[11px] rounded-full px-2 py-1">
+                  {m ? `${m.sku} — ${m.apodo || m.descripcion}` : materialId}
+                  <button type="button" onClick={() => actualizarMateriales(paquete, paquete.materialIds.filter((id) => id !== materialId))}
+                    className="text-slate-400 hover:text-white">✕</button>
+                </span>
+              )
+            })}
+            {paquete.materialIds.length === 0 && <span className="text-[11px] text-slate-500">Sin SKU todavía.</span>}
+          </div>
+          <MaterialSelect materiales={materiales.filter((m) => !paquete.materialIds.includes(m.id))} value=""
+            sinPaquetes placeholder="+ Agregar SKU a este paquete…"
+            onChange={(id) => actualizarMateriales(paquete, [...paquete.materialIds, id])}
+            className="w-full max-w-xs" />
+        </div>
+      ))}
     </div>
   )
 }

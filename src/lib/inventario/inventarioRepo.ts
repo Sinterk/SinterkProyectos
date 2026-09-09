@@ -7,7 +7,7 @@
 
 import { supabase } from '../supabaseClient'
 import type {
-  Material, MaterialTipo, Proveedor, Ubicacion, UbicacionTipo, StockRow, Movimiento,
+  Material, MaterialTipo, Proveedor, Paquete, Ubicacion, UbicacionTipo, StockRow, Movimiento,
   RegistrarMovimientoInput, ReasignarTransitoInput,
   ResumenMaterialProyecto, TecnicoLedgerRow,
   Conteo, ConteoLinea, EventoInventario, ResolucionTipo, ConsumoArea, ResolverEventoInput, Observacion,
@@ -198,6 +198,48 @@ export async function crearProveedor(nombre: string): Promise<Proveedor> {
   const { data, error } = await supabase.from('proveedores').insert({ nombre: nombre.trim() }).select('id, nombre').single()
   if (error) throw new Error(`proveedores.crear: ${error.message}`)
   return data as Proveedor
+}
+
+// ---------------------------------------------------------------------------
+// Paquetes de materiales (Catálogo) — grupo con nombre de varios SKU que se
+// ingresan juntos (ej. "Kit cruceta 6 piezas"), ver 0069_paquetes_material.sql
+// ---------------------------------------------------------------------------
+
+interface PaqueteRow {
+  id: string
+  nombre: string
+  paquete_material_items: { material_id: string }[]
+}
+
+export async function listPaquetes(): Promise<Paquete[]> {
+  const { data, error } = await supabase.from('paquetes_material')
+    .select('id, nombre, paquete_material_items(material_id)').order('nombre')
+  if (error) throw new Error(`paquetes.list: ${error.message}`)
+  return (data as PaqueteRow[]).map((p) => ({
+    id: p.id, nombre: p.nombre, materialIds: p.paquete_material_items.map((i) => i.material_id),
+  }))
+}
+
+export async function crearPaquete(nombre: string): Promise<Paquete> {
+  const { data, error } = await supabase.from('paquetes_material').insert({ nombre: nombre.trim() }).select('id, nombre').single()
+  if (error) throw new Error(`paquetes.crear: ${error.message}`)
+  return { id: data.id, nombre: data.nombre, materialIds: [] }
+}
+
+export async function eliminarPaquete(paqueteId: string): Promise<void> {
+  const { error } = await supabase.from('paquetes_material').delete().eq('id', paqueteId)
+  if (error) throw new Error(`paquetes.eliminar: ${error.message}`)
+}
+
+/** Reemplaza TODOS los SKU asignados al paquete por el set dado (borra + inserta) — mismo criterio que `updateMaterialProveedores`. */
+export async function updatePaqueteMateriales(paqueteId: string, materialIds: string[]): Promise<void> {
+  const { error: errDel } = await supabase.from('paquete_material_items').delete().eq('paquete_id', paqueteId)
+  if (errDel) throw new Error(`paquete_material_items.reemplazar (borrar previos): ${errDel.message}`)
+  if (materialIds.length > 0) {
+    const { error: errIns } = await supabase.from('paquete_material_items')
+      .insert(materialIds.map((materialId) => ({ paquete_id: paqueteId, material_id: materialId })))
+    if (errIns) throw new Error(`paquete_material_items.reemplazar (insertar): ${errIns.message}`)
+  }
 }
 
 // ---------------------------------------------------------------------------
