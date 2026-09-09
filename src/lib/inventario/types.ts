@@ -10,6 +10,19 @@ export interface Proveedor {
   nombre: string
 }
 
+/**
+ * Paquete de materiales (ej. "Kit cruceta 6 piezas") — grupo con nombre de
+ * varios SKU que casi siempre se ingresan juntos. Sin cantidad por SKU: al
+ * elegir el paquete en un selector de material, se agregan todos sus SKU
+ * SIN cantidad — el usuario la completa a mano por línea, igual que si los
+ * hubiera agregado uno por uno (ver 0069_paquetes_material.sql).
+ */
+export interface Paquete {
+  id: string
+  nombre: string
+  materialIds: string[]
+}
+
 export interface Material {
   id: string
   sku: string
