@@ -4,8 +4,8 @@
 > sesión nueva. Última actualización: 10-09-2026.
 
 ## ⚡ Estado ahora mismo (10-09-2026)
-- **`backend-supabase` tiene trabajo sin mergear a `main`** (última sincronización confirmada: v1.85 el 09-09). Seguir mergeando `backend-supabase` a `main` cuando el trabajo esté listo para producción, en vez de dejarlo acumularse.
-- **Migraciones**: corridas y confirmadas hasta `0069`. Ninguna pendiente (v1.86 no necesitó migración).
+- **`main` y `backend-supabase` están sincronizados** (merge y push del 10-09) — ambos en v1.86. Seguir mergeando `backend-supabase` a `main` cuando el trabajo esté listo para producción, en vez de dejarlo acumularse.
+- **Migraciones**: corridas y confirmadas hasta `0069`. Ninguna pendiente.
 - **Para retomar en otra máquina**: `git clone` (o `git fetch` + `git checkout backend-supabase`), `npm install`, recrear el `.env` a mano (los nombres de variable están en `src/lib/supabaseClient.ts` y `src/lib/auth.ts`; los valores NO están en el repo, es público — Andrés los tiene), `npm run dev`.
 - **Pendientes de Andrés** (no bloquean nada salvo lo marcado):
   1. ~~Desplegar la Edge Function de alta de usuarios~~ — **hecho y confirmado el 26-08** (probada sin sesión y con token inválido, responde el gate de auth de la función, no un 404 — está desplegada de verdad).
