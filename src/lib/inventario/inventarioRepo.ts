@@ -698,14 +698,29 @@ interface SolicitudJoinRow {
   materiales: { sku: string; descripcion: string } | null
 }
 
+interface EntregaJoinRow {
+  material_id: string
+  lote: string
+  punto_id: string | null
+  ubicacion_id: string
+  cantidad: number
+}
+
 /**
  * Resumen de materiales de un proyecto: cuánto se solicitó/entregó/instaló/
  * devolvió/rebajó, más el tránsito calculado. `cant_solicitada` no vive en
  * `proyecto_materiales` (una solicitud no toca esa tabla) — se suma aparte
- * desde `movimientos` tipo='solicitud'.
+ * desde `movimientos` tipo='solicitud'. `ubicacionBodegaId` tampoco vive ahí
+ * (una fila de proyecto_materiales no sabe de qué bodega salió el material,
+ * puede haber recibido entregas de varias) — se deriva de los movimientos
+ * tipo='salida' (Entrega), quedándose con la bodega de mayor cantidad
+ * acumulada si hubo más de una. Bug real reportado por Andrés: sin esto, el
+ * selector de "Bodega" de una fila ya existente volvía a mostrar SIEMPRE el
+ * default del área (C088) al reabrir la OTT, aunque se hubiera entregado
+ * de otra — el override solo vivía en estado de React, se perdía al recargar.
  */
 export async function getResumenProyecto(projectId: string): Promise<ResumenMaterialProyecto[]> {
-  const [pmRes, solRes] = await Promise.all([
+  const [pmRes, solRes, entRes] = await Promise.all([
     supabase
       .from('proyecto_materiales')
       .select('material_id, lote, punto_id, cant_entregada, cant_instalada, cant_devuelta, cant_rezagada, cant_rebajada, cant_merma, materiales(sku, descripcion)')
@@ -715,9 +730,15 @@ export async function getResumenProyecto(projectId: string): Promise<ResumenMate
       .select('material_id, lote, punto_id, cantidad, materiales(sku, descripcion)')
       .eq('project_id', projectId)
       .eq('tipo', 'solicitud'),
+    supabase
+      .from('movimientos')
+      .select('material_id, lote, punto_id, ubicacion_id, cantidad')
+      .eq('project_id', projectId)
+      .eq('tipo', 'salida'),
   ])
   if (pmRes.error) throw new Error(`proyecto_materiales.resumen: ${pmRes.error.message}`)
   if (solRes.error) throw new Error(`movimientos.solicitudes: ${solRes.error.message}`)
+  if (entRes.error) throw new Error(`movimientos.entregas: ${entRes.error.message}`)
 
   const key = (materialId: string, lote: string, puntoId: string | null) => `${materialId}|${lote}|${puntoId ?? ''}`
   const map = new Map<string, ResumenMaterialProyecto>()
@@ -730,7 +751,7 @@ export async function getResumenProyecto(projectId: string): Promise<ResumenMate
         materialId, materialSku: mat?.sku ?? '', materialDescripcion: mat?.descripcion ?? '',
         lote, puntoId,
         cantSolicitada: 0, cantEntregada: 0, cantInstalada: 0, cantDevuelta: 0, cantRezagada: 0, cantRebajada: 0,
-        cantMerma: 0, cantTransito: 0,
+        cantMerma: 0, cantTransito: 0, ubicacionBodegaId: null,
       }
       map.set(k, row)
     }
@@ -750,6 +771,20 @@ export async function getResumenProyecto(projectId: string): Promise<ResumenMate
   for (const r of (solRes.data as unknown as SolicitudJoinRow[])) {
     const row = ensure(r.material_id, r.lote, r.punto_id, r.materiales)
     row.cantSolicitada += Number(r.cantidad)
+  }
+
+  const bodegaTotales = new Map<string, Map<string, number>>()
+  for (const r of (entRes.data as unknown as EntregaJoinRow[])) {
+    const k = key(r.material_id, r.lote, r.punto_id)
+    let porBodega = bodegaTotales.get(k)
+    if (!porBodega) { porBodega = new Map(); bodegaTotales.set(k, porBodega) }
+    porBodega.set(r.ubicacion_id, (porBodega.get(r.ubicacion_id) ?? 0) + Number(r.cantidad))
+  }
+  for (const [k, row] of map) {
+    const porBodega = bodegaTotales.get(k)
+    if (porBodega && porBodega.size > 0) {
+      row.ubicacionBodegaId = [...porBodega.entries()].sort((a, b) => b[1] - a[1])[0][0]
+    }
   }
 
   for (const row of map.values()) {
