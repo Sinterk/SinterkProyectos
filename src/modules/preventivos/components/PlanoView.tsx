@@ -11,7 +11,7 @@ export function PlanoView() {
   const { id } = useParams<{ id: string }>()
   const navigate = useNavigate()
   const record = usePreventivoStore((s) => s.records[id ?? ''])
-  useRestorePhotoPreviews()
+  useRestorePhotoPreviews(id ?? '')
 
   if (!record) return <div className="text-slate-400 text-center py-16">No encontrado.</div>
 
@@ -75,7 +75,7 @@ export function PlanoView() {
                     const foto = punto[key]
                     return foto?.previewUrl ? (
                       <div key={key} className={`rounded-xl overflow-hidden border-2 ${COLORS[key]}`}>
-                        <img src={foto.previewUrl} alt={LABELS[key]} className="w-full h-28 object-cover" />
+                        <img src={foto.previewUrl} alt={LABELS[key]} loading="lazy" className="w-full h-28 object-cover" />
                         <div className="bg-black/60 px-1.5 py-0.5 text-[10px] text-white text-center">{LABELS[key]}</div>
                       </div>
                     ) : (

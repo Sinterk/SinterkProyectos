@@ -18,6 +18,17 @@
   8. **Pendiente para la semana (sin fecha fija)**: reescribir el texto de advertencia de "Corregir errores de tipeo" en Resumen de Proyecto — hoy dice "para arreglar un error de tipeo" y eso confunde con el caso real de "anoté 6, eran 5, ya hubo un movimiento real de 6". Corrección NUNCA revierte el movimiento ni el stock, solo pisa el número que se ve en la tabla — si el movimiento real fue mal registrado, hay que anularlo y volver a registrar con la cantidad correcta, o el stock queda mintiendo (técnico con más de lo que en verdad tiene). Andrés pidió dejarlo pendiente, no implementarlo ahora.
 - **Deploy**: el push del 26-08 a `main` falló al desplegar por una interrupción real de GitHub Actions/Pages (confirmada en githubstatus.com, no un problema del repo) — falta reintentar el workflow ("Re-run all jobs") una vez que GitHub se recupere. Fuera de eso, `.github/workflows/deploy.yml` publica bien en cada push a `main`.
 
+## v1.87 — Preventivos lento con fotos: las URLs de foto se resolvían para TODOS los levantamientos cacheados, no solo el abierto (fix, sin migración)
+Andrés: "el sitio está actuando lento, en particular con los preventivos, donde los informes tienen imágenes. Se demoran en cargar las fotos, y da la impresión que no hay trabajo hecho." Pidió causas posibles antes de tocar nada; encontrada la causa real, se implementó el fix que ya se había sugerido.
+
+**Causa real**: `syncList()` (se dispara al entrar a la lista de Preventivos) trae `puntos(*)` de TODOS los levantamientos activos — con ~19-20 activos y hasta 77 puntos cada uno, eso son cientos de rutas de foto cacheadas en el store de golpe. `useResolvePhotoUrls` y `useRestorePhotoPreviews` no filtraban por el levantamiento abierto: recorrían `Object.values(records)` completo. Resultado: abrir UN informe disparaba resolución de signed URLs (y restauración desde IndexedDB) para las fotos de TODOS los levantamientos cacheados, no solo el que se estaba mirando.
+
+**Fix**: ambos hooks (`useResolvePhotoUrls.ts`, `useRestorePhotoPreviews.ts`) ahora reciben el `id` del levantamiento abierto y solo miran `records[id]`, no todo el store — `Editor.tsx` y `PlanoView.tsx` (sus dos consumidores) se lo pasan. De paso, `useRestorePhotoPreviews` pasó de un `for` secuencial (`await` una foto a la vez) a `Promise.all`, y se agregó `loading="lazy"` a los `<img>` de miniatura (`PhotoCapture.tsx`, `PlanoView.tsx`) — con listas de puntos sin virtualizar, un informe grande podía intentar cargar ~200 imágenes de una sola vez aunque estuvieran fuera de pantalla.
+
+**Verificado en el navegador con datos reales**: abierto el levantamiento "Las Condes — 1" (59 puntos, 134 fotos), se renderizaron exactamente 134 `<img>` con URL firmada resuelta — ni una foto de otro levantamiento cacheado, sin errores en consola.
+
+**Nota aparte, no tocada esta vez**: el bundle principal sigue pesando ~2MB (735KB comprimido) — puede seguir sumando a la demora de carga inicial, independiente de las fotos. Ya se había marcado como posible mejora futura en una sesión anterior.
+
 ## v1.86 — fix real: la Bodega de una fila existente siempre volvía a mostrar C088 al reabrir la OTT (fix, sin migración)
 Andrés: al entrar los datos de bodega de un material para una OTT se registraba bien, pero al reabrir esa OTT la fila siempre mostraba C088, aunque se hubiera entregado de otra bodega.
 

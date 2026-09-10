@@ -56,6 +56,7 @@ export function PhotoCapture({ label, fotoKey, entry, editable = true, onCapture
           <img
             src={entry.previewUrl}
             alt={label}
+            loading="lazy"
             className="w-full h-36 object-cover cursor-zoom-in"
             onClick={() => setLightbox(true)}
           />
