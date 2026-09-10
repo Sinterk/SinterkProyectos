@@ -29,8 +29,8 @@ export function Editor() {
   const isTecnico = useAuth((s) => s.profile?.rol === 'tecnico')
   const { record, processPhoto } = usePreventivo(id ?? '')
   const { addPunto, movePunto, syncOne, setEstado } = usePreventivoStore()
-  useRestorePhotoPreviews()
-  useResolvePhotoUrls()
+  useRestorePhotoPreviews(id ?? '')
+  useResolvePhotoUrls(id ?? '')
 
   // Se carga una sola vez para todos los puntos, no por PuntoCard — son ~23
   // filas como mucho y no cambian mientras se edita el levantamiento. Si
