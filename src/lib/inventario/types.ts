@@ -167,6 +167,16 @@ export interface ResumenMaterialProyecto {
   cantMerma: number
   /** Calculado: entregada - instalada - devuelta - rezagada - merma. Nunca se guarda. */
   cantTransito: number
+  /**
+   * Bodega real de origen — derivada de `movimientos` tipo='salida' (Entrega)
+   * de este material+lote+punto en este proyecto (la de mayor cantidad
+   * acumulada, si hubo entregas desde más de una). null = nunca se entregó
+   * nada de acá todavía (fila que solo tiene Solicitado, por ejemplo). Sirve
+   * para que el selector de "Bodega" de una fila ya existente parta mostrando
+   * de dónde salió DE VERDAD, no siempre el default del área — ver
+   * ResumenProyectoTable.tsx → getRowBodega.
+   */
+  ubicacionBodegaId: string | null
 }
 
 /** Fila del ledger de un técnico: lo que tiene entregado/instalado/devuelto por proyecto. */

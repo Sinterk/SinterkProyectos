@@ -1,11 +1,11 @@
 # Continuar — Migración a backend Supabase
 
 > Documento de retomada — LEER ESTO PRIMERO si se retoma en otra máquina o
-> sesión nueva. Última actualización: 09-09-2026.
+> sesión nueva. Última actualización: 10-09-2026.
 
-## ⚡ Estado ahora mismo (09-09-2026)
-- **`main` y `backend-supabase` están sincronizados** (merge y push del 09-09) — ambos en v1.85. Seguir mergeando `backend-supabase` a `main` cuando el trabajo esté listo para producción, en vez de dejarlo acumularse.
-- **Migraciones**: corridas y confirmadas hasta `0069`. Ninguna pendiente.
+## ⚡ Estado ahora mismo (10-09-2026)
+- **`backend-supabase` tiene trabajo sin mergear a `main`** (última sincronización confirmada: v1.85 el 09-09). Seguir mergeando `backend-supabase` a `main` cuando el trabajo esté listo para producción, en vez de dejarlo acumularse.
+- **Migraciones**: corridas y confirmadas hasta `0069`. Ninguna pendiente (v1.86 no necesitó migración).
 - **Para retomar en otra máquina**: `git clone` (o `git fetch` + `git checkout backend-supabase`), `npm install`, recrear el `.env` a mano (los nombres de variable están en `src/lib/supabaseClient.ts` y `src/lib/auth.ts`; los valores NO están en el repo, es público — Andrés los tiene), `npm run dev`.
 - **Pendientes de Andrés** (no bloquean nada salvo lo marcado):
   1. ~~Desplegar la Edge Function de alta de usuarios~~ — **hecho y confirmado el 26-08** (probada sin sesión y con token inválido, responde el gate de auth de la función, no un 404 — está desplegada de verdad).
@@ -17,6 +17,15 @@
   7. **Recuperar el levantamiento del colega** (ver entrada v1.59 más abajo) — el ZIP le creó un informe vacío en el servidor (0 puntos). Con el fix de esa versión, borrar ese levantamiento local (o el registro server-side si ya no está en el store local de nadie) y volver a importar el mismo ZIP.
   8. **Pendiente para la semana (sin fecha fija)**: reescribir el texto de advertencia de "Corregir errores de tipeo" en Resumen de Proyecto — hoy dice "para arreglar un error de tipeo" y eso confunde con el caso real de "anoté 6, eran 5, ya hubo un movimiento real de 6". Corrección NUNCA revierte el movimiento ni el stock, solo pisa el número que se ve en la tabla — si el movimiento real fue mal registrado, hay que anularlo y volver a registrar con la cantidad correcta, o el stock queda mintiendo (técnico con más de lo que en verdad tiene). Andrés pidió dejarlo pendiente, no implementarlo ahora.
 - **Deploy**: el push del 26-08 a `main` falló al desplegar por una interrupción real de GitHub Actions/Pages (confirmada en githubstatus.com, no un problema del repo) — falta reintentar el workflow ("Re-run all jobs") una vez que GitHub se recupere. Fuera de eso, `.github/workflows/deploy.yml` publica bien en cada push a `main`.
+
+## v1.86 — fix real: la Bodega de una fila existente siempre volvía a mostrar C088 al reabrir la OTT (fix, sin migración)
+Andrés: al entrar los datos de bodega de un material para una OTT se registraba bien, pero al reabrir esa OTT la fila siempre mostraba C088, aunque se hubiera entregado de otra bodega.
+
+**Causa real**: el selector de "Bodega" de una fila ya existente (`ResumenProyectoTable.tsx` → `getRowBodega`) nunca tuvo de dónde sacar la bodega real — `proyecto_materiales` (de donde sale la fila) no guarda ubicación, solo cantidades por material+lote+punto. El único override que existía vivía en estado de React (`rowBodegaOverride`), así que se perdía al recargar y el selector caía siempre al default del área (C088).
+
+**Fix**: `getResumenProyecto` (`inventarioRepo.ts`) ahora también consulta los movimientos tipo='salida' (Entrega) de cada material+lote+punto del proyecto, y expone la bodega de mayor cantidad acumulada como `ubicacionBodegaId` en cada fila del resumen — es la bodega de la que DE VERDAD se entregó, no una suposición. `getRowBodega` ahora prioriza esto sobre el default del área (el override manual del usuario sigue ganándole a ambos). `agregarPorMaterial` (la vista "todos los puntos" de Preventivos) hereda el mismo criterio, tomando la bodega del punto con más Entregado al colapsar filas.
+
+**Verificado con datos reales**: en la OTT 72603682203, la fila de "ABRAZADERA ALTA TENSION 1/2INCH" (SKU 6) mostraba C088 antes del fix pese a haberse entregado de C103 (confirmado contra Movimientos); después del fix muestra C103 correctamente, y el resto de las filas de la misma OTT (todas entregadas desde C088, salvo la mufa y el ODF desde STK) siguen mostrando su bodega real también.
 
 ## v1.85 — Paquetes de materiales: un "kit" (ej. cruceta + 6 piezas) se agrega completo desde cualquier selector de material (mejora, requiere migración 0069)
 Andrés: "hay un tipo de cruceta, que su instalación incluye 6 materiales. Agrega una sección en catálogo de ingresar materiales en 'paquete', cosa que al buscar material para ingresar, la descripción sea el paquete completo, y con esta se ingresen todos los sku asociados." Aclarado en la conversación: el paquete va en el desplegable de material de **todas** las pantallas (al final, después de los SKU sueltos), y elegirlo agrega los SKU **sin cantidad** — el usuario la completa a mano por línea.

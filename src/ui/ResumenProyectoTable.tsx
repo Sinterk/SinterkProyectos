@@ -105,6 +105,10 @@ const TODOS_LOS_PUNTOS = ''
  */
 function agregarPorMaterial(rows: ResumenMaterialProyecto[]): ResumenMaterialProyecto[] {
   const map = new Map<string, ResumenMaterialProyecto>()
+  // Al colapsar varios puntos en una fila, la bodega "real" ya no es una
+  // sola — se toma la del punto con más Entregado como más representativa
+  // (mismo criterio que dentro de un punto: la de mayor cantidad).
+  const mejorEntregada = new Map<string, number>()
   for (const r of rows) {
     const k = `${r.materialId}|${r.lote}`
     let acc = map.get(k)
@@ -113,7 +117,7 @@ function agregarPorMaterial(rows: ResumenMaterialProyecto[]): ResumenMaterialPro
         materialId: r.materialId, materialSku: r.materialSku, materialDescripcion: r.materialDescripcion,
         lote: r.lote, puntoId: null,
         cantSolicitada: 0, cantEntregada: 0, cantInstalada: 0, cantDevuelta: 0, cantRezagada: 0, cantRebajada: 0,
-        cantMerma: 0, cantTransito: 0,
+        cantMerma: 0, cantTransito: 0, ubicacionBodegaId: null,
       }
       map.set(k, acc)
     }
@@ -124,6 +128,10 @@ function agregarPorMaterial(rows: ResumenMaterialProyecto[]): ResumenMaterialPro
     acc.cantRezagada += r.cantRezagada
     acc.cantRebajada += r.cantRebajada
     acc.cantMerma += r.cantMerma
+    if (r.ubicacionBodegaId && r.cantEntregada > (mejorEntregada.get(k) ?? 0)) {
+      mejorEntregada.set(k, r.cantEntregada)
+      acc.ubicacionBodegaId = r.ubicacionBodegaId
+    }
   }
   for (const acc of map.values()) {
     acc.cantTransito = acc.cantEntregada - acc.cantInstalada - acc.cantDevuelta - acc.cantRezagada - acc.cantMerma
@@ -278,8 +286,15 @@ export function ResumenProyectoTable({ projectId, area, puntos, refreshKey = 0, 
   function setRowTecnico(key: string, tecnicoUserId: string) {
     setRowTecnicoOverride((prev) => ({ ...prev, [key]: tecnicoUserId }))
   }
-  function getRowBodega(key: string): string {
-    return rowBodegaOverride[key] || bodegaEdicion
+  // Antes de un override manual, parte en la bodega REAL de donde salió el
+  // material (`row.ubicacionBodegaId`, derivada de los movimientos de
+  // Entrega — ver getResumenProyecto) en vez de siempre el default del área
+  // — bug real reportado por Andrés: al reabrir la OTT, una fila entregada
+  // desde otra bodega igual mostraba C088 (el override solo vivía en
+  // estado de React, se perdía al recargar). Sin entregas todavía
+  // (`ubicacionBodegaId` null), sigue cayendo al default del área.
+  function getRowBodega(row: ResumenMaterialProyecto): string {
+    return rowBodegaOverride[rowKey(row)] || row.ubicacionBodegaId || bodegaEdicion
   }
   function setRowBodega(key: string, ubicacionBodegaId: string) {
     setRowBodegaOverride((prev) => ({ ...prev, [key]: ubicacionBodegaId }))
@@ -536,7 +551,7 @@ export function ResumenProyectoTable({ projectId, area, puntos, refreshKey = 0, 
         const raw = byCampo[campo]
         const n = Number(raw)
         if (!raw || !(n > 0)) continue
-        const bodegaFila = getRowBodega(key)
+        const bodegaFila = getRowBodega(row)
         if (CAMPO_NECESITA_BODEGA.includes(campo) && !bodegaFila) {
           nextErrors[`${key}|${campo}`] = 'Falta elegir bodega'
           nextEdits[key] = { ...nextEdits[key], [campo]: raw }
@@ -912,7 +927,7 @@ export function ResumenProyectoTable({ projectId, area, puntos, refreshKey = 0, 
                       </td>
                       <td className="px-2 py-2 text-slate-300 whitespace-nowrap">{row.materialSku}</td>
                       <td className="px-2 py-2 align-top">
-                        <select value={getRowBodega(key)} onChange={(e) => setRowBodega(key, e.target.value)}
+                        <select value={getRowBodega(row)} onChange={(e) => setRowBodega(key, e.target.value)}
                           className="w-24 bg-slate-700 text-white text-xs rounded px-1.5 py-1 border border-slate-600 focus:border-brand-500 focus:outline-none">
                           <option value="">Bodega…</option>
                           {bodegas.map((b) => <option key={b.id} value={b.id}>{b.nombre}</option>)}
@@ -922,7 +937,7 @@ export function ResumenProyectoTable({ projectId, area, puntos, refreshKey = 0, 
                         {esFerreteriaFila ? (
                           <span className="text-slate-400 text-xs">Físico</span>
                         ) : (
-                          <LoteSelect materialId={row.materialId} ubicacionId={getRowBodega(key) || null} naturaleza="fisico"
+                          <LoteSelect materialId={row.materialId} ubicacionId={getRowBodega(row) || null} naturaleza="fisico"
                             checkAvailability={false} value={getRowLote(row)}
                             onChange={(lote) => setRowLote(key, lote)}
                             className="w-24 bg-slate-700 text-white text-xs rounded px-1.5 py-1 border border-slate-600 focus:border-brand-500 focus:outline-none" />
