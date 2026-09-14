@@ -2,6 +2,7 @@ import { NavLink, useLocation, useNavigate } from 'react-router-dom'
 import { registry } from '@/core/registry/projectRegistry'
 import { useAuth } from '@/lib/auth'
 import { useGlobalPendingSync } from '@/lib/useGlobalPendingSync'
+import { useAutoRetryPendingSync } from '@/lib/useAutoRetryPendingSync'
 import { UserMenu } from './UserMenu'
 import { OfflineBanner } from './OfflineBanner'
 
@@ -20,6 +21,7 @@ export function Layout({ children }: Props) {
   const navigate = useNavigate()
   const isTecnico = useAuth((s) => s.profile?.rol === 'tecnico')
   const pendingSync = useGlobalPendingSync()
+  useAutoRetryPendingSync()
 
   // Nav solo visible en pantallas de inicio, no en editores (/preventivos/:id, /att/:id, etc.)
   // Para técnico, los botones "← Volver" de los editores navegan a /att o
