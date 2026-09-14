@@ -30,10 +30,9 @@ import { BODEGA_DEFECTO_POR_AREA } from '@/lib/inventario/defaults'
 import { esTipoCable } from '@/lib/inventario/esCable'
 import { esTipoFerreteria, LOTE_FISICO_FERRETERIA } from '@/lib/inventario/esFerreteria'
 import {
-  corregirProyectoMaterial, getResumenProyecto, getStock, listMateriales, listUbicaciones,
+  getResumenProyecto, getStock, listMateriales, listUbicaciones,
   reasignarTransitoAPreventivo, registrarMovimiento,
 } from '@/lib/inventario/inventarioRepo'
-import type { CampoCorregible } from '@/lib/inventario/inventarioRepo'
 import type { Material, MovimientoTipoUI, ResumenMaterialProyecto, Ubicacion } from '@/lib/inventario/types'
 import { LoteSelect } from './LoteSelect'
 import { MaterialSelect } from './MaterialSelect'
@@ -76,20 +75,14 @@ const CAMPO_TIPO: Partial<Record<Campo, MovimientoTipoUI>> = {
 const CAMPO_REASIGNACION: Campo = 'cantRezagada'
 /** Campos cuyo movimiento requiere elegir bodega (origen para Entrega/Rebajado, destino para Devuelto). Merma, como Instalado, sale del stock propio del técnico — sin bodega. */
 const CAMPO_NECESITA_BODEGA: Campo[] = ['cantEntregada', 'cantDevuelta', 'cantRebajada']
-/** Campos corregibles directo (viven como columna propia en proyecto_materiales). Solicitado queda afuera: es un cálculo (suma de movimientos tipo='solicitud'), no una columna. */
-const CAMPO_DB: Partial<Record<Campo, CampoCorregible>> = {
-  cantEntregada: 'cant_entregada', cantInstalada: 'cant_instalada',
-  cantDevuelta: 'cant_devuelta', cantRebajada: 'cant_rebajada', cantMerma: 'cant_merma',
-  cantRezagada: 'cant_rezagada',
-}
 /**
  * El material del proyecto se muestra en DOS tablas (pedido de Andrés):
  * la física (lo que se mueve de verdad) y la digital (la baja contable en
  * SAP). `cantRebajada` es la única columna digital — por eso sale de la
  * tabla física y vive en `TablaDigital`, más abajo. Ambas comparten el
- * mismo estado (`edits`/`corrections`) y las mismas filas de
- * `proyecto_materiales`: por eso una fila nueva cargada en la física
- * aparece sola en la digital, con el mismo SKU y lote.
+ * mismo estado (`edits`) y las mismas filas de `proyecto_materiales`: por
+ * eso una fila nueva cargada en la física aparece sola en la digital, con
+ * el mismo SKU y lote.
  */
 const CAMPOS_FISICOS: Campo[] = ['cantSolicitada', 'cantEntregada', 'cantInstalada', 'cantDevuelta', 'cantMerma', 'cantRezagada']
 const CAMPO_DIGITAL: Campo = 'cantRebajada'
@@ -200,9 +193,9 @@ export function ResumenProyectoTable({ projectId, area, puntos, refreshKey = 0, 
   const [rows, setRows] = useState<ResumenMaterialProyecto[] | null>(null)
   // Lo que la tabla realmente muestra/edita — agregado por defecto en
   // Preventivos, filtrado a un punto si se eligió uno; sin `puntos` (ATT/
-  // Incidencias) es igual a `rows`. guardarCambios/guardarCorrecciones deben
-  // iterar ESTO, no `rows` crudo, porque una fila agregada (puntoId null)
-  // puede no existir tal cual en `rows` si todo lo entregado ya tiene punto.
+  // Incidencias) es igual a `rows`. guardarCambios debe iterar ESTO, no
+  // `rows` crudo, porque una fila agregada (puntoId null) puede no existir
+  // tal cual en `rows` si todo lo entregado ya tiene punto.
   const displayRows = rows === null ? [] : (
     mostrandoTodosLosPuntos ? agregarPorMaterial(rows)
       : puntos ? rows.filter((r) => r.puntoId === puntoFiltro)
@@ -246,15 +239,6 @@ export function ResumenProyectoTable({ projectId, area, puntos, refreshKey = 0, 
   // "+" que una fila existente, solo que además hay que elegir material/lote/
   // punto ahí mismo antes de poder guardar.
   const [nuevasFilas, setNuevasFilas] = useState<NuevaFila[]>([])
-
-  // Modo corrección: sobreescribe el valor absoluto sin generar movimiento
-  // ni tocar stock — solo para arreglar un error de tipeo. `corrections`
-  // guarda el valor tecleado (no el delta); se compara contra el valor
-  // actual de la fila al guardar para saltar las celdas sin cambios.
-  const [modoCorreccion, setModoCorreccion] = useState(false)
-  const [corrections, setCorrections] = useState<Record<string, Partial<Record<Campo, string>>>>({})
-  const [correctionErrors, setCorrectionErrors] = useState<Record<string, string>>({})
-  const [correcting, setCorrecting] = useState(false)
 
   async function reload() {
     try { setRows(await getResumenProyecto(projectId)) } catch (err) { setError(err instanceof Error ? err.message : String(err)) }
@@ -684,61 +668,6 @@ export function ResumenProyectoTable({ projectId, area, puntos, refreshKey = 0, 
     setLineasRebaja([])
   }
 
-  function setCorrection(key: string, campo: Campo, v: string) {
-    setCorrections((prev) => ({ ...prev, [key]: { ...prev[key], [campo]: v } }))
-  }
-
-  const correccionesPendientes = displayRows.flatMap((row) => {
-    const key = rowKey(row)
-    const byCampo = corrections[key]
-    if (!byCampo) return []
-    return (Object.keys(byCampo) as Campo[])
-      .filter((campo) => byCampo[campo] !== undefined && byCampo[campo] !== '' && Number(byCampo[campo]) !== row[campo])
-  })
-  const hayCorreccionesPendientes = correccionesPendientes.length > 0
-
-  async function guardarCorrecciones() {
-    if (!rows) return
-    setCorrecting(true)
-    setError(null)
-    const nextCorrections: typeof corrections = {}
-    const nextErrors: Record<string, string> = {}
-    for (const row of displayRows) {
-      const key = rowKey(row)
-      const byCampo = corrections[key]
-      if (!byCampo) continue
-      for (const campo of Object.keys(byCampo) as Campo[]) {
-        const raw = byCampo[campo]
-        const dbCampo = CAMPO_DB[campo]
-        if (raw === undefined || raw === '' || !dbCampo) continue
-        const n = Number(raw)
-        if (n === row[campo]) continue // sin cambio real, no molestar con una llamada de más
-        if (!(n >= 0)) {
-          nextErrors[`${key}|${campo}`] = 'Cantidad inválida'
-          nextCorrections[key] = { ...nextCorrections[key], [campo]: raw }
-          continue
-        }
-        try {
-          await corregirProyectoMaterial({
-            projectId, materialId: row.materialId, lote: row.lote, puntoId: row.puntoId, campo: dbCampo, valor: n,
-          })
-        } catch (err) {
-          nextErrors[`${key}|${campo}`] = err instanceof Error ? err.message : String(err)
-          nextCorrections[key] = { ...nextCorrections[key], [campo]: raw }
-        }
-      }
-    }
-    setCorrections(nextCorrections)
-    setCorrectionErrors(nextErrors)
-    setCorrecting(false)
-    await reload()
-  }
-
-  function descartarCorrecciones() {
-    setCorrections({})
-    setCorrectionErrors({})
-  }
-
   const selectCls = 'bg-slate-700 text-white text-xs rounded-lg px-2 py-1 border border-slate-600 focus:border-brand-500 focus:outline-none'
   const hayFilas = displayRows.length > 0 || nuevasFilas.length > 0
 
@@ -749,10 +678,7 @@ export function ResumenProyectoTable({ projectId, area, puntos, refreshKey = 0, 
         <div className="flex items-center gap-2">
           {puntos && (
             <select value={puntoFiltro}
-              onChange={(e) => {
-                setPuntoFiltro(e.target.value)
-                if (e.target.value === TODOS_LOS_PUNTOS) { setModoCorreccion(false); descartarCorrecciones() }
-              }}
+              onChange={(e) => setPuntoFiltro(e.target.value)}
               className="text-[10px] bg-slate-700 text-white rounded-lg px-2 py-1 border border-slate-600 focus:border-brand-500 focus:outline-none">
               <option value={TODOS_LOS_PUNTOS}>Punto: Todos (total)</option>
               {puntos.map((p) => <option key={p.id} value={p.id}>Punto: {p.nombre || '—'}</option>)}
@@ -764,24 +690,8 @@ export function ResumenProyectoTable({ projectId, area, puntos, refreshKey = 0, 
               ➕ Nuevo material
             </button>
           )}
-          {puedeCorregir && rows && rows.length > 0 && !mostrandoTodosLosPuntos && (
-            <button type="button"
-              onClick={() => { setModoCorreccion((v) => !v); descartarCorrecciones() }}
-              className={`text-[10px] font-semibold px-2 py-1 rounded-lg ${modoCorreccion ? 'bg-amber-600 text-white' : 'text-amber-400 hover:bg-slate-700'}`}>
-              🔧 {modoCorreccion ? 'Salir de corrección' : 'Corregir errores de tipeo'}
-            </button>
-          )}
         </div>
       </div>
-      {modoCorreccion && (
-        <p className="text-[11px] text-amber-300 bg-amber-950/40 border border-amber-800/50 rounded-lg p-2">
-          Esto sobreescribe el número directo, sin registrar un movimiento ni tocar el stock físico/digital de la
-          bodega. Úsalo solo para arreglar un error de tipeo (ej. escribiste 15 en vez de 5) — si el número está mal
-          porque realmente se entregó/instaló/devolvió/rebajó una cantidad distinta, no lo corrijas acá: usa el "+"
-          normal, así queda el movimiento real registrado. <strong>Solicitado</strong> no se puede corregir así,
-          porque no es un valor propio — se calcula sumando los movimientos de Solicitud.
-        </p>
-      )}
       {error && <p className="text-xs text-red-400">{error}</p>}
       {rows === null ? (
         <p className="text-xs text-slate-500">Cargando…</p>
@@ -917,7 +827,6 @@ export function ResumenProyectoTable({ projectId, area, puntos, refreshKey = 0, 
                 {displayRows.map((row) => {
                   const key = rowKey(row)
                   const draft = edits[key] ?? {}
-                  const correctionDraft = corrections[key] ?? {}
                   const errTecnicoFila = cellErrors[`${key}|__tecnico__`]
                   const esFerreteriaFila = esTipoFerreteria(materiales.find((m) => m.id === row.materialId)?.tipo?.nombre)
                   return (
@@ -945,21 +854,6 @@ export function ResumenProyectoTable({ projectId, area, puntos, refreshKey = 0, 
                       </td>
                       {CAMPOS_FISICOS.map((campo) => {
                         const valor = row[campo]
-                        const esCorregible = modoCorreccion && CAMPO_DB[campo] !== undefined && editableCamposVista.includes(campo)
-                        if (esCorregible) {
-                          const err = correctionErrors[`${key}|${campo}`]
-                          return (
-                            <td key={campo} className="px-2 py-2 text-center whitespace-nowrap align-top">
-                              <div className="flex items-center justify-center gap-1">
-                                <span className="text-slate-500 text-[10px]">=</span>
-                                <input type="number" min="0" step="any" value={correctionDraft[campo] ?? String(valor)}
-                                  onChange={(e) => setCorrection(key, campo, e.target.value)}
-                                  className="w-12 bg-amber-950/30 text-amber-200 text-xs rounded px-1 py-0.5 border border-amber-700/60 focus:border-amber-500 focus:outline-none text-center" />
-                              </div>
-                              {err && <p className="text-[9px] text-red-400 mt-0.5">{err}</p>}
-                            </td>
-                          )
-                        }
                         if (!editableCamposVista.includes(campo)) {
                           return (
                             <td key={campo} className="px-2 py-2 text-center whitespace-nowrap align-top">
@@ -1032,11 +926,6 @@ export function ResumenProyectoTable({ projectId, area, puntos, refreshKey = 0, 
             ott={ott}
             direccion={direccion}
             fechaInstalacion={formatFechaExcel(fechaInicio)}
-            modoCorreccion={modoCorreccion}
-            corrections={corrections}
-            onCorrection={setCorrection}
-            correctionErrors={correctionErrors}
-            editable={editableCampos.includes(CAMPO_DIGITAL)}
           />
 
           {hayPendientes && (
@@ -1065,19 +954,6 @@ export function ResumenProyectoTable({ projectId, area, puntos, refreshKey = 0, 
             </div>
           )}
 
-          {hayCorreccionesPendientes && (
-            <div className="bg-amber-950/30 rounded-xl border border-dashed border-amber-800/60 p-3 space-y-2">
-              <div className="flex flex-wrap items-center gap-2">
-                <button type="button" disabled={correcting} onClick={guardarCorrecciones}
-                  className="text-xs font-semibold px-3 py-1.5 rounded-lg bg-amber-600 hover:bg-amber-700 text-white disabled:opacity-40">
-                  {correcting ? 'Guardando…' : `Guardar corrección (${correccionesPendientes.length})`}
-                </button>
-                <button type="button" disabled={correcting} onClick={descartarCorrecciones} className="text-xs text-slate-400">
-                  Descartar
-                </button>
-              </div>
-            </div>
-          )}
         </>
       )}
     </div>
@@ -1132,12 +1008,12 @@ function celdaTextoTsv(v: string | number | null | undefined): string {
  * Tabla DIGITAL del proyecto (baja contable en SAP). Muestra lo YA
  * rebajado — comparte filas con la física de arriba (mismo SKU y lote de
  * `proyecto_materiales`), así que una fila cargada allá aparece sola acá,
- * sin darla de alta dos veces. Solo lectura salvo en modo corrección (ajusta
- * el número sin mover stock, para arreglar un error de tipeo — igual que el
- * resto de columnas corregibles).
- *
- * Registrar NUEVA rebaja ya no se hace en esta tabla — vive en
- * `RebajaPendienteSection`, arriba, con sugerencia automática de lote.
+ * sin darla de alta dos veces. Solo lectura — registrar una rebaja nueva
+ * vive en `RebajaPendienteSection` más arriba (con sugerencia automática de
+ * lote), y corregir un número mal registrado se hace anulando el
+ * movimiento real desde Movimientos, no sobreescribiendo el número acá
+ * (el "modo corrección" que hacía esto se sacó — pisaba el valor sin
+ * mover stock, lo que podía dejarlo mintiendo).
  *
  * Columnas y orden EXACTOS al control de rebajas que Entel espera (mismo
  * Excel de arriba, pestaña 2026, columnas OTT→Cantidad): así seleccionar
@@ -1146,20 +1022,12 @@ function celdaTextoTsv(v: string | number | null | undefined): string {
  * completo (mismo valor en cada fila) — los pasa `Editor.tsx` de ATT; en
  * Preventivos/Incidencias, que no los mandan, esas 3 columnas quedan vacías.
  */
-function TablaDigital({
-  rows, rowKey, ott, direccion, fechaInstalacion,
-  modoCorreccion, corrections, onCorrection, correctionErrors, editable,
-}: {
+function TablaDigital({ rows, rowKey, ott, direccion, fechaInstalacion }: {
   rows: ResumenMaterialProyecto[]
   rowKey: (r: ResumenMaterialProyecto) => string
   ott?: string
   direccion?: string
   fechaInstalacion?: string
-  modoCorreccion: boolean
-  corrections: Record<string, Partial<Record<Campo, string>>>
-  onCorrection: (key: string, campo: Campo, v: string) => void
-  correctionErrors: Record<string, string>
-  editable: boolean
 }) {
   // Solo lo que de verdad se rebajó — esto es un log de rebajas confirmadas,
   // no el inventario completo del proyecto (ese es la tabla física).
@@ -1216,8 +1084,6 @@ function TablaDigital({
           <tbody>
             {filas.map((row) => {
               const key = rowKey(row)
-              const errCorreccion = correctionErrors[`${key}|${CAMPO_DIGITAL}`]
-              const esCorregible = modoCorreccion && editable
               return (
                 <tr key={key} className="border-t border-slate-700 divide-x divide-slate-700 bg-slate-800/60">
                   <td className="px-2 py-2 text-slate-300 whitespace-nowrap">{ott || '—'}</td>
@@ -1229,20 +1095,7 @@ function TablaDigital({
                   <td className="px-2 py-2 max-w-[220px]"><p className="text-white truncate">{row.materialDescripcion}</p></td>
                   <td className="px-2 py-2 text-slate-400 whitespace-nowrap">{row.lote || '—'}</td>
                   <td className="px-2 py-2 text-center whitespace-nowrap align-top">
-                    {esCorregible ? (
-                      <>
-                        <div className="flex items-center justify-center gap-1">
-                          <span className="text-slate-500 text-[10px]">=</span>
-                          <input type="number" min="0" step="any"
-                            value={corrections[key]?.[CAMPO_DIGITAL] ?? String(row.cantRebajada)}
-                            onChange={(e) => onCorrection(key, CAMPO_DIGITAL, e.target.value)}
-                            className="w-12 bg-amber-950/30 text-amber-200 text-xs rounded px-1 py-0.5 border border-amber-700/60 focus:border-amber-500 focus:outline-none text-center" />
-                        </div>
-                        {errCorreccion && <p className="text-[9px] text-red-400 mt-0.5">{errCorreccion}</p>}
-                      </>
-                    ) : (
-                      <span className="text-white font-medium">{row.cantRebajada}</span>
-                    )}
+                    <span className="text-white font-medium">{row.cantRebajada}</span>
                   </td>
                 </tr>
               )

@@ -912,28 +912,41 @@ function ConteoTab() {
 
 function ConteoLista({ onSelect, refreshKey }: { onSelect: (id: string) => void; refreshKey: number }) {
   const [conteos, setConteos] = useState<Conteo[] | null>(null)
-  const [eventos, setEventos] = useState<EventoInventario[] | null>(null)
+  // Todos los estados (no solo 'abierto' como antes) — hace falta el total
+  // para el contador "Eventos resueltos: X/Y" de abajo. Andrés: en vez de
+  // una pantalla nueva de historial, basta con dejar los eventos dentro de
+  // Conteo y mostrar ese resumen afuera, en esta misma vista de selección.
+  const [eventosTodos, setEventosTodos] = useState<EventoInventario[] | null>(null)
   const [error, setError] = useState<string | null>(null)
   const [showNuevo, setShowNuevo] = useState(false)
 
   async function reload() {
     try {
-      const [cs, evs] = await Promise.all([listConteos(), listEventosInventario({ estado: 'abierto' })])
+      const [cs, evs] = await Promise.all([listConteos(), listEventosInventario()])
       setConteos(cs)
       // Los de técnico (instalación forzada) se resuelven en la pestaña
       // Técnico — acá solo quedan los de origen bodega (Conteo).
-      setEventos(evs.filter((e) => e.ubicacionTipo !== 'tecnico'))
+      setEventosTodos(evs.filter((e) => e.ubicacionTipo !== 'tecnico'))
     } catch (err) {
       setError(err instanceof Error ? err.message : String(err))
     }
   }
   useEffect(() => { reload() /* eslint-disable-next-line react-hooks/exhaustive-deps */ }, [refreshKey])
 
+  const eventosAbiertos = eventosTodos?.filter((e) => e.estado === 'abierto') ?? []
+  const resueltosCount = eventosTodos?.filter((e) => e.estado === 'resuelto').length ?? 0
+
   return (
     <div className="space-y-3">
       {error && <p className="text-xs text-red-400">{error}</p>}
 
-      {eventos && eventos.length > 0 && <EventosAbiertosSection eventos={eventos} onVerConteo={onSelect} onResolved={reload} />}
+      {eventosTodos && (
+        <p className="text-[11px] text-slate-500">
+          Eventos resueltos: <span className="text-slate-300 font-medium">{resueltosCount}/{eventosTodos.length}</span>
+        </p>
+      )}
+
+      {eventosAbiertos.length > 0 && <EventosAbiertosSection eventos={eventosAbiertos} onVerConteo={onSelect} onResolved={reload} />}
 
       <button type="button" onClick={() => setShowNuevo((v) => !v)}
         className="w-full text-sm font-semibold py-2 rounded-xl bg-brand-600 hover:bg-brand-700 text-white">
