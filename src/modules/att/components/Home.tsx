@@ -85,6 +85,10 @@ export function Home() {
           <p className="text-xs text-slate-400">{list.length} informe(s)</p>
         </div>
         <div className="flex items-center gap-2">
+          <button type="button" onClick={() => navigate('/att/calendario')}
+            className="bg-slate-700 hover:bg-slate-600 text-white text-sm font-semibold px-3 py-2 rounded-xl">
+            📅 Calendario
+          </button>
           <button type="button" onClick={() => setShowViewer(true)}
             className="bg-slate-700 hover:bg-slate-600 text-white text-sm font-semibold px-3 py-2 rounded-xl">
             📂 Abrir descargado

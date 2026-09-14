@@ -1,11 +1,11 @@
 # Continuar — Migración a backend Supabase
 
 > Documento de retomada — LEER ESTO PRIMERO si se retoma en otra máquina o
-> sesión nueva. Última actualización: 10-09-2026.
+> sesión nueva. Última actualización: 14-09-2026.
 
-## ⚡ Estado ahora mismo (10-09-2026)
-- **`main` y `backend-supabase` están sincronizados** (merge y push del 10-09) — ambos en v1.87. Seguir mergeando `backend-supabase` a `main` cuando el trabajo esté listo para producción, en vez de dejarlo acumularse.
-- **Migraciones**: corridas y confirmadas hasta `0069`. Ninguna pendiente.
+## ⚡ Estado ahora mismo (14-09-2026)
+- **`backend-supabase` tiene trabajo sin mergear a `main`** (última sincronización confirmada: v1.87 el 10-09). Seguir mergeando `backend-supabase` a `main` cuando el trabajo esté listo para producción, en vez de dejarlo acumularse.
+- **Migraciones**: `0070` nueva, todavía SIN correr en Supabase — correrla antes de dar por buena la vista de Calendario de OTTs (ver v1.88). Hasta `0069` confirmadas.
 - **Para retomar en otra máquina**: `git clone` (o `git fetch` + `git checkout backend-supabase`), `npm install`, recrear el `.env` a mano (los nombres de variable están en `src/lib/supabaseClient.ts` y `src/lib/auth.ts`; los valores NO están en el repo, es público — Andrés los tiene), `npm run dev`.
 - **Pendientes de Andrés** (no bloquean nada salvo lo marcado):
   1. ~~Desplegar la Edge Function de alta de usuarios~~ — **hecho y confirmado el 26-08** (probada sin sesión y con token inválido, responde el gate de auth de la función, no un 404 — está desplegada de verdad).
@@ -17,6 +17,18 @@
   7. **Recuperar el levantamiento del colega** (ver entrada v1.59 más abajo) — el ZIP le creó un informe vacío en el servidor (0 puntos). Con el fix de esa versión, borrar ese levantamiento local (o el registro server-side si ya no está en el store local de nadie) y volver a importar el mismo ZIP.
   8. **Pendiente para la semana (sin fecha fija)**: reescribir el texto de advertencia de "Corregir errores de tipeo" en Resumen de Proyecto — hoy dice "para arreglar un error de tipeo" y eso confunde con el caso real de "anoté 6, eran 5, ya hubo un movimiento real de 6". Corrección NUNCA revierte el movimiento ni el stock, solo pisa el número que se ve en la tabla — si el movimiento real fue mal registrado, hay que anularlo y volver a registrar con la cantidad correcta, o el stock queda mintiendo (técnico con más de lo que en verdad tiene). Andrés pidió dejarlo pendiente, no implementarlo ahora.
 - **Deploy**: el push del 26-08 a `main` falló al desplegar por una interrupción real de GitHub Actions/Pages (confirmada en githubstatus.com, no un problema del repo) — falta reintentar el workflow ("Re-run all jobs") una vez que GitHub se recupere. Fuera de eso, `.github/workflows/deploy.yml` publica bien en cada push a `main`.
+
+## v1.88 — ATT: Calendario de OTTs (mejora, requiere migración 0070)
+Andrés pidió una vista de calendario para las OTTs de ATT: seleccionar un mes o un día y ver las OTTs correspondientes, con los días con OTT abierta resaltados. Aclaró dos dudas antes de implementar:
+
+- **"OTT abierta ese día"** (criterio de resaltado amarillo): la fecha de apertura de la OTT (`fechaInicioDe()`, ya usada en la tarjeta de Home.tsx — fechaInicio a mano o `createdAt` de respaldo) cae ese día, Y la OTT sigue con `estado='activo'` hoy. Una OTT que se cerró después deja de pintar el día, pero **sigue apareciendo en el listado del día** (con su estado real, abierta o cerrada) — pedido explícito de Andrés.
+- **Feriados**: tabla de feriados fijos de Chile (0070_feriados.sql, sembrada 2025-2028 con los 11 de fecha fija — los movibles como Viernes Santo o Corpus Christi quedan afuera, se agregan a mano). Se edita desde la propia vista de Calendario (sección "Feriados `<año>`", solo admin/jp), no en Catálogo de Inventario — son conceptos sin relación.
+
+**Nuevo**: `src/modules/att/components/CalendarioOtt.tsx` (ruta `/att/calendario`, botón "📅 Calendario" en Home.tsx), `src/lib/feriadosRepo.ts`. Grilla de mes (lunes primero, 6 semanas fijas), navegable con flechas ‹ › o eligiendo mes/fecha directo (`<input type="month">` / `<input type="date">`). Colores por prioridad: verde (seleccionado) > amarillo (con OTT abierta) > azul (fin de semana o feriado) > blanco (hábil). Clic en un día lo selecciona (o deselecciona si ya estaba, volviendo a la vista del mes completo) y salta el calendario a su mes.
+
+**Verificado en el navegador con datos reales**: 22 OTTs de septiembre 2026 listadas correctamente por fecha de apertura; al elegir el 9 de septiembre (7 OTTs abiertas ese día) la celda pasó a verde, el listado se acotó a esas 7 (incluida una ya cerrada, mostrada como tal), y deseleccionar devolvió la vista al mes completo. Sin la migración 0070 corrida, la sección de feriados falla en silencio (404 capturado) sin romper el resto de la vista.
+
+**Pendiente**: correr `0070` en Supabase.
 
 ## v1.87 — Preventivos lento con fotos: las URLs de foto se resolvían para TODOS los levantamientos cacheados, no solo el abierto (fix, sin migración)
 Andrés: "el sitio está actuando lento, en particular con los preventivos, donde los informes tienen imágenes. Se demoran en cargar las fotos, y da la impresión que no hay trabajo hecho." Pidió causas posibles antes de tocar nada; encontrada la causa real, se implementó el fix que ya se había sugerido.
