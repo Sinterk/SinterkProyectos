@@ -4,7 +4,7 @@
 > sesión nueva. Última actualización: 14-09-2026.
 
 ## ⚡ Estado ahora mismo (14-09-2026)
-- **`backend-supabase` tiene trabajo sin mergear a `main`** (última sincronización confirmada: v1.88 el 14-09). Seguir mergeando `backend-supabase` a `main` cuando el trabajo esté listo para producción, en vez de dejarlo acumularse.
+- **`main` y `backend-supabase` están sincronizados** (merge y push del 14-09) — ambos en v1.90. Seguir mergeando `backend-supabase` a `main` cuando el trabajo esté listo para producción, en vez de dejarlo acumularse.
 - **Migraciones**: corridas y confirmadas hasta `0070`. Ninguna pendiente.
 - **Para retomar en otra máquina**: `git clone` (o `git fetch` + `git checkout backend-supabase`), `npm install`, recrear el `.env` a mano (los nombres de variable están en `src/lib/supabaseClient.ts` y `src/lib/auth.ts`; los valores NO están en el repo, es público — Andrés los tiene), `npm run dev`.
 - **Pendientes de Andrés** (no bloquean nada salvo lo marcado):
