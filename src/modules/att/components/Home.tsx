@@ -228,8 +228,11 @@ function AttCard({ record, totales, onSelect, onDelete }: {
           {record.nombreProyecto && (
             <div className="text-xs text-slate-300 mt-0.5 truncate">{record.nombreProyecto}</div>
           )}
+          {record.direccion && (
+            <div className="text-xs text-slate-400 mt-0.5 truncate">📍 {record.direccion}</div>
+          )}
           {record.comuna && (
-            <div className="text-xs text-slate-400 mt-0.5">📍 {record.comuna}{record.region ? `, ${record.region}` : ''}</div>
+            <div className="text-xs text-slate-500 mt-0.5">{record.comuna}{record.region ? `, ${record.region}` : ''}</div>
           )}
           {/* Datos de cabecera pedidos para la lista: fecha de comienzo siempre;
               el material solo desde tablet/escritorio — en móvil la tarjeta

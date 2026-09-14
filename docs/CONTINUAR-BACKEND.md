@@ -16,6 +16,13 @@
   6. **Recuperar el levantamiento del colega** (ver entrada v1.59 más abajo) — el ZIP le creó un informe vacío en el servidor (0 puntos). Con el fix de esa versión, borrar ese levantamiento local (o el registro server-side si ya no está en el store local de nadie) y volver a importar el mismo ZIP.
 - **Deploy**: el push del 26-08 a `main` falló al desplegar por una interrupción real de GitHub Actions/Pages (confirmada en githubstatus.com, no un problema del repo) — falta reintentar el workflow ("Re-run all jobs") una vez que GitHub se recupere. Fuera de eso, `.github/workflows/deploy.yml` publica bien en cada push a `main`.
 
+## v1.92 — ATT: dirección visible en la lista de OTTs (mejora, sin migración)
+Sugerencia recibida: los técnicos usan la dirección como referencia, no la comuna, y en la vista de selección de OTT no se veía.
+
+- **`AttCard` (`Home.tsx`)** ahora muestra `record.direccion` (📍, con truncado) debajo del nombre del proyecto. El campo `direccion` ya existía completo de punta a punta (columna en `projects` desde `0021_incidencias.sql`, tipo en `AttRecord`, mapeo en `attRepo.ts`, input en el Editor) — solo faltaba pintarlo en la tarjeta de la lista. La línea de comuna/región se mantiene debajo, ahora sin el ícono de pin (para no repetirlo) ya que la dirección es la referencia principal.
+
+**Verificado en el navegador**: en ATT, la lista de OTTs muestra la dirección completa de cada una (ej. "ENCOMENDEROS 253 PISO 4 LAS CONDES") con 📍 arriba de la fecha/cable/material, sin duplicar el ícono con la línea de comuna.
+
 ## v1.91 — Inventario: contador de eventos resueltos en Conteo + se elimina "Corregir errores de tipeo" (mejora, sin migración)
 Feedback de Andrés sobre la lista de pendientes: los eventos de inventario basta con dejarlos dentro de Conteo (no hace falta una pantalla nueva de historial), y el botón de corrección directa de Resumen de Proyecto se elimina — para arreglar un número mal registrado es mejor anular el movimiento desde Movimientos y volver a registrarlo bien.
 
