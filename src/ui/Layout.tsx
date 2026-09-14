@@ -25,9 +25,14 @@ export function Layout({ children }: Props) {
   // Para técnico, los botones "← Volver" de los editores navegan a /att o
   // /preventivos (no a "/" — esos paths no cambiaron por rol): sin incluirlos
   // acá el nav completo desaparecía al volver de una asignación.
+  // '/att/calendario' es una vista de nivel "inicio" (hermana del listado de
+  // Home.tsx, no un editor de un registro puntual) — sin esto, el nav de
+  // abajo desaparecía ahí y no había forma de saltar a otro módulo o a
+  // Inicio sin pasar primero por el listado (bug real reportado por Andrés:
+  // "uno queda atrapado en el calendario").
   const homeScreens = isTecnico
-    ? ['/', '/admin', '/kpi', '/sugerencias', '/mi-inventario', ...modules.map((m) => m.indexPath)]
-    : ['/', '/admin', '/kpi', '/sugerencias', ...modules.map((m) => m.indexPath)]
+    ? ['/', '/admin', '/kpi', '/sugerencias', '/mi-inventario', '/att/calendario', ...modules.map((m) => m.indexPath)]
+    : ['/', '/admin', '/kpi', '/sugerencias', '/att/calendario', ...modules.map((m) => m.indexPath)]
   const showNav = homeScreens.includes(pathname)
 
   return (

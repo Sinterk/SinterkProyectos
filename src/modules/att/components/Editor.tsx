@@ -1,5 +1,5 @@
 import { useEffect, useRef, useState } from 'react'
-import { useNavigate, useParams } from 'react-router-dom'
+import { useLocation, useNavigate, useParams } from 'react-router-dom'
 import { useAtt } from '../hooks/useAtt'
 import { isUuid } from '../data/attRepo'
 import { useRestoreAttPhotos } from '../hooks/useRestoreAttPhotos'
@@ -26,6 +26,19 @@ type GenStatus = 'idle' | 'generating' | 'error'
 export function Editor() {
   const { id } = useParams<{ id: string }>()
   const navigate = useNavigate()
+  // Si se llegó desde el Calendario (CalendarioOtt.tsx pasa este state al
+  // navegar), "Volver" debe volver EXACTAMENTE a esa misma vista — mismo
+  // mes/día elegidos, no reiniciar al mes actual sin selección — así que se
+  // reenvía el mismo state tal cual se recibió. Se pierde en un F5 (el
+  // state de navegación no sobrevive recarga), cae al listado por defecto,
+  // que es aceptable.
+  const location = useLocation()
+  const navState = location.state as { from?: string; year?: number; month?: number; fecha?: string | null } | null
+  const volverA = navState?.from === 'calendario' ? '/att/calendario' : '/att'
+  const volverState = navState?.from === 'calendario' ? { year: navState.year, month: navState.month, fecha: navState.fecha } : undefined
+  function volver() {
+    navigate(volverA, volverState ? { state: volverState } : undefined)
+  }
   const isTecnico = useAuth((s) => s.profile?.rol === 'tecnico')
   const { record, processPhoto, processFotoAerea } = useAtt(id ?? '')
   const syncOne = useAttStore((s) => s.syncOne)
@@ -51,13 +64,26 @@ export function Editor() {
   // recién borrado), no cuando ya existió y desapareció por la promoción.
   const hadRecord = useRef(false)
   useEffect(() => { if (record) hadRecord.current = true }, [record])
-  useEffect(() => {
-    if (!record && id && !hadRecord.current) navigate('/att', { replace: true })
-  }, [record, id, navigate])
 
   // Trae la versión del servidor al abrir (deep-link / recarga); no pisa
-  // ediciones locales más nuevas (ver `mergeFromServer` en el store).
-  useEffect(() => { if (id) syncOne(id) }, [id, syncOne])
+  // ediciones locales más nuevas (ver `mergeFromServer` en el store). El
+  // store (`useAttStore`) solo cachea informes 'activo' — uno cerrado (ej.
+  // abierto desde "Cerrados"/"Todos" en Home, o desde el Calendario) no está
+  // ahí todavía al montar, así que hay que ESPERAR a que este fetch
+  // termine antes de decidir "no existe": bug real encontrado al abrir un
+  // cerrado desde el Calendario — redirigía a la lista antes de que
+  // syncOne alcanzara a traerlo del servidor.
+  const [syncChecked, setSyncChecked] = useState(false)
+  useEffect(() => {
+    if (!id) { setSyncChecked(true); return }
+    let cancelled = false
+    syncOne(id).finally(() => { if (!cancelled) setSyncChecked(true) })
+    return () => { cancelled = true }
+  }, [id, syncOne])
+
+  useEffect(() => {
+    if (syncChecked && !record && id && !hadRecord.current) navigate(volverA, { replace: true })
+  }, [syncChecked, record, id, navigate, volverA])
 
   // La OTT es el identificador principal de un informe ATT — que se vea en
   // el título de la pestaña del navegador ayuda a distinguir varias pestañas
@@ -104,7 +130,7 @@ export function Editor() {
     <div className="space-y-4 pb-28">
       {/* Header */}
       <div className="flex items-center gap-3">
-        <button type="button" onClick={() => navigate('/att')}
+        <button type="button" onClick={volver}
           className="text-slate-400 hover:text-white text-sm">← Volver</button>
         <span className="flex-1 text-sm font-semibold text-white truncate">{title}</span>
         <EstadoProyectoBadge estado={record.estado} onChange={(next) => setEstado(id, next)} />
@@ -159,7 +185,7 @@ export function Editor() {
 
       {/* Barra inferior fija */}
       <div className="fixed bottom-0 left-0 right-0 bg-slate-900/95 backdrop-blur border-t border-slate-700 px-4 py-3 flex items-center gap-3 z-40">
-        <button type="button" onClick={() => navigate('/att')}
+        <button type="button" onClick={volver}
           className="py-2.5 px-4 rounded-xl bg-slate-700 text-white text-sm font-medium hover:bg-slate-600 transition-colors shrink-0">
           ← Volver
         </button>
