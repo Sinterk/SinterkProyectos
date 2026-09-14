@@ -95,15 +95,39 @@ export function CalendarioOtt() {
     setMonth(mm)
   }
 
+  // Clic en una celda del calendario: selecciona (o deselecciona, si ya lo
+  // estaba) y salta el mes ahí si hacía falta.
   function elegirDia(iso: string) {
-    const [y, m] = iso.split('-').map(Number)
+    const [y, m, d] = iso.split('-').map(Number)
+    if (!y || !m || !d) return // defensivo: nunca debería llegar acá un iso mal formado
     setYear(y)
     setMonth(m - 1)
     setSeleccionada((prev) => (prev === iso ? null : iso))
   }
 
+  // A diferencia de elegirDia, esto NO alterna: escribir la misma fecha de
+  // nuevo en el input debe dejarla seleccionada, no sacarla.
+  function seleccionarFechaDesdeInput(iso: string) {
+    const [y, m, d] = iso.split('-').map(Number)
+    if (!y || !m || !d) return
+    setYear(y)
+    setMonth(m - 1)
+    setSeleccionada(iso)
+  }
+
+  // Los `<input type="month">`/`<input type="date">` nativos solo entregan
+  // `value` vacío o una fecha COMPLETA y válida (nunca algo a medio
+  // escribir) — el guard de abajo es solo defensivo. El problema real que
+  // reportó Andrés ("no se puede borrar", "solo escribir al final") era
+  // otro: estos inputs quedaban controlados por `value={...}` recalculado
+  // en cada render, y React les reimponía ese valor en cada tecla — el
+  // navegador competía con React por el valor mostrado y el campo nunca
+  // llegaba a mostrar lo que el usuario estaba tipeando a medio camino. La
+  // solución (ver el `key` en el JSX) es dejarlos "no controlados": React
+  // solo les fija un valor nuevo cuando cambia por otra vía (flechas de
+  // mes, clic en una celda), nunca mientras se están editando ellos mismos.
   function onInputMes(value: string) {
-    // value = "YYYY-MM"
+    if (!value) return // campo vacío: se deja el mes como estaba, no hay "mes vacío" que mostrar
     const [y, m] = value.split('-').map(Number)
     if (!y || !m) return
     setYear(y)
@@ -112,8 +136,8 @@ export function CalendarioOtt() {
   }
 
   function onInputFecha(value: string) {
-    if (!value) return
-    elegirDia(value)
+    if (!value) { setSeleccionada(null); return } // limpiar el campo = volver a la vista del mes completo
+    seleccionarFechaDesdeInput(value)
   }
 
   // Listado: el día elegido si hay uno, si no todas las OTTs cuya fecha de
@@ -148,32 +172,43 @@ export function CalendarioOtt() {
 
       {error && <p className="text-xs text-red-400">{error}</p>}
 
-      <div className="bg-slate-800 rounded-2xl border border-slate-700 p-4 space-y-3">
+      <div className="bg-slate-800 rounded-2xl border border-slate-700 p-3 space-y-2">
         <div className="flex items-center justify-between gap-2 flex-wrap">
           <div className="flex items-center gap-2">
             <button type="button" onClick={() => irAMes(year, month - 1)}
-              className="w-8 h-8 rounded-lg bg-slate-700 hover:bg-slate-600 text-white text-sm">‹</button>
-            <span className="text-sm font-semibold text-white w-40 text-center">{MESES[month]} {year}</span>
+              className="w-7 h-7 rounded-lg bg-slate-700 hover:bg-slate-600 text-white text-sm">‹</button>
+            <span className="text-xs font-semibold text-white w-32 text-center">{MESES[month]} {year}</span>
             <button type="button" onClick={() => irAMes(year, month + 1)}
-              className="w-8 h-8 rounded-lg bg-slate-700 hover:bg-slate-600 text-white text-sm">›</button>
+              className="w-7 h-7 rounded-lg bg-slate-700 hover:bg-slate-600 text-white text-sm">›</button>
           </div>
           <div className="flex items-center gap-2">
             <label className="text-[11px] text-slate-400 flex items-center gap-1.5">
               Mes
-              <input type="month" value={`${year}-${pad2(month + 1)}`} onChange={(e) => onInputMes(e.target.value)}
-                className="bg-slate-700 text-white text-xs rounded-lg px-2 py-1.5 border border-slate-600 focus:border-brand-500 focus:outline-none" />
+              {/* No controlado a propósito (solo `key` + `defaultValue`): ver
+                  el comentario largo junto a `onInputMes` más arriba — con
+                  `value` controlado, React reimponía el valor viejo en cada
+                  tecla y el campo no dejaba escribir/borrar con normalidad.
+                  El `key` fuerza un remount (con el valor ya confirmado)
+                  solo cuando el mes cambia por OTRA vía (flechas, clic en
+                  una celda) — mientras se edita este mismo campo, React no
+                  le toca el valor hasta que el navegador entrega uno
+                  completo y válido. */}
+              <input type="month" key={`mes-${year}-${month}`} defaultValue={`${year}-${pad2(month + 1)}`}
+                onChange={(e) => onInputMes(e.target.value)}
+                className="bg-slate-700 text-white text-xs rounded-lg px-2 py-1 border border-slate-600 focus:border-brand-500 focus:outline-none" />
             </label>
             <label className="text-[11px] text-slate-400 flex items-center gap-1.5">
               Fecha
-              <input type="date" value={seleccionada ?? ''} onChange={(e) => onInputFecha(e.target.value)}
-                className="bg-slate-700 text-white text-xs rounded-lg px-2 py-1.5 border border-slate-600 focus:border-brand-500 focus:outline-none" />
+              <input type="date" key={`fecha-${seleccionada ?? 'ninguna'}`} defaultValue={seleccionada ?? ''}
+                onChange={(e) => onInputFecha(e.target.value)}
+                className="bg-slate-700 text-white text-xs rounded-lg px-2 py-1 border border-slate-600 focus:border-brand-500 focus:outline-none" />
             </label>
           </div>
         </div>
 
-        <div className="grid grid-cols-7 gap-1 text-center">
+        <div className="grid grid-cols-7 gap-0.5 text-center">
           {DIAS_SEMANA.map((d) => (
-            <div key={d} className="text-[10px] font-semibold text-slate-500 py-1">{d}</div>
+            <div key={d} className="text-[9px] font-semibold text-slate-500 py-0.5">{d}</div>
           ))}
           {grid.map((d) => {
             const iso = toIso(d)
@@ -192,7 +227,7 @@ export function CalendarioOtt() {
             return (
               <button key={iso} type="button" onClick={() => elegirDia(iso)}
                 title={[nombreFeriado, otsDia.length > 0 ? `${otsDia.length} OTT(s) abierta(s) ese día` : ''].filter(Boolean).join(' — ') || undefined}
-                className={`relative aspect-square rounded-lg border text-xs flex items-center justify-center transition-colors
+                className={`relative h-7 sm:h-8 rounded border text-[11px] flex items-center justify-center transition-colors
                   ${enMes ? '' : 'opacity-30'} ${cls} ${iso === hoyStr ? 'ring-2 ring-white/60' : ''}`}>
                 {d.getDate()}
               </button>
@@ -200,7 +235,7 @@ export function CalendarioOtt() {
           })}
         </div>
 
-        <div className="flex flex-wrap gap-3 text-[10px] text-slate-400 pt-1 border-t border-slate-700">
+        <div className="flex flex-wrap gap-2.5 text-[9px] text-slate-400 pt-1 border-t border-slate-700">
           <Legend color="bg-slate-900 border border-slate-700" label="Hábil" />
           <Legend color="bg-sky-950 border border-sky-800" label="Fin de semana / feriado" />
           <Legend color="bg-amber-500/90" label="Con OTT abierta" />
@@ -222,7 +257,10 @@ export function CalendarioOtt() {
           <p className="text-xs text-slate-500">Sin OTTs {seleccionada ? 'abiertas ese día' : 'ese mes'}.</p>
         ) : (
           <div className="space-y-2">
-            {listado.map((r) => <OttDiaCard key={r.id} record={r} onSelect={() => navigate(`/att/${r.id}`)} />)}
+            {listado.map((r) => (
+              <OttDiaCard key={r.id} record={r}
+                onSelect={() => navigate(`/att/${r.id}`, { state: { from: 'calendario' } })} />
+            ))}
           </div>
         )}
       </div>
