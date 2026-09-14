@@ -1,6 +1,8 @@
 import { useParams, useNavigate } from 'react-router-dom'
 import { usePreventivoStore } from '../store'
 import { useRestorePhotoPreviews } from '../hooks/useRestorePhotoPreviews'
+import { useResolvePhotoUrls } from '../hooks/useResolvePhotoUrls'
+import { fotoEstadoDe } from '../utils/fotoEstado'
 import type { FotoKey } from '../types'
 
 const LABELS: Record<FotoKey, string> = { fotoLevantamiento:'Levantamiento', fotoAntes:'Antes', fotoDespues:'Después' }
@@ -12,6 +14,7 @@ export function PlanoView() {
   const navigate = useNavigate()
   const record = usePreventivoStore((s) => s.records[id ?? ''])
   useRestorePhotoPreviews(id ?? '')
+  useResolvePhotoUrls(id ?? '')
 
   if (!record) return <div className="text-slate-400 text-center py-16">No encontrado.</div>
 
@@ -28,9 +31,19 @@ export function PlanoView() {
       </div>
 
       {cuadrante.fotoPlano?.previewUrl ? (
-        <div className="rounded-2xl overflow-hidden border border-slate-700 bg-slate-900">
+        <div className="relative rounded-2xl overflow-hidden border border-slate-700 bg-slate-900">
           <div className="px-3 py-2 text-xs font-semibold text-brand-400 border-b border-slate-700">📐 Plano de trabajo</div>
           <img src={cuadrante.fotoPlano.previewUrl} alt="Plano" className="w-full max-h-80 object-contain" />
+          {fotoEstadoDe(cuadrante.fotoPlano) === 'subiendo' && (
+            <div className="absolute top-1.5 right-1.5 bg-black/70 rounded-full w-6 h-6 flex items-center justify-center" title="Subiendo al servidor…">
+              <span className="text-xs animate-spin">⏳</span>
+            </div>
+          )}
+        </div>
+      ) : fotoEstadoDe(cuadrante.fotoPlano) === 'descargando' ? (
+        <div className="rounded-2xl border-2 border-slate-700 bg-slate-800/50 p-8 text-center">
+          <div className="text-3xl mb-2 animate-spin">⏳</div>
+          <p className="text-slate-500 text-sm">Cargando foto…</p>
         </div>
       ) : (
         <div className="rounded-2xl border-2 border-dashed border-slate-700 bg-slate-800/50 p-8 text-center">
@@ -73,12 +86,29 @@ export function PlanoView() {
                 <div className="p-3 grid grid-cols-3 gap-2">
                   {KEYS.map((key) => {
                     const foto = punto[key]
-                    return foto?.previewUrl ? (
-                      <div key={key} className={`rounded-xl overflow-hidden border-2 ${COLORS[key]}`}>
-                        <img src={foto.previewUrl} alt={LABELS[key]} loading="lazy" className="w-full h-28 object-cover" />
-                        <div className="bg-black/60 px-1.5 py-0.5 text-[10px] text-white text-center">{LABELS[key]}</div>
-                      </div>
-                    ) : (
+                    const estado = fotoEstadoDe(foto)
+                    if (foto?.previewUrl) {
+                      return (
+                        <div key={key} className={`relative rounded-xl overflow-hidden border-2 ${COLORS[key]}`}>
+                          <img src={foto.previewUrl} alt={LABELS[key]} loading="lazy" className="w-full h-28 object-cover" />
+                          {estado === 'subiendo' && (
+                            <div className="absolute top-1 right-1 bg-black/70 rounded-full w-5 h-5 flex items-center justify-center" title="Subiendo al servidor…">
+                              <span className="text-[10px] animate-spin">⏳</span>
+                            </div>
+                          )}
+                          <div className="bg-black/60 px-1.5 py-0.5 text-[10px] text-white text-center">{LABELS[key]}</div>
+                        </div>
+                      )
+                    }
+                    if (estado === 'descargando') {
+                      return (
+                        <div key={key} className={`rounded-xl border-2 ${COLORS[key]} h-28 flex flex-col items-center justify-center gap-1`}>
+                          <span className="text-base animate-spin">⏳</span>
+                          <span className="text-[10px] text-slate-500">Cargando…</span>
+                        </div>
+                      )
+                    }
+                    return (
                       <div key={key} className={`rounded-xl border-2 border-dashed ${COLORS[key]} h-28 flex items-center justify-center`}>
                         <span className="text-[10px] text-slate-600">{LABELS[key]}</span>
                       </div>

@@ -1,6 +1,7 @@
 import { useRef, useState, useEffect } from 'react'
 import type { FotoEntry, FotoKey } from '../types'
 import { useFileDrop } from '@/ui/useFileDrop'
+import { fotoEstadoDe } from '../utils/fotoEstado'
 
 interface Props {
   label: string
@@ -48,6 +49,7 @@ export function PhotoCapture({ label, fotoKey, entry, editable = true, onCapture
   }
 
   const { isDragging, dropProps } = useFileDrop(([file]) => { if (file) processFile(file) })
+  const estado = fotoEstadoDe(entry)
 
   if (entry?.previewUrl) {
     return (
@@ -60,6 +62,11 @@ export function PhotoCapture({ label, fotoKey, entry, editable = true, onCapture
             className="w-full h-36 object-cover cursor-zoom-in"
             onClick={() => setLightbox(true)}
           />
+          {estado === 'subiendo' && (
+            <div className="absolute top-1.5 right-1.5 bg-black/70 rounded-full w-6 h-6 flex items-center justify-center" title="Subiendo al servidor…">
+              <span className="text-xs animate-spin">⏳</span>
+            </div>
+          )}
           <div className="absolute bottom-0 left-0 right-0 bg-black/60 px-2 py-1 flex items-center justify-between">
             <span className="text-xs text-white truncate">{emoji} {label}</span>
             {editable && (
@@ -95,6 +102,15 @@ export function PhotoCapture({ label, fotoKey, entry, editable = true, onCapture
           </div>
         )}
       </>
+    )
+  }
+
+  if (estado === 'descargando') {
+    return (
+      <div className={`w-full h-36 rounded-xl border-2 ${color} bg-slate-800/50 flex flex-col items-center justify-center gap-1`}>
+        <span className="text-2xl animate-spin">⏳</span>
+        <span className="text-xs text-slate-400">Cargando foto…</span>
+      </div>
     )
   }
 

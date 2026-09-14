@@ -5,6 +5,7 @@ import { savePhotoBlob, deletePhotoBlob } from '@/core/offline/photoStore'
 import { nanoid } from '@/core/utils/nanoid'
 import type { CuadranteInfo } from '../types'
 import { useFileDrop } from '@/ui/useFileDrop'
+import { fotoEstadoDe } from '../utils/fotoEstado'
 
 interface Props {
   preventivoId: string
@@ -118,7 +119,7 @@ export function CuadranteSection({ preventivoId, cuadrante, onSave, soloFotos = 
 
       <div>
         <label className="block text-xs text-slate-400 mb-2">📐 Foto del plano de trabajo</label>
-        {cuadrante.fotoPlano?.previewUrl ? (
+        {(() => { const estadoPlano = fotoEstadoDe(cuadrante.fotoPlano); return cuadrante.fotoPlano?.previewUrl ? (
           <>
             <div className="relative rounded-xl overflow-hidden border-2 border-slate-600">
               <img
@@ -127,6 +128,11 @@ export function CuadranteSection({ preventivoId, cuadrante, onSave, soloFotos = 
                 className="w-full max-h-56 object-contain bg-slate-900 cursor-zoom-in"
                 onClick={() => setLightbox(true)}
               />
+              {estadoPlano === 'subiendo' && (
+                <div className="absolute top-1.5 right-1.5 bg-black/70 rounded-full w-6 h-6 flex items-center justify-center" title="Subiendo al servidor…">
+                  <span className="text-xs animate-spin">⏳</span>
+                </div>
+              )}
               <div className="absolute bottom-0 left-0 right-0 bg-black/60 px-3 py-1.5 flex items-center justify-between">
                 <span className="text-xs text-white">📐 Plano</span>
                 <button type="button" onClick={handleRemovePlano}
@@ -162,6 +168,11 @@ export function CuadranteSection({ preventivoId, cuadrante, onSave, soloFotos = 
               </div>
             )}
           </>
+        ) : estadoPlano === 'descargando' ? (
+          <div className="w-full h-24 rounded-xl border-2 border-slate-600 bg-slate-800/50 flex flex-col items-center justify-center gap-1">
+            <span className="text-xl animate-spin">⏳</span>
+            <span className="text-xs text-slate-400">Cargando foto…</span>
+          </div>
         ) : (
           <button type="button"
             onClick={() => planoInputRef.current?.click()}
@@ -172,7 +183,7 @@ export function CuadranteSection({ preventivoId, cuadrante, onSave, soloFotos = 
               : <><span className="text-2xl">📐</span><span className="text-xs text-slate-400">Agregar foto del plano o arrastrar aquí</span></>
             }
           </button>
-        )}
+        ) })()}
         <input ref={planoInputRef} type="file" accept="image/*"
           className="hidden" onChange={handlePlanoCapture} />
       </div>
