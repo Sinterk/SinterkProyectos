@@ -13,7 +13,8 @@
 // día, aunque siga apareciendo en el listado; azul = fin de semana o
 // feriado; blanco = día hábil sin OTT abierta.
 import { useEffect, useMemo, useState } from 'react'
-import { useNavigate } from 'react-router-dom'
+import { createPortal } from 'react-dom'
+import { useLocation, useNavigate } from 'react-router-dom'
 import { attRepo } from '../data/attRepo'
 import { fechaInicioDe } from '../utils/fechaInicio'
 import { TIPO_PROYECTO_LABELS } from '../types'
@@ -38,6 +39,34 @@ function toIso(d: Date): string {
 function hoyIso(): string {
   return toIso(new Date())
 }
+/** "YYYY-MM-DD" → "DD-MM-YYYY" (formato natural para tipear a mano en Chile). */
+function formatDmy(iso: string): string {
+  const [y, m, d] = iso.split('-')
+  return `${d}-${m}-${y}`
+}
+/** "DD-MM-YYYY" → "YYYY-MM-DD", o null si no es una fecha real (incluye 31-02-2026, etc.). */
+function parseDmyToIso(texto: string): string | null {
+  const m = /^(\d{1,2})-(\d{1,2})-(\d{4})$/.exec(texto.trim())
+  if (!m) return null
+  const d = Number(m[1])
+  const mo = Number(m[2])
+  const y = Number(m[3])
+  const fecha = new Date(y, mo - 1, d)
+  if (fecha.getFullYear() !== y || fecha.getMonth() !== mo - 1 || fecha.getDate() !== d) return null
+  return `${y}-${pad2(mo)}-${pad2(d)}`
+}
+function formatMy(year: number, month: number): string {
+  return `${pad2(month + 1)}-${year}`
+}
+/** "MM-YYYY" → {y, m 0-indexado}, o null si el mes no existe (13-2026, etc.). */
+function parseMyToYm(texto: string): { y: number; m: number } | null {
+  const match = /^(\d{1,2})-(\d{4})$/.exec(texto.trim())
+  if (!match) return null
+  const mo = Number(match[1])
+  const y = Number(match[2])
+  if (mo < 1 || mo > 12) return null
+  return { y, m: mo - 1 }
+}
 
 /** Grilla fija de 6 semanas (42 días), lunes primero — siempre alcanza para cualquier mes. */
 function buildGrid(year: number, month: number): Date[] {
@@ -47,15 +76,47 @@ function buildGrid(year: number, month: number): Date[] {
   return Array.from({ length: 42 }, (_, i) => new Date(inicio.getFullYear(), inicio.getMonth(), inicio.getDate() + i))
 }
 
+/** Clases + tooltip de una celda — compartido entre la grilla grande y el mini-calendario del input de Fecha. */
+function celda(d: Date, seleccionada: string | null, feriadosPorFecha: Map<string, string>, porFecha: Map<string, AttRecord[]>, hoyStr: string) {
+  const iso = toIso(d)
+  const esFinde = d.getDay() === 0 || d.getDay() === 6
+  const nombreFeriado = feriadosPorFecha.get(iso)
+  const otsDia = porFecha.get(iso) ?? []
+  const tieneAbierta = otsDia.some((r) => r.estado === 'activo')
+  const esSeleccionada = seleccionada === iso
+
+  let cls = 'bg-slate-900 text-slate-300 border-slate-700' // blanco = hábil
+  if (esFinde || nombreFeriado) cls = 'bg-sky-950 text-sky-300 border-sky-800' // azul
+  if (tieneAbierta) cls = 'bg-amber-500/90 text-slate-900 border-amber-400 font-semibold' // amarillo
+  if (esSeleccionada) cls = 'bg-green-600 text-white border-green-400 font-semibold' // verde, gana siempre
+  if (iso === hoyStr) cls += ' ring-2 ring-white/60'
+
+  const title = [nombreFeriado, otsDia.length > 0 ? `${otsDia.length} OTT(s) abierta(s) ese día` : ''].filter(Boolean).join(' — ') || undefined
+  return { iso, cls, title }
+}
+
+interface NavStateCalendario {
+  from?: string
+  year?: number
+  month?: number
+  fecha?: string | null
+}
+
 export function CalendarioOtt() {
   const navigate = useNavigate()
+  const location = useLocation()
   const rol = useAuth((s) => s.profile?.rol)
   const puedeEditarFeriados = rol === 'admin' || rol === 'jp'
 
+  // Si se vuelve de una OTT abierta desde acá mismo (Editor.tsx reenvía este
+  // state al navegar de vuelta), se restaura exactamente la misma vista —
+  // pedido explícito de Andrés: antes "Volver" siempre reiniciaba al mes
+  // actual sin ningún día elegido.
+  const navState = location.state as NavStateCalendario | null
   const hoy = new Date()
-  const [year, setYear] = useState(hoy.getFullYear())
-  const [month, setMonth] = useState(hoy.getMonth()) // 0-indexado (convención JS)
-  const [seleccionada, setSeleccionada] = useState<string | null>(null)
+  const [year, setYear] = useState(navState?.year ?? hoy.getFullYear())
+  const [month, setMonth] = useState(navState?.month ?? hoy.getMonth()) // 0-indexado (convención JS)
+  const [seleccionada, setSeleccionada] = useState<string | null>(navState?.fecha ?? null)
 
   const [records, setRecords] = useState<AttRecord[] | null>(null)
   const [feriados, setFeriados] = useState<Feriado[] | null>(null)
@@ -95,8 +156,15 @@ export function CalendarioOtt() {
     setMonth(mm)
   }
 
-  // Clic en una celda del calendario: selecciona (o deselecciona, si ya lo
-  // estaba) y salta el mes ahí si hacía falta.
+  function elegirMes(y: number, m: number) {
+    setYear(y)
+    setMonth(m)
+    setSeleccionada(null)
+  }
+
+  // Clic en una celda del calendario (o del mini-calendario del input de
+  // Fecha): selecciona (o deselecciona, si ya lo estaba) y salta el mes ahí
+  // si hacía falta.
   function elegirDia(iso: string) {
     const [y, m, d] = iso.split('-').map(Number)
     if (!y || !m || !d) return // defensivo: nunca debería llegar acá un iso mal formado
@@ -105,39 +173,15 @@ export function CalendarioOtt() {
     setSeleccionada((prev) => (prev === iso ? null : iso))
   }
 
-  // A diferencia de elegirDia, esto NO alterna: escribir la misma fecha de
+  // A diferencia de elegirDia, esto NO alterna: confirmar la misma fecha de
   // nuevo en el input debe dejarla seleccionada, no sacarla.
-  function seleccionarFechaDesdeInput(iso: string) {
+  function seleccionarFecha(iso: string | null) {
+    if (!iso) { setSeleccionada(null); return }
     const [y, m, d] = iso.split('-').map(Number)
     if (!y || !m || !d) return
     setYear(y)
     setMonth(m - 1)
     setSeleccionada(iso)
-  }
-
-  // Los `<input type="month">`/`<input type="date">` nativos solo entregan
-  // `value` vacío o una fecha COMPLETA y válida (nunca algo a medio
-  // escribir) — el guard de abajo es solo defensivo. El problema real que
-  // reportó Andrés ("no se puede borrar", "solo escribir al final") era
-  // otro: estos inputs quedaban controlados por `value={...}` recalculado
-  // en cada render, y React les reimponía ese valor en cada tecla — el
-  // navegador competía con React por el valor mostrado y el campo nunca
-  // llegaba a mostrar lo que el usuario estaba tipeando a medio camino. La
-  // solución (ver el `key` en el JSX) es dejarlos "no controlados": React
-  // solo les fija un valor nuevo cuando cambia por otra vía (flechas de
-  // mes, clic en una celda), nunca mientras se están editando ellos mismos.
-  function onInputMes(value: string) {
-    if (!value) return // campo vacío: se deja el mes como estaba, no hay "mes vacío" que mostrar
-    const [y, m] = value.split('-').map(Number)
-    if (!y || !m) return
-    setYear(y)
-    setMonth(m - 1)
-    setSeleccionada(null)
-  }
-
-  function onInputFecha(value: string) {
-    if (!value) { setSeleccionada(null); return } // limpiar el campo = volver a la vista del mes completo
-    seleccionarFechaDesdeInput(value)
   }
 
   // Listado: el día elegido si hay uno, si no todas las OTTs cuya fecha de
@@ -181,27 +225,16 @@ export function CalendarioOtt() {
             <button type="button" onClick={() => irAMes(year, month + 1)}
               className="w-7 h-7 rounded-lg bg-slate-700 hover:bg-slate-600 text-white text-sm">›</button>
           </div>
-          <div className="flex items-center gap-2">
+          <div className="flex items-center gap-3">
             <label className="text-[11px] text-slate-400 flex items-center gap-1.5">
               Mes
-              {/* No controlado a propósito (solo `key` + `defaultValue`): ver
-                  el comentario largo junto a `onInputMes` más arriba — con
-                  `value` controlado, React reimponía el valor viejo en cada
-                  tecla y el campo no dejaba escribir/borrar con normalidad.
-                  El `key` fuerza un remount (con el valor ya confirmado)
-                  solo cuando el mes cambia por OTRA vía (flechas, clic en
-                  una celda) — mientras se edita este mismo campo, React no
-                  le toca el valor hasta que el navegador entrega uno
-                  completo y válido. */}
-              <input type="month" key={`mes-${year}-${month}`} defaultValue={`${year}-${pad2(month + 1)}`}
-                onChange={(e) => onInputMes(e.target.value)}
-                className="bg-slate-700 text-white text-xs rounded-lg px-2 py-1 border border-slate-600 focus:border-brand-500 focus:outline-none" />
+              <MesInput year={year} month={month} onCommit={elegirMes} />
             </label>
             <label className="text-[11px] text-slate-400 flex items-center gap-1.5">
               Fecha
-              <input type="date" key={`fecha-${seleccionada ?? 'ninguna'}`} defaultValue={seleccionada ?? ''}
-                onChange={(e) => onInputFecha(e.target.value)}
-                className="bg-slate-700 text-white text-xs rounded-lg px-2 py-1 border border-slate-600 focus:border-brand-500 focus:outline-none" />
+              <FechaInput seleccionada={seleccionada} mesYear={year} mesMonth={month}
+                feriadosPorFecha={feriadosPorFecha} porFecha={porFecha} hoyStr={hoyStr}
+                onCommit={seleccionarFecha} />
             </label>
           </div>
         </div>
@@ -211,24 +244,12 @@ export function CalendarioOtt() {
             <div key={d} className="text-[9px] font-semibold text-slate-500 py-0.5">{d}</div>
           ))}
           {grid.map((d) => {
-            const iso = toIso(d)
             const enMes = d.getMonth() === month
-            const esFinde = d.getDay() === 0 || d.getDay() === 6
-            const nombreFeriado = feriadosPorFecha.get(iso)
-            const otsDia = porFecha.get(iso) ?? []
-            const tieneAbierta = otsDia.some((r) => r.estado === 'activo')
-            const esSeleccionada = seleccionada === iso
-
-            let cls = 'bg-slate-900 text-slate-300 border-slate-700' // blanco = hábil
-            if (esFinde || nombreFeriado) cls = 'bg-sky-950 text-sky-300 border-sky-800' // azul
-            if (tieneAbierta) cls = 'bg-amber-500/90 text-slate-900 border-amber-400 font-semibold' // amarillo
-            if (esSeleccionada) cls = 'bg-green-600 text-white border-green-400 font-semibold' // verde, gana siempre
-
+            const { iso, cls, title } = celda(d, seleccionada, feriadosPorFecha, porFecha, hoyStr)
             return (
-              <button key={iso} type="button" onClick={() => elegirDia(iso)}
-                title={[nombreFeriado, otsDia.length > 0 ? `${otsDia.length} OTT(s) abierta(s) ese día` : ''].filter(Boolean).join(' — ') || undefined}
+              <button key={iso} type="button" onClick={() => elegirDia(iso)} title={title}
                 className={`relative h-7 sm:h-8 rounded border text-[11px] flex items-center justify-center transition-colors
-                  ${enMes ? '' : 'opacity-30'} ${cls} ${iso === hoyStr ? 'ring-2 ring-white/60' : ''}`}>
+                  ${enMes ? '' : 'opacity-30'} ${cls}`}>
                 {d.getDate()}
               </button>
             )
@@ -259,12 +280,174 @@ export function CalendarioOtt() {
           <div className="space-y-2">
             {listado.map((r) => (
               <OttDiaCard key={r.id} record={r}
-                onSelect={() => navigate(`/att/${r.id}`, { state: { from: 'calendario' } })} />
+                onSelect={() => navigate(`/att/${r.id}`, { state: { from: 'calendario', year, month, fecha: seleccionada } })} />
             ))}
           </div>
         )}
       </div>
     </div>
+  )
+}
+
+/**
+ * Campo de mes: texto libre ("mm-aaaa"), confirma SOLO al salir del campo
+ * (blur) o Enter — nunca mientras se está tipeando. Si al confirmar no es un
+ * mes válido, vuelve a mostrar el que ya estaba (no inventa uno). El botón
+ * 📅 abre un mini-calendario para elegirlo sin tipear.
+ *
+ * Antes esto era un `<input type="month">` nativo — Firefox y Safari no lo
+ * implementan de verdad (cae a un campo de texto plano, sin selector), y
+ * quedaba controlado por React con el valor recalculado en cada render, así
+ * que competía con el usuario por lo que se veía en pantalla mientras
+ * tipeaba (bug real reportado por Andrés: "parece que se recarga con cada
+ * tecla"). Un `<input type="text">` normal, controlado a mano y confirmado
+ * solo al salir, no tiene ninguno de esos problemas.
+ */
+function MesInput({ year, month, onCommit }: { year: number; month: number; onCommit: (y: number, m: number) => void }) {
+  const [draft, setDraft] = useState(formatMy(year, month))
+  const [pickerAbierto, setPickerAbierto] = useState(false)
+  useEffect(() => { setDraft(formatMy(year, month)) }, [year, month])
+
+  function commit() {
+    const parsed = parseMyToYm(draft)
+    if (parsed) onCommit(parsed.y, parsed.m)
+    else setDraft(formatMy(year, month)) // inválido → vuelve a lo que ya estaba
+  }
+
+  return (
+    <span className="relative flex items-center gap-1">
+      <input value={draft} onChange={(e) => setDraft(e.target.value)} onBlur={commit}
+        onKeyDown={(e) => { if (e.key === 'Enter') e.currentTarget.blur() }}
+        placeholder="mm-aaaa" inputMode="numeric"
+        className="w-20 bg-slate-700 text-white text-xs rounded-lg px-2 py-1 border border-slate-600 focus:border-brand-500 focus:outline-none" />
+      <button type="button" onClick={() => setPickerAbierto(true)} className="text-slate-400 hover:text-white text-sm" aria-label="Elegir mes">📅</button>
+      {pickerAbierto && (
+        <MiniMesPicker year={year} onPick={(y, m) => { onCommit(y, m); setPickerAbierto(false) }} onClose={() => setPickerAbierto(false)} />
+      )}
+    </span>
+  )
+}
+
+/** Mismo criterio que MesInput, pero para un día completo ("dd-mm-aaaa"). Campo vacío = sin día elegido (vista de mes completo). */
+function FechaInput({ seleccionada, mesYear, mesMonth, feriadosPorFecha, porFecha, hoyStr, onCommit }: {
+  seleccionada: string | null
+  mesYear: number
+  mesMonth: number
+  feriadosPorFecha: Map<string, string>
+  porFecha: Map<string, AttRecord[]>
+  hoyStr: string
+  onCommit: (iso: string | null) => void
+}) {
+  const [draft, setDraft] = useState(seleccionada ? formatDmy(seleccionada) : '')
+  const [pickerAbierto, setPickerAbierto] = useState(false)
+  useEffect(() => { setDraft(seleccionada ? formatDmy(seleccionada) : '') }, [seleccionada])
+
+  function commit() {
+    const trimmed = draft.trim()
+    if (!trimmed) { onCommit(null); return }
+    const iso = parseDmyToIso(trimmed)
+    if (iso) onCommit(iso)
+    else setDraft(seleccionada ? formatDmy(seleccionada) : '') // inválido → vuelve a lo que ya estaba
+  }
+
+  return (
+    <span className="relative flex items-center gap-1">
+      <input value={draft} onChange={(e) => setDraft(e.target.value)} onBlur={commit}
+        onKeyDown={(e) => { if (e.key === 'Enter') e.currentTarget.blur() }}
+        placeholder="dd-mm-aaaa" inputMode="numeric"
+        className="w-24 bg-slate-700 text-white text-xs rounded-lg px-2 py-1 border border-slate-600 focus:border-brand-500 focus:outline-none" />
+      <button type="button" onClick={() => setPickerAbierto(true)} className="text-slate-400 hover:text-white text-sm" aria-label="Elegir fecha">📅</button>
+      {pickerAbierto && (
+        <MiniDiaPicker initialYear={mesYear} initialMonth={mesMonth} seleccionada={seleccionada}
+          feriadosPorFecha={feriadosPorFecha} porFecha={porFecha} hoyStr={hoyStr}
+          onPick={(iso) => { onCommit(iso); setPickerAbierto(false) }} onClose={() => setPickerAbierto(false)} />
+      )}
+    </span>
+  )
+}
+
+// Mismo patrón de posición que MaterialSelect.tsx (fixed, anclado al
+// viewport, no al botón) — probado en este mismo proyecto como el que sí
+// funciona bien en celular; anclar al botón con getBoundingClientRect dejaba
+// paneles perdidos apenas el navegador scrolleaba.
+function PopoverShell({ children, onClose, width }: { children: React.ReactNode; onClose: () => void; width: string }) {
+  return createPortal(
+    <>
+      <div className="fixed inset-0 z-40 bg-black/30" onClick={onClose} />
+      <div className={`fixed z-50 top-16 left-1/2 -translate-x-1/2 ${width} bg-slate-800 border border-slate-600 rounded-xl shadow-lg p-3 space-y-2`}
+        onClick={(e) => e.stopPropagation()}>
+        {children}
+      </div>
+    </>,
+    document.body,
+  )
+}
+
+function MiniMesPicker({ year, onPick, onClose }: { year: number; onPick: (y: number, m: number) => void; onClose: () => void }) {
+  const [y, setY] = useState(year)
+  return (
+    <PopoverShell onClose={onClose} width="w-64">
+      <div className="flex items-center justify-between">
+        <button type="button" onClick={() => setY((v) => v - 1)} className="w-7 h-7 rounded-lg bg-slate-700 hover:bg-slate-600 text-white text-sm">‹</button>
+        <span className="text-sm font-semibold text-white">{y}</span>
+        <button type="button" onClick={() => setY((v) => v + 1)} className="w-7 h-7 rounded-lg bg-slate-700 hover:bg-slate-600 text-white text-sm">›</button>
+      </div>
+      <div className="grid grid-cols-3 gap-1.5">
+        {MESES.map((nombre, i) => (
+          <button key={nombre} type="button" onClick={() => onPick(y, i)}
+            className="text-xs py-1.5 rounded-lg bg-slate-700 hover:bg-brand-600 text-white transition-colors">
+            {nombre.slice(0, 3)}
+          </button>
+        ))}
+      </div>
+    </PopoverShell>
+  )
+}
+
+function MiniDiaPicker({ initialYear, initialMonth, seleccionada, feriadosPorFecha, porFecha, hoyStr, onPick, onClose }: {
+  initialYear: number
+  initialMonth: number
+  seleccionada: string | null
+  feriadosPorFecha: Map<string, string>
+  porFecha: Map<string, AttRecord[]>
+  hoyStr: string
+  onPick: (iso: string) => void
+  onClose: () => void
+}) {
+  const [y, setY] = useState(initialYear)
+  const [m, setM] = useState(initialMonth)
+  const grid = useMemo(() => buildGrid(y, m), [y, m])
+
+  function irAMes(delta: number) {
+    let mm = m + delta
+    let yy = y
+    if (mm < 0) { mm = 11; yy -= 1 }
+    if (mm > 11) { mm = 0; yy += 1 }
+    setY(yy)
+    setM(mm)
+  }
+
+  return (
+    <PopoverShell onClose={onClose} width="w-72">
+      <div className="flex items-center justify-between">
+        <button type="button" onClick={() => irAMes(-1)} className="w-7 h-7 rounded-lg bg-slate-700 hover:bg-slate-600 text-white text-sm">‹</button>
+        <span className="text-sm font-semibold text-white">{MESES[m]} {y}</span>
+        <button type="button" onClick={() => irAMes(1)} className="w-7 h-7 rounded-lg bg-slate-700 hover:bg-slate-600 text-white text-sm">›</button>
+      </div>
+      <div className="grid grid-cols-7 gap-1 text-center">
+        {DIAS_SEMANA.map((d) => <div key={d} className="text-[9px] font-semibold text-slate-500">{d}</div>)}
+        {grid.map((d) => {
+          const enMes = d.getMonth() === m
+          const { iso, cls, title } = celda(d, seleccionada, feriadosPorFecha, porFecha, hoyStr)
+          return (
+            <button key={iso} type="button" onClick={() => onPick(iso)} title={title}
+              className={`h-7 rounded border text-[11px] flex items-center justify-center ${enMes ? '' : 'opacity-30'} ${cls}`}>
+              {d.getDate()}
+            </button>
+          )
+        })}
+      </div>
+    </PopoverShell>
   )
 }
 

@@ -27,11 +27,18 @@ export function Editor() {
   const { id } = useParams<{ id: string }>()
   const navigate = useNavigate()
   // Si se llegó desde el Calendario (CalendarioOtt.tsx pasa este state al
-  // navegar), "Volver" debe volver ahí, no siempre al listado general —
-  // pedido de Andrés. Se pierde en un F5 (el state de navegación no
-  // sobrevive recarga), cae al listado por defecto, que es aceptable.
+  // navegar), "Volver" debe volver EXACTAMENTE a esa misma vista — mismo
+  // mes/día elegidos, no reiniciar al mes actual sin selección — así que se
+  // reenvía el mismo state tal cual se recibió. Se pierde en un F5 (el
+  // state de navegación no sobrevive recarga), cae al listado por defecto,
+  // que es aceptable.
   const location = useLocation()
-  const volverA = (location.state as { from?: string } | null)?.from === 'calendario' ? '/att/calendario' : '/att'
+  const navState = location.state as { from?: string; year?: number; month?: number; fecha?: string | null } | null
+  const volverA = navState?.from === 'calendario' ? '/att/calendario' : '/att'
+  const volverState = navState?.from === 'calendario' ? { year: navState.year, month: navState.month, fecha: navState.fecha } : undefined
+  function volver() {
+    navigate(volverA, volverState ? { state: volverState } : undefined)
+  }
   const isTecnico = useAuth((s) => s.profile?.rol === 'tecnico')
   const { record, processPhoto, processFotoAerea } = useAtt(id ?? '')
   const syncOne = useAttStore((s) => s.syncOne)
@@ -123,7 +130,7 @@ export function Editor() {
     <div className="space-y-4 pb-28">
       {/* Header */}
       <div className="flex items-center gap-3">
-        <button type="button" onClick={() => navigate(volverA)}
+        <button type="button" onClick={volver}
           className="text-slate-400 hover:text-white text-sm">← Volver</button>
         <span className="flex-1 text-sm font-semibold text-white truncate">{title}</span>
         <EstadoProyectoBadge estado={record.estado} onChange={(next) => setEstado(id, next)} />
@@ -178,7 +185,7 @@ export function Editor() {
 
       {/* Barra inferior fija */}
       <div className="fixed bottom-0 left-0 right-0 bg-slate-900/95 backdrop-blur border-t border-slate-700 px-4 py-3 flex items-center gap-3 z-40">
-        <button type="button" onClick={() => navigate(volverA)}
+        <button type="button" onClick={volver}
           className="py-2.5 px-4 rounded-xl bg-slate-700 text-white text-sm font-medium hover:bg-slate-600 transition-colors shrink-0">
           ← Volver
         </button>
