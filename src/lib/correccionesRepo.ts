@@ -12,7 +12,7 @@
 
 import { supabase } from './supabaseClient'
 
-/** Qué brigada corrige un hallazgo — "Línea" o "OyM" (Operación y Mantenimiento). */
+/** Qué brigada repara un hallazgo — "Línea" o "OyM" (Operación y Mantenimiento). */
 export type Brigada = 'linea' | 'oym'
 export const BRIGADA_LABELS: Record<Brigada, string> = { linea: 'Línea', oym: 'OyM' }
 

@@ -265,7 +265,7 @@ export function PuntoCard({ preventivoId, punto, index, total, editable = true, 
 
           {punto.hallazgo !== '' && (
             <div>
-              <label className="block text-xs text-slate-400 mb-1">Brigada que corrige</label>
+              <label className="block text-xs text-slate-400 mb-1">Brigada que repara</label>
               <select
                 value={punto.brigada ?? ''}
                 onChange={(e) => camposEditable && updatePunto(preventivoId, punto.id, { brigada: e.target.value })}

@@ -17,14 +17,14 @@ const BORDER = {
 }
 
 /**
- * Verde fosforescente para lo pendiente de la brigada de Línea, amarillo
+ * Amarillo para lo pendiente de la brigada de Línea, verde fosforescente
  * para lo pendiente de OyM — pedido explícito de Andrés para distinguir a
- * simple vista quién tiene que corregir cada hallazgo. Se destaca la FILA
+ * simple vista quién tiene que reparar cada hallazgo. Se destaca la FILA
  * ENTERA (no solo la celda de Brigada) para que se note de un vistazo; solo
  * lo PENDIENTE (hallazgo sin marcar "resuelto") lleva color — uno ya
  * resuelto o un punto sin hallazgo usa el color de banda normal de la fila.
  */
-const BRIGADA_FILL: Record<Brigada, string> = { linea: '39FF14', oym: 'FFFF00' }
+const BRIGADA_FILL: Record<Brigada, string> = { linea: 'FFFF00', oym: '39FF14' }
 
 function cellStyle(col: number, rowIdx: number, brigadaPendiente?: Brigada) {
   const isHeader = rowIdx === 0

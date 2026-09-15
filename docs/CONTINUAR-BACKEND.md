@@ -19,6 +19,14 @@
   9. **Correr en el SQL Editor** `supabase/migrations/0072_brigada_hallazgo.sql` — ver v1.97 más abajo (brigada por hallazgo en Preventivos). Después de correrla, entrar a Administración → "Tipos de hallazgo" y asignar la brigada real (Línea/OyM) de cada uno — todos arrancan en "OyM" por defecto, sin ninguna forma de inferirlo desde los datos ya guardados.
 - **Deploy**: el push del 26-08 a `main` falló al desplegar por una interrupción real de GitHub Actions/Pages (confirmada en githubstatus.com, no un problema del repo) — falta reintentar el workflow ("Re-run all jobs") una vez que GitHub se recupere. Fuera de eso, `.github/workflows/deploy.yml` publica bien en cada push a `main`.
 
+## v1.99 — Colores de brigada invertidos + "Brigada que repara" (ajuste, sin migración)
+Feedback de Andrés tras v1.98: Línea debe ser amarillo, OyM verde (al revés de v1.97/v1.98) — y el campo del punto se llama "Brigada que repara", no "corrige".
+
+- `BRIGADA_FILL` en `generarLevantamiento.ts`: `linea: 'FFFF00'` (amarillo), `oym: '39FF14'` (verde fosforescente).
+- `PuntoCard.tsx`: label "Brigada que repara" (antes "que corrige").
+
+**Verificado**: `tsc`/build limpios; confirmado con un chequeo directo de las constantes que `linea` mapea a amarillo y `oym` a verde.
+
 ## v1.98 — Excel de Levantamiento: se destaca la fila entera, no solo la celda de Brigada (ajuste, sin migración)
 Feedback de Andrés tras ver v1.97: el color debía notarse en toda la fila, no solo en la columna "Brigada". `cellStyle` en `generarLevantamiento.ts` ya no limita el color al `BRIGADA_COL` — si la fila está pendiente, todas sus columnas llevan el fill de la brigada correspondiente.
 
