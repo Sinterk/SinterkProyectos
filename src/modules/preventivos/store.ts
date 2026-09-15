@@ -102,7 +102,8 @@ interface PreventivoState {
   /** Trae un levantamiento puntual del servidor (deep-link / recarga en el Editor). */
   syncOne: (id: string) => Promise<void>
   /** Tras el primer guardado de un borrador local, reemplaza su id nanoid por el uuid del servidor. */
-  rekey: (oldId: string, saved: Preventivo) => void
+  /** `keepLocalUnconfirmed`: hubo una edición local después de que arrancó ese guardado (ver `persistToServer` en att/store.ts para el comentario completo). */
+  rekey: (oldId: string, saved: Preventivo, keepLocalUnconfirmed?: boolean) => void
   /** Sube fotos pendientes y persiste en Supabase (autoguardado + migración). */
   persistToServer: (id: string) => Promise<Preventivo>
 
@@ -242,11 +243,22 @@ export const usePreventivoStore = create<PreventivoState>()(
         })
       },
 
-      rekey(oldId, saved) {
+      rekey(oldId, saved, keepLocalUnconfirmed) {
         set((s) => {
           const old = s.records[oldId]
           const next = { ...s.records }
           delete next[oldId]
+
+          // Ver el comentario grande en `rekey` de att/store.ts — mismo bug,
+          // mismo fix: si se sigue editando mientras este guardado viajaba a
+          // Supabase, no pisar esos campos con la foto vieja que se mandó a
+          // guardar. Solo se migra el id; el resto queda tal cual está AHORA
+          // en el store, sin confirmar.
+          if (keepLocalUnconfirmed && old) {
+            next[saved.id] = { ...old, id: saved.id, createdAt: saved.createdAt }
+            return { records: next, syncedAt: s.syncedAt }
+          }
+
           const oldFotos = collectFotosByPath(old)
           function restore(f: FotoEntry | undefined): FotoEntry | undefined {
             if (!f?.storagePath) return f
@@ -293,7 +305,8 @@ export const usePreventivoStore = create<PreventivoState>()(
 
         const saved = await preventivoRepo.save(withPhotos)
         if (saved.id !== id) {
-          get().rekey(id, saved)
+          const nowRec = get().records[id]
+          get().rekey(id, saved, !!nowRec && nowRec.updatedAt !== startedUpdatedAt)
         } else {
           // Ver el comentario equivalente en att/store.ts: solo marcar
           // sincronizado si nada cambió localmente mientras el guardado

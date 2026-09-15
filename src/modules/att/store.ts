@@ -144,8 +144,14 @@ interface AttState {
   syncList: () => Promise<void>
   /** Trae un informe puntual del servidor (deep-link / recarga en el Editor). */
   syncOne: (id: string) => Promise<void>
-  /** Tras el primer guardado de un borrador local, reemplaza su id nanoid por el uuid del servidor. */
-  rekey: (oldId: string, saved: AttRecord) => void
+  /**
+   * Tras el primer guardado de un borrador local, reemplaza su id nanoid por
+   * el uuid del servidor. `keepLocalUnconfirmed`: hubo una edición local
+   * después de que arrancó ese guardado (ver `persistToServer`) — conserva
+   * los campos tal como están AHORA en el store en vez de los que se
+   * mandaron a guardar, y lo deja sin confirmar.
+   */
+  rekey: (oldId: string, saved: AttRecord, keepLocalUnconfirmed?: boolean) => void
   /**
    * Sube las fotos pendientes y persiste el informe en Supabase (usado por el
    * autoguardado y por la migración manual de borradores locales). Si el id
@@ -297,11 +303,30 @@ export const useAttStore = create<AttState>()(
         })
       },
 
-      rekey(oldId, saved) {
+      rekey(oldId, saved, keepLocalUnconfirmed) {
         set((s) => {
           const old = s.records[oldId]
           const next = { ...s.records }
           delete next[oldId]
+
+          // Bug real reportado por Andrés (texto de OTT cortado a la mitad
+          // mientras se anotaba): una pausa natural al tipear un OTT largo
+          // dispara el autoguardado de un valor a medio camino; si la
+          // persona sigue tipeando mientras ESE guardado todavía viaja a
+          // Supabase, este era el único lugar de persistToServer sin el
+          // guard de "¿cambió algo mientras guardaba?" que sí tiene la otra
+          // rama (más abajo, cuando el id no cambia) — pisaba lo recién
+          // tipeado con la foto vieja que se mandó a guardar. Acá solo se
+          // migra el id (nanoid → uuid real); todos los demás campos se
+          // conservan tal como están AHORA en el store (ya con cualquier
+          // storagePath aplicado más arriba en persistToServer) y quedan
+          // sin confirmar, para que el siguiente ciclo de autoguardado los
+          // suba tal cual quedaron.
+          if (keepLocalUnconfirmed && old) {
+            next[saved.id] = { ...old, id: saved.id, createdAt: saved.createdAt }
+            return { records: next, syncedAt: s.syncedAt }
+          }
+
           // Conserva previews/blobId locales de fotos ya capturadas (mismo orden que se guardó).
           const fotos = saved.fotos.map((f, i) => {
             const prev = old?.fotos[i]
@@ -335,7 +360,10 @@ export const useAttStore = create<AttState>()(
 
         const saved = await attRepo.save(withPhotos)
         if (saved.id !== id) {
-          get().rekey(id, saved) // borrador local promovido a uuid del servidor
+          // borrador local promovido a uuid del servidor — ver el comentario
+          // grande en `rekey` sobre por qué se compara `startedUpdatedAt`.
+          const nowRec = get().records[id]
+          get().rekey(id, saved, !!nowRec && nowRec.updatedAt !== startedUpdatedAt)
         } else {
           // Marca este `updatedAt` como confirmado en el servidor — pero solo
           // si nada cambió localmente mientras el guardado viajaba a

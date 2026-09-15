@@ -69,7 +69,8 @@ interface IncidenciaState {
 
   syncList: () => Promise<void>
   syncOne: (id: string) => Promise<void>
-  rekey: (oldId: string, saved: Incidencia) => void
+  /** `keepLocalUnconfirmed`: hubo una edición local después de que arrancó ese guardado (ver `persistToServer` en att/store.ts para el comentario completo). */
+  rekey: (oldId: string, saved: Incidencia, keepLocalUnconfirmed?: boolean) => void
   persistToServer: (id: string) => Promise<Incidencia>
 
   setFotoStoragePath: (id: string, index: number, storagePath: string) => void
@@ -188,11 +189,22 @@ export const useIncidenciaStore = create<IncidenciaState>()(
         })
       },
 
-      rekey(oldId, saved) {
+      rekey(oldId, saved, keepLocalUnconfirmed) {
         set((s) => {
           const old = s.records[oldId]
           const next = { ...s.records }
           delete next[oldId]
+
+          // Ver el comentario grande en `rekey` de att/store.ts — mismo bug,
+          // mismo fix: si se sigue editando mientras este guardado viajaba a
+          // Supabase, no pisar esos campos con la foto vieja que se mandó a
+          // guardar. Solo se migra el id; el resto queda tal cual está AHORA
+          // en el store, sin confirmar.
+          if (keepLocalUnconfirmed && old) {
+            next[saved.id] = { ...old, id: saved.id, createdAt: saved.createdAt }
+            return { records: next, syncedAt: s.syncedAt }
+          }
+
           const fotos = saved.fotos.map((f, i) => {
             const prev = old?.fotos[i]
             return prev ? { ...f, previewUrl: prev.previewUrl, blobId: prev.blobId } : f
@@ -216,7 +228,8 @@ export const useIncidenciaStore = create<IncidenciaState>()(
 
         const saved = await incidenciaRepo.save(withPhotos)
         if (saved.id !== id) {
-          get().rekey(id, saved)
+          const nowRec = get().records[id]
+          get().rekey(id, saved, !!nowRec && nowRec.updatedAt !== startedUpdatedAt)
         } else {
           // Ver el comentario equivalente en att/store.ts: solo marcar
           // sincronizado si nada cambió localmente mientras el guardado
