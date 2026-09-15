@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useState, type ReactNode } from 'react'
+import { useEffect, useMemo, useRef, useState, type ReactNode } from 'react'
 import { createPortal } from 'react-dom'
 import { useNavigate } from 'react-router-dom'
 import { adminRepo } from '@/lib/adminRepo'
@@ -1607,30 +1607,56 @@ function ConteoLineasTabla({ lineas, editable, onSaved, onPendienteChange }: {
   )
 }
 
+/** Milisegundos sin nuevas pulsaciones antes de guardar solo — mismo valor que el autoguardado de ATT/Preventivos/Incidencias. */
+const DEBOUNCE_CONTEO_MS = 800
+
 function ConteoLineaFila({ linea, editable, onSaved, onPendienteChange }: {
   linea: ConteoLinea; editable: boolean; onSaved: () => void; onPendienteChange: (pendiente: boolean) => void
 }) {
   const [draft, setDraft] = useState(String(linea.cantidadContada))
-  const [saving, setSaving] = useState(false)
+  const [status, setStatus] = useState<'idle' | 'saving' | 'saved' | 'error'>('idle')
+  const debounceRef = useRef<ReturnType<typeof setTimeout> | null>(null)
   // Cerrado: la diferencia sale de lo persistido, no del draft local (que
   // puede quedar obsoleto si el guardado nunca ocurrió).
   const diferencia = (editable ? Number(draft || 0) : linea.cantidadContada) - linea.cantidadSistema
   const dirty = editable && draft.trim() !== '' && Number(draft) !== linea.cantidadContada
 
-  useEffect(() => { onPendienteChange(dirty || saving) }, [dirty, saving, onPendienteChange])
+  useEffect(() => { onPendienteChange(dirty || status === 'saving') }, [dirty, status, onPendienteChange])
+  useEffect(() => () => { if (debounceRef.current) clearTimeout(debounceRef.current) }, [])
 
-  async function save() {
-    const n = Number(draft)
-    if (draft.trim() === '' || Number.isNaN(n) || n === linea.cantidadContada) return
-    setSaving(true)
+  async function save(n: number) {
+    if (debounceRef.current) clearTimeout(debounceRef.current)
+    setStatus('saving')
     try {
       await actualizarLineaConteo(linea.id, n)
+      setStatus('saved')
       onSaved()
     } catch (err) {
+      setStatus('error')
       alert(err instanceof Error ? err.message : String(err))
-    } finally {
-      setSaving(false)
     }
+  }
+
+  // Se guarda solo, sin que haya que confirmar cada línea a mano — el pedido
+  // explícito de Andrés fue sacar ese paso ("es confuso y suma pasos
+  // innecesarios"), dejando solo un indicador de que se guardó. Debounce en
+  // vez de solo onBlur: antes dependía de un botón aparte porque en varios
+  // celulares el teclado numérico no dispara blur al "tocar fuera" (o lo tapa
+  // toda la pantalla) — con el guardado disparándose solo tras una pausa al
+  // tipear, ese caso queda cubierto igual, sin depender del blur.
+  function onChange(value: string) {
+    setDraft(value)
+    if (debounceRef.current) clearTimeout(debounceRef.current)
+    const n = Number(value)
+    if (value.trim() === '' || Number.isNaN(n) || n === linea.cantidadContada) return
+    debounceRef.current = setTimeout(() => save(n), DEBOUNCE_CONTEO_MS)
+  }
+
+  function onBlur() {
+    if (debounceRef.current) clearTimeout(debounceRef.current)
+    const n = Number(draft)
+    if (draft.trim() === '' || Number.isNaN(n) || n === linea.cantidadContada) return
+    save(n)
   }
 
   return (
@@ -1644,20 +1670,18 @@ function ConteoLineaFila({ linea, editable, onSaved, onPendienteChange }: {
       <td className="px-2 py-2 text-right whitespace-nowrap">
         {editable ? (
           <div className="flex items-center justify-end gap-1.5">
-            <input type="number" step="any" value={draft} onChange={(e) => setDraft(e.target.value)} onBlur={save}
-              onKeyDown={(e) => { if (e.key === 'Enter') (e.target as HTMLInputElement).blur() }} disabled={saving}
+            <input type="number" step="any" value={draft} onChange={(e) => onChange(e.target.value)} onBlur={onBlur}
+              onKeyDown={(e) => { if (e.key === 'Enter') (e.target as HTMLInputElement).blur() }}
               className={`w-20 bg-slate-700 text-white text-sm rounded-lg px-2 py-1 border text-right focus:outline-none ${
-                dirty ? 'border-amber-500' : 'border-slate-600 focus:border-brand-500'
+                status === 'error' ? 'border-red-500' : (dirty || status === 'saving') ? 'border-amber-500' : 'border-slate-600 focus:border-brand-500'
               }`} />
-            {/* Botón explícito: en varios celulares el teclado numérico no deja "tocar
-                fuera del campo" para disparar el blur (o el teclado tapa toda la
-                pantalla) — sin esto, el cambio quedaba solo en el draft local y nunca
-                se guardaba. */}
-            <button type="button" onClick={save} disabled={!dirty || saving}
-              title="Guardar" aria-label="Guardar"
-              className="text-sm w-7 h-7 rounded-lg bg-slate-700 border border-slate-600 disabled:opacity-30 text-green-400 hover:bg-slate-600 disabled:hover:bg-slate-700 shrink-0">
-              {saving ? '⏳' : '✓'}
-            </button>
+            {/* Solo indicador — no hay nada que tocar ni confirmar a mano. */}
+            <span className="w-5 h-5 flex items-center justify-center shrink-0"
+              title={status === 'saving' ? 'Guardando…' : status === 'saved' ? 'Guardado' : status === 'error' ? 'Error al guardar' : undefined}>
+              {status === 'saving' && <span className="text-sm animate-spin">⏳</span>}
+              {status === 'saved' && <span className="text-green-400 text-sm">✓</span>}
+              {status === 'error' && <span className="text-red-400 text-sm">⚠</span>}
+            </span>
           </div>
         ) : (
           <span className="text-white font-semibold">{linea.cantidadContada}</span>
@@ -1743,7 +1767,7 @@ function ImportarSapSection({ conteoId, onImported, onImportingChange }: {
     <div {...dropProps}
       className={`bg-slate-800/60 rounded-xl border border-dashed p-3 space-y-2 transition-colors ${isDragging ? 'border-brand-500 bg-brand-500/10' : 'border-slate-600'}`}>
       <p className="text-[11px] text-slate-500">
-        Cargar conteo desde Excel SAP — columnas Material/Texto breve de material/Lote/Libre utilización; el resto se ignora. Arrastra el .xlsx aquí o:
+        Cargar conteo desde Excel SAP — columnas Material/Texto breve de material/Lote/Libre utilización; el resto se ignora. Lo que ya estaba en el conteo y no venga en este archivo queda en 0 (el lote puede haber dejado de existir en SAP). Arrastra el .xlsx aquí o:
       </p>
 
       {!filas && (
@@ -1802,7 +1826,8 @@ function ImportarSapSection({ conteoId, onImported, onImportingChange }: {
       {resultado && (
         <p className="text-xs text-green-400">
           Importado: {resultado.lineasCreadas} línea(s) nueva(s), {resultado.lineasActualizadas} actualizada(s)
-          {resultado.materialesCreados > 0 ? `, ${resultado.materialesCreados} material(es) nuevo(s)` : ''}.
+          {resultado.materialesCreados > 0 ? `, ${resultado.materialesCreados} material(es) nuevo(s)` : ''}
+          {resultado.lineasEnCero > 0 ? `, ${resultado.lineasEnCero} puesta(s) en 0 (no vinieron en este archivo)` : ''}.
           {resultado.errores.length > 0 && <span className="text-red-400"> {resultado.errores.length} con error.</span>}
         </p>
       )}

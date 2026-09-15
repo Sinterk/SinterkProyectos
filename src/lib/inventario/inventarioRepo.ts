@@ -1165,6 +1165,8 @@ export interface ImportarSapResultado {
   materialesCreados: number
   lineasCreadas: number
   lineasActualizadas: number
+  /** Líneas que ya estaban en el conteo y no vinieron en este archivo — quedaron en 0 (el lote puede haber dejado de existir en SAP). */
+  lineasEnCero: number
   errores: { fila: FilaImportSap; mensaje: string }[]
 }
 
@@ -1210,11 +1212,12 @@ export async function importarFilasSapAConteo(
 
   const filaPorClave = new Map(filas.map((f) => [`${materialIdBySku.get(f.sku)}|${f.lote}`, f]))
   const resultado: ImportarSapResultado = {
-    total: filas.length, materialesCreados: faltantes.length, lineasCreadas: 0, lineasActualizadas: 0, errores: [],
+    total: filas.length, materialesCreados: faltantes.length, lineasCreadas: 0, lineasActualizadas: 0, lineasEnCero: 0, errores: [],
   }
   for (const r of data as { material_id: string; lote: string; accion: string; mensaje: string | null }[]) {
     if (r.accion === 'creada') resultado.lineasCreadas++
     else if (r.accion === 'actualizada') resultado.lineasActualizadas++
+    else if (r.accion === 'en_cero') resultado.lineasEnCero++
     else {
       const fila = filaPorClave.get(`${r.material_id}|${r.lote}`)
       resultado.errores.push({ fila: fila ?? { sku: '', descripcion: '', lote: r.lote, cantidad: 0 }, mensaje: r.mensaje ?? 'Error desconocido' })
