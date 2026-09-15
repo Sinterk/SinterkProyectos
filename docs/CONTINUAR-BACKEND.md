@@ -5,7 +5,7 @@
 
 ## ⚡ Estado ahora mismo (14-09-2026)
 - **`main` y `backend-supabase` están sincronizados** (merge y push del 14-09) — ambos en v1.90. Seguir mergeando `backend-supabase` a `main` cuando el trabajo esté listo para producción, en vez de dejarlo acumularse.
-- **Migraciones**: corridas y confirmadas hasta `0070`. **Pendiente `0071_importar_conteo_lineas_a_cero.sql`** — falta que Andrés la corra en el SQL Editor (ver v1.95 más abajo).
+- **Migraciones**: corridas y confirmadas hasta `0071`. **Pendiente `0072_brigada_hallazgo.sql`** — falta que Andrés la corra en el SQL Editor (ver v1.97 más abajo).
 - **Para retomar en otra máquina**: `git clone` (o `git fetch` + `git checkout backend-supabase`), `npm install`, recrear el `.env` a mano (los nombres de variable están en `src/lib/supabaseClient.ts` y `src/lib/auth.ts`; los valores NO están en el repo, es público — Andrés los tiene), `npm run dev`.
 - **Pendientes de Andrés** (no bloquean nada salvo lo marcado):
   1. ~~Desplegar la Edge Function de alta de usuarios~~ — **hecho y confirmado el 26-08** (probada sin sesión y con token inválido, responde el gate de auth de la función, no un 404 — está desplegada de verdad).
@@ -15,8 +15,19 @@
   5. Volver a guardar la contraseña en Firefox desde `about:logins` — las guardadas antes de v1.47 quedaron con campos anónimos y no se autocompletan.
   6. **Recuperar el levantamiento del colega** (ver entrada v1.59 más abajo) — el ZIP le creó un informe vacío en el servidor (0 puntos). Con el fix de esa versión, borrar ese levantamiento local (o el registro server-side si ya no está en el store local de nadie) y volver a importar el mismo ZIP.
   7. ~~Decidir si vale la pena un reintento automático de subida de fotos~~ — **hecho, v1.94** más abajo: reintenta solo al abrir la app o recuperar conexión (ATT, Preventivos e Incidencias), sin depender de Background Sync (no soportado en Firefox, el navegador real de uso).
-  8. **Correr en el SQL Editor** `supabase/migrations/0071_importar_conteo_lineas_a_cero.sql` — ver v1.95 más abajo (líneas de conteo no copiadas en un import de Excel quedan en 0).
+  8. ~~Correr en el SQL Editor `0071_importar_conteo_lineas_a_cero.sql`~~ — **corrida y confirmada por Andrés el 15-09**.
+  9. **Correr en el SQL Editor** `supabase/migrations/0072_brigada_hallazgo.sql` — ver v1.97 más abajo (brigada por hallazgo en Preventivos). Después de correrla, entrar a Administración → "Tipos de hallazgo" y asignar la brigada real (Línea/OyM) de cada uno — todos arrancan en "OyM" por defecto, sin ninguna forma de inferirlo desde los datos ya guardados.
 - **Deploy**: el push del 26-08 a `main` falló al desplegar por una interrupción real de GitHub Actions/Pages (confirmada en githubstatus.com, no un problema del repo) — falta reintentar el workflow ("Re-run all jobs") una vez que GitHub se recupere. Fuera de eso, `.github/workflows/deploy.yml` publica bien en cada push a `main`.
+
+## v1.97 — Preventivos: brigada (Línea/OyM) por tipo de hallazgo, editable por punto, reflejada en el Excel de Levantamiento (feature nueva, con migración pendiente)
+Pedido de Andrés: diferenciar en Preventivos cuáles hallazgos corrige la brigada de Línea y cuáles la de OyM. Primera entrega de la funcionalidad — "partamos con esto y veamos cómo avanzar".
+
+- **Catálogo (Administración → Tipos de hallazgo)**: cada tipo de hallazgo tiene ahora una **brigada por defecto** (Línea/OyM), editable con un `<select>` nuevo junto al texto de Corrección — mismo patrón de guardado-al-cambiar que ya tenía Corrección. `src/lib/correccionesRepo.ts` (`Brigada`, `BRIGADA_LABELS`, `guardarBrigadaHallazgo`), `src/ui/AdminScreen.tsx` (`CorreccionHallazgoRow`).
+- **Por punto**: al elegir un hallazgo, `PuntoCard.tsx` autocompleta `punto.brigada` con la brigada por defecto de ese hallazgo (mismo mecanismo que ya autocompletaba "Corrección") — aparece un selector "Brigada que corrige" (Línea/OyM/Sin definir) debajo de Corrección, editable a mano por punto igual que el resto.
+- **Excel de Levantamiento** (`generarLevantamiento.ts`, `xlsx-js-style`): columna nueva **"Brigada"** al final. Si el hallazgo está **pendiente** (tiene brigada asignada y no está marcado "resuelto"), la celda se pinta: **verde fosforescente (`#39FF14`)** si es de Línea, **amarillo (`#FFFF00`)** si es de OyM. Un hallazgo ya resuelto o un punto sin hallazgo no lleva color especial (banda normal de la fila) — solo se destaca lo pendiente, tal como se pidió.
+- **Migración nueva `supabase/migrations/0072_brigada_hallazgo.sql`, PENDIENTE: falta que Andrés la corra** en el SQL Editor — agrega `correcciones_hallazgo.brigada` (arranca en `'oym'` para las 23 filas existentes, sin forma de inferir el valor real desde los datos) y `puntos.brigada` (nullable, igual que `correccion`/`hallazgo`). Wiring completo en `preventivoRepo.ts` (`PuntoRow`, lectura y escritura) y `types.ts` (`Punto.brigada`).
+
+**Verificado**: `tsc`/build limpios. Con la migración todavía sin correr, se confirmó que la app no se rompe (el catálogo de hallazgos queda vacío hasta que exista la columna, error 400 de Postgres contenido y atrapado, sin crash) — pendiente probar el flujo completo (autocompletado + Excel con datos reales) una vez corrida `0072`. El algoritmo de coloreado del Excel se probó aparte, ejecutando la lógica real contra `xlsx-js-style` con datos de prueba (Línea pendiente, OyM pendiente, Línea ya resuelto, sin hallazgo): los 4 casos dieron el color esperado exacto.
 
 ## v1.96 — Fix real: Conteo no refrescaba el campo de cantidad tras un cambio externo (fix, sin migración)
 Encontrado probando v1.95: Andrés reportó que al subir un Excel, las líneas con diferencias se destacaban en la columna Diferencia, pero el número dentro del campo de texto no se actualizaba hasta recargar la página.

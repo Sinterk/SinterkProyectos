@@ -3,8 +3,8 @@ import { useAuth, ROL_LABELS } from '@/lib/auth'
 import type { Rol, Profile } from '@/lib/auth'
 import { adminRepo } from '@/lib/adminRepo'
 import type { ProjectSummary, MemberProfile } from '@/lib/adminRepo'
-import { listCorreccionesHallazgo, guardarCorreccionHallazgo, crearHallazgo, setHallazgoActivo } from '@/lib/correccionesRepo'
-import type { CorreccionHallazgo } from '@/lib/correccionesRepo'
+import { listCorreccionesHallazgo, guardarCorreccionHallazgo, guardarBrigadaHallazgo, crearHallazgo, setHallazgoActivo, BRIGADA_LABELS } from '@/lib/correccionesRepo'
+import type { CorreccionHallazgo, Brigada } from '@/lib/correccionesRepo'
 
 const ROLES: Rol[] = ['admin', 'jp', 'tecnico', 'log']
 const AREAS = ['ATT', 'OyM'] as const
@@ -422,7 +422,7 @@ function CorreccionesHallazgoSection() {
     <div className="bg-slate-800 rounded-2xl border border-slate-700 p-4 space-y-3">
       <h2 className="text-xs font-semibold text-brand-400 uppercase tracking-wide">Tipos de hallazgo (Preventivos)</h2>
       <p className="text-[11px] text-slate-500 leading-relaxed">
-        Selector de "Tipo de hallazgo" en Preventivos, con el texto de "Corrección" que se autocompleta al elegir cada uno (sigue siendo editable a mano en cada punto). "Ocultar" saca un hallazgo del selector sin borrarlo. Un hallazgo agregado acá NO cuenta en el resumen del Acta Entel (formato fijo, ajeno) hasta que también se actualice esa plantilla.
+        Selector de "Tipo de hallazgo" en Preventivos, con el texto de "Corrección" y la "Brigada" (Línea u OyM) que se autocompletan al elegir cada uno (ambos siguen siendo editables a mano en cada punto). "Ocultar" saca un hallazgo del selector sin borrarlo. Un hallazgo agregado acá NO cuenta en el resumen del Acta Entel (formato fijo, ajeno) hasta que también se actualice esa plantilla.
       </p>
       {error && <p className="text-xs text-red-400">{error}</p>}
       <div className="flex gap-2">
@@ -448,9 +448,10 @@ function CorreccionesHallazgoSection() {
 }
 
 function CorreccionHallazgoRow({ fila, onSaved }: { fila: CorreccionHallazgo; onSaved: () => void }) {
-  const { hallazgo, correccion: value, orden, activo } = fila
+  const { hallazgo, correccion: value, orden, activo, brigada } = fila
   const [draft, setDraft] = useState(value)
   const [saving, setSaving] = useState(false)
+  const [savingBrigada, setSavingBrigada] = useState(false)
   const [togglingActivo, setTogglingActivo] = useState(false)
   const [error, setError] = useState<string | null>(null)
 
@@ -467,6 +468,20 @@ function CorreccionHallazgoRow({ fila, onSaved }: { fila: CorreccionHallazgo; on
       setError(err instanceof Error ? err.message : String(err))
     } finally {
       setSaving(false)
+    }
+  }
+
+  async function cambiarBrigada(nueva: Brigada) {
+    if (nueva === brigada) return
+    setSavingBrigada(true)
+    setError(null)
+    try {
+      await guardarBrigadaHallazgo(hallazgo, nueva)
+      onSaved()
+    } catch (err) {
+      setError(err instanceof Error ? err.message : String(err))
+    } finally {
+      setSavingBrigada(false)
     }
   }
 
@@ -497,6 +512,14 @@ function CorreccionHallazgoRow({ fila, onSaved }: { fila: CorreccionHallazgo; on
           placeholder="Sin corrección definida — se guardará como texto vacío"
           className="flex-1 bg-slate-700 text-white text-sm rounded-lg px-2 py-1.5 border border-slate-600 focus:border-brand-500 focus:outline-none" />
         {saving && <span className="text-[10px] text-slate-500 shrink-0">Guardando…</span>}
+      </div>
+      <div className="flex items-center gap-2">
+        <span className="text-[11px] text-slate-500 shrink-0">Brigada</span>
+        <select value={brigada} onChange={(e) => cambiarBrigada(e.target.value as Brigada)} disabled={savingBrigada}
+          className="bg-slate-700 text-white text-xs rounded-lg px-2 py-1 border border-slate-600 focus:border-brand-500 focus:outline-none disabled:opacity-50">
+          {(Object.keys(BRIGADA_LABELS) as Brigada[]).map((b) => <option key={b} value={b}>{BRIGADA_LABELS[b]}</option>)}
+        </select>
+        {savingBrigada && <span className="text-[10px] text-slate-500">Guardando…</span>}
       </div>
       {error && <p className="text-[11px] text-red-400">{error}</p>}
     </div>

@@ -378,7 +378,7 @@ export const usePreventivoStore = create<PreventivoState>()(
             records: {
               ...s.records,
               [id]: touch(rec, {
-                puntos: [...rec.puntos, { id: puntoId, nombre: '', descripcion: '', direccion: '', correccion: '', hallazgo: '', resuelto: false }],
+                puntos: [...rec.puntos, { id: puntoId, nombre: '', descripcion: '', direccion: '', correccion: '', hallazgo: '', brigada: '', resuelto: false }],
               }),
             },
           }

@@ -42,7 +42,7 @@ export function ImportZip({ onImported }: Props) {
         // igual revienta recién al guardar, con un error de casteo en el
         // DELETE de `replacePuntos` que no dice nada sobre el punto real.
         // Mejor generar uno nuevo acá, igual que `addPunto` en el store.
-        puntos: await Promise.all((lev.puntos||[]).map(async (pt: any) => ({ id: (pt.id && isUuid(pt.id)) ? pt.id : crypto.randomUUID(), nombre:pt.nombre||'', descripcion:pt.descripcion||'', direccion:pt.direccion||'', correccion:pt.correccion||'', hallazgo:pt.hallazgo||'', resuelto:!!pt.resuelto, fotoLevantamiento:await loadFoto(pt.fotos?.levantamiento), fotoAntes:await loadFoto(pt.fotos?.antes), fotoDespues:await loadFoto(pt.fotos?.despues) })))
+        puntos: await Promise.all((lev.puntos||[]).map(async (pt: any) => ({ id: (pt.id && isUuid(pt.id)) ? pt.id : crypto.randomUUID(), nombre:pt.nombre||'', descripcion:pt.descripcion||'', direccion:pt.direccion||'', correccion:pt.correccion||'', hallazgo:pt.hallazgo||'', brigada:pt.brigada||'', resuelto:!!pt.resuelto, fotoLevantamiento:await loadFoto(pt.fotos?.levantamiento), fotoAntes:await loadFoto(pt.fotos?.antes), fotoDespues:await loadFoto(pt.fotos?.despues) })))
       }
       upsert(p)
       // Guardar en el servidor de inmediato: antes quedaba solo en el store

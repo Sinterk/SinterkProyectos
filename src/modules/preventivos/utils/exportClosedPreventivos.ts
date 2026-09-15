@@ -107,7 +107,7 @@ export async function buildClosedPreventivosZip(
         puntos: hydrated.puntos.map((p) => ({
           id: p.id, nombre: p.nombre, descripcion: p.descripcion,
           direccion: p.direccion, correccion: p.correccion,
-          hallazgo: p.hallazgo, resuelto: p.resuelto,
+          hallazgo: p.hallazgo, brigada: p.brigada, resuelto: p.resuelto,
         })),
       },
     }, null, 2))

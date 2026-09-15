@@ -124,6 +124,7 @@ interface PuntoRow {
   direccion: string | null
   correccion: string | null
   hallazgo: string | null
+  brigada: string | null
   resuelto: boolean
   foto_levantamiento_path: string | null
   foto_antes_path: string | null
@@ -149,6 +150,7 @@ function puntoRowToPunto(p: PuntoRow): Punto {
     direccion: p.direccion ?? '',
     correccion: p.correccion ?? '',
     hallazgo: p.hallazgo ?? '',
+    brigada: p.brigada ?? '',
     resuelto: p.resuelto,
     fotoLevantamiento: fotoFromPath(p.foto_levantamiento_path),
     fotoAntes: fotoFromPath(p.foto_antes_path),
@@ -251,6 +253,7 @@ async function replacePuntos(informeId: string, puntos: Punto[]): Promise<void> 
     direccion: p.direccion || null,
     correccion: p.correccion || null,
     hallazgo: p.hallazgo || null,
+    brigada: p.brigada || null,
     resuelto: p.resuelto,
     foto_levantamiento_path: p.fotoLevantamiento?.storagePath ?? null,
     foto_antes_path: p.fotoAntes?.storagePath ?? null,

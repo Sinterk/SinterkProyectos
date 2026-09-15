@@ -12,17 +12,23 @@
 
 import { supabase } from './supabaseClient'
 
+/** Qué brigada corrige un hallazgo — "Línea" o "OyM" (Operación y Mantenimiento). */
+export type Brigada = 'linea' | 'oym'
+export const BRIGADA_LABELS: Record<Brigada, string> = { linea: 'Línea', oym: 'OyM' }
+
 export interface CorreccionHallazgo {
   hallazgo: string
   correccion: string
   orden: number
   activo: boolean
+  /** Brigada por defecto — se copia a `punto.brigada` al elegir este hallazgo (ver 0072_brigada_hallazgo.sql). */
+  brigada: Brigada
 }
 
 /** Todas las filas — incluye inactivas, para que Administración pueda reactivarlas. Ordenadas por `orden`. */
 export async function listCorreccionesHallazgo(): Promise<CorreccionHallazgo[]> {
   const { data, error } = await supabase.from('correcciones_hallazgo')
-    .select('hallazgo, correccion, orden, activo')
+    .select('hallazgo, correccion, orden, activo, brigada')
     .order('orden', { ascending: true })
   if (error) throw new Error(`correccionesHallazgo.list: ${error.message}`)
   return data as CorreccionHallazgo[]
@@ -34,6 +40,14 @@ export async function guardarCorreccionHallazgo(hallazgo: string, correccion: st
     .update({ correccion: correccion.trim() })
     .eq('hallazgo', hallazgo)
   if (error) throw new Error(`correccionesHallazgo.guardar: ${error.message}`)
+}
+
+/** Actualiza la brigada por defecto de un hallazgo ya existente en el catálogo. */
+export async function guardarBrigadaHallazgo(hallazgo: string, brigada: Brigada): Promise<void> {
+  const { error } = await supabase.from('correcciones_hallazgo')
+    .update({ brigada })
+    .eq('hallazgo', hallazgo)
+  if (error) throw new Error(`correccionesHallazgo.guardarBrigada: ${error.message}`)
 }
 
 /**

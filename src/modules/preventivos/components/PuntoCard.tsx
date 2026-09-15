@@ -7,6 +7,8 @@ import { PhotoCapture } from './PhotoCapture'
 import { PuntoMaterialSection } from './PuntoMaterialSection'
 import { usePreventivoStore } from '../store'
 import { isPuntoCerrado } from '../utils/puntoEstado'
+import { BRIGADA_LABELS } from '@/lib/correccionesRepo'
+import type { Brigada } from '@/lib/correccionesRepo'
 import type { Punto, FotoKey } from '../types'
 
 /**
@@ -45,12 +47,14 @@ interface Props {
   hallazgos: string[]
   /** Texto de Corrección por hallazgo, editable desde Administración (ver correccionesRepo.ts) — lo carga el Editor una sola vez para todos los puntos. */
   correccionesPorHallazgo: Record<string, string>
+  /** Brigada por defecto de cada hallazgo (Línea/OyM), editable desde Administración — lo carga el Editor una sola vez para todos los puntos. */
+  brigadaPorHallazgo: Record<string, Brigada>
   onSave: () => Promise<void>
   onMove: (from: number, to: number) => void
   onPhotoCapture: (file: File, key: FotoKey) => Promise<void>
 }
 
-export function PuntoCard({ preventivoId, punto, index, total, editable = true, soloFotos = false, hallazgos, correccionesPorHallazgo, onMove, onPhotoCapture }: Props) {
+export function PuntoCard({ preventivoId, punto, index, total, editable = true, soloFotos = false, hallazgos, correccionesPorHallazgo, brigadaPorHallazgo, onMove, onPhotoCapture }: Props) {
   const { updatePunto, removePunto, removeFoto } = usePreventivoStore()
   const [expanded, setExpanded] = useState(true)
 
@@ -72,6 +76,7 @@ export function PuntoCard({ preventivoId, punto, index, total, editable = true, 
     updatePunto(preventivoId, punto.id, {
       hallazgo,
       correccion: minusculaInicial(correccionesPorHallazgo[hallazgo] ?? ''),
+      brigada: hallazgo ? (brigadaPorHallazgo[hallazgo] ?? '') : '',
       resuelto: false,
     })
   }
@@ -257,6 +262,23 @@ export function PuntoCard({ preventivoId, punto, index, total, editable = true, 
               className={inputCls}
             />
           </div>
+
+          {punto.hallazgo !== '' && (
+            <div>
+              <label className="block text-xs text-slate-400 mb-1">Brigada que corrige</label>
+              <select
+                value={punto.brigada ?? ''}
+                onChange={(e) => camposEditable && updatePunto(preventivoId, punto.id, { brigada: e.target.value })}
+                disabled={!camposEditable}
+                className={inputCls}
+              >
+                <option value="">Sin definir</option>
+                {(Object.keys(BRIGADA_LABELS) as Brigada[]).map((b) => (
+                  <option key={b} value={b}>{BRIGADA_LABELS[b]}</option>
+                ))}
+              </select>
+            </div>
+          )}
 
           {punto.hallazgo !== '' && (
             <label className="flex items-center gap-2 text-sm text-slate-200">

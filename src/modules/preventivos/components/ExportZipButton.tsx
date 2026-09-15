@@ -38,7 +38,7 @@ async function buildZip(preventivo: Preventivo): Promise<{ blob: Blob; fileName:
       puntos: preventivo.puntos.map((p) => ({
         id: p.id, nombre: p.nombre, descripcion: p.descripcion,
         direccion: p.direccion, correccion: p.correccion,
-        hallazgo: p.hallazgo, resuelto: p.resuelto,
+        hallazgo: p.hallazgo, brigada: p.brigada, resuelto: p.resuelto,
         fotos: {
           levantamiento: p.fotoLevantamiento ? { fileName: p.fotoLevantamiento.fileName, capturedAt: p.fotoLevantamiento.capturedAt } : null,
           antes: p.fotoAntes ? { fileName: p.fotoAntes.fileName, capturedAt: p.fotoAntes.capturedAt } : null,

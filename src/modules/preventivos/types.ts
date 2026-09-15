@@ -37,6 +37,8 @@ export interface Punto {
   direccion: string
   correccion: string
   hallazgo: string
+  /** 'linea' | 'oym' | '' (sin hallazgo) — se autocompleta al elegir el hallazgo (ver correccionesRepo.ts), editable por punto. */
+  brigada: string
   resuelto: boolean
   fotoLevantamiento?: FotoEntry
   fotoAntes?: FotoEntry

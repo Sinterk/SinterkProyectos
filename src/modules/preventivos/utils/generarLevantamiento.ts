@@ -1,11 +1,13 @@
 import * as XLSX from 'xlsx-js-style'
 import type { Preventivo } from '../types'
+import type { Brigada } from '@/lib/correccionesRepo'
 
-const HEADERS = ['Pto', 'Descripción', 'Semestre', 'Cant', 'Tapa', 'Comuna', 'Cuadrante']
-const COL_WIDTHS = [10, 50, 12, 7, 7, 18, 12]
+const HEADERS = ['Pto', 'Descripción', 'Semestre', 'Cant', 'Tapa', 'Comuna', 'Cuadrante', 'Brigada']
+const COL_WIDTHS = [10, 50, 12, 7, 7, 18, 12, 10]
+const BRIGADA_COL = HEADERS.length - 1
 
 // Columnas que van centradas (índice 0-based)
-const CENTER_COLS = new Set([0, 2, 3, 4, 6])
+const CENTER_COLS = new Set([0, 2, 3, 4, 6, BRIGADA_COL])
 
 const BORDER = {
   top:    { style: 'thin', color: { rgb: 'BFBFBF' } },
@@ -14,10 +16,20 @@ const BORDER = {
   right:  { style: 'thin', color: { rgb: 'BFBFBF' } },
 }
 
-function cellStyle(col: number, rowIdx: number) {
+/**
+ * Verde fosforescente para lo pendiente de la brigada de Línea, amarillo
+ * para lo pendiente de OyM — pedido explícito de Andrés para distinguir a
+ * simple vista quién tiene que corregir cada hallazgo. Solo lo PENDIENTE se
+ * destaca (hallazgo sin marcar "resuelto"); uno ya resuelto o un punto sin
+ * hallazgo usa el color de banda normal de la fila.
+ */
+const BRIGADA_FILL: Record<Brigada, string> = { linea: '39FF14', oym: 'FFFF00' }
+
+function cellStyle(col: number, rowIdx: number, brigadaPendiente?: Brigada) {
   const isHeader = rowIdx === 0
   // idx=1 (impar) → blanco; idx=2 (par) → azul claro — igual que el script Python
-  const bgRgb = isHeader ? '1F4E79' : rowIdx % 2 !== 0 ? 'FFFFFF' : 'EBF3FB'
+  const bandaRgb = isHeader ? '1F4E79' : rowIdx % 2 !== 0 ? 'FFFFFF' : 'EBF3FB'
+  const bgRgb = !isHeader && col === BRIGADA_COL && brigadaPendiente ? BRIGADA_FILL[brigadaPendiente] : bandaRgb
 
   return {
     fill:      { patternType: 'solid', fgColor: { rgb: bgRgb } },
@@ -50,8 +62,16 @@ function buildLevantamientoWorkbook(preventivo: Preventivo): { wb: XLSX.WorkBook
   // Fila 0 = cabecera, filas 1..N = datos
   const rows: string[][] = [HEADERS]
 
+  const BRIGADA_LABELS: Record<Brigada, string> = { linea: 'Línea', oym: 'OyM' }
+  // Pendiente = tiene brigada asignada y todavía no se marca "resuelto" — un
+  // hallazgo ya resuelto o un punto sin hallazgo no lleva color ni etiqueta.
+  const brigadaPendientePorFila: (Brigada | undefined)[] = []
+
   for (const p of puntos) {
     const desc = [p.descripcion, p.direccion].filter(Boolean).join(', ')
+    const brigada = (p.brigada === 'linea' || p.brigada === 'oym') ? p.brigada : undefined
+    const pendiente = brigada && p.hallazgo && !p.resuelto ? brigada : undefined
+    brigadaPendientePorFila.push(pendiente)
     rows.push([
       p.nombre  || '',
       desc,
@@ -60,6 +80,7 @@ function buildLevantamientoWorkbook(preventivo: Preventivo): { wb: XLSX.WorkBook
       '',        // Tapa — depende de tipo de hallazgo (pendiente)
       comuna,
       cuad,
+      brigada ? BRIGADA_LABELS[brigada] : '',
     ])
   }
 
@@ -70,7 +91,7 @@ function buildLevantamientoWorkbook(preventivo: Preventivo): { wb: XLSX.WorkBook
     for (let c = 0; c < HEADERS.length; c++) {
       const addr = XLSX.utils.encode_cell({ r, c })
       if (!ws[addr]) ws[addr] = { v: '', t: 's' }
-      ws[addr].s = cellStyle(c, r)
+      ws[addr].s = cellStyle(c, r, r > 0 ? brigadaPendientePorFila[r - 1] : undefined)
     }
   }
 

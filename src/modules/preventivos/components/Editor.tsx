@@ -21,6 +21,7 @@ import { ExportLevButton } from './ExportLevButton'
 import { ExportInformeButton } from './ExportInformeButton'
 import { useAuth } from '@/lib/auth'
 import { listCorreccionesHallazgo } from '@/lib/correccionesRepo'
+import type { Brigada } from '@/lib/correccionesRepo'
 import type { FotoKey } from '../types'
 
 export function Editor() {
@@ -46,11 +47,13 @@ export function Editor() {
   // selector — desactivar solo saca la opción para hallazgos NUEVOS.
   const [hallazgosActivos, setHallazgosActivos] = useState<string[]>([])
   const [correccionesPorHallazgo, setCorreccionesPorHallazgo] = useState<Record<string, string>>({})
+  const [brigadaPorHallazgo, setBrigadaPorHallazgo] = useState<Record<string, Brigada>>({})
   useEffect(() => {
     listCorreccionesHallazgo()
       .then((filas) => {
         setHallazgosActivos(filas.filter((f) => f.activo).map((f) => f.hallazgo))
         setCorreccionesPorHallazgo(Object.fromEntries(filas.map((f) => [f.hallazgo, f.correccion])))
+        setBrigadaPorHallazgo(Object.fromEntries(filas.map((f) => [f.hallazgo, f.brigada])))
       })
       .catch(() => {})
   }, [])
@@ -178,6 +181,7 @@ export function Editor() {
                     editable={true}
                     hallazgos={hallazgosActivos}
                     correccionesPorHallazgo={correccionesPorHallazgo}
+                    brigadaPorHallazgo={brigadaPorHallazgo}
                     onSave={async () => {}}
                     onMove={(from, to) => movePunto(record.id, from, to)}
                     onPhotoCapture={(file: File, key: FotoKey) => processPhoto(file, punto.id, key)} />
