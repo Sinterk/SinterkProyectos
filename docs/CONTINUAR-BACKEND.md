@@ -18,6 +18,14 @@
   8. **Correr en el SQL Editor** `supabase/migrations/0071_importar_conteo_lineas_a_cero.sql` — ver v1.95 más abajo (líneas de conteo no copiadas en un import de Excel quedan en 0).
 - **Deploy**: el push del 26-08 a `main` falló al desplegar por una interrupción real de GitHub Actions/Pages (confirmada en githubstatus.com, no un problema del repo) — falta reintentar el workflow ("Re-run all jobs") una vez que GitHub se recupere. Fuera de eso, `.github/workflows/deploy.yml` publica bien en cada push a `main`.
 
+## v1.96 — Fix real: Conteo no refrescaba el campo de cantidad tras un cambio externo (fix, sin migración)
+Encontrado probando v1.95: Andrés reportó que al subir un Excel, las líneas con diferencias se destacaban en la columna Diferencia, pero el número dentro del campo de texto no se actualizaba hasta recargar la página.
+
+- **Causa**: `ConteoLineaFila` (`Home.tsx`) inicializa su campo local (`draft`) con `useState(String(linea.cantidadContada))` — eso solo corre una vez, al montarse. Como la fila no se vuelve a montar entre un import y otro (mismo `key={l.id}` en la tabla), si el import actualiza la cantidad de una línea que YA existía, el campo se queda mostrando el valor viejo hasta que algo fuerza un remount (recargar la página).
+- **Fix**: un `useEffect` sincroniza `draft` con `linea.cantidadContada` cada vez que cambia desde afuera, salvo que haya una edición local en curso (debounce pendiente o guardando) — así no le pisa a alguien lo que está tipeando si un import corre en paralelo.
+
+**Verificado en el navegador** simulando un cambio externo real (RPC `actualizar_linea_conteo` llamado directo, sin pasar por esa fila): la fila no tocada pasó de "0" a "99" sola en cuanto otra fila disparó el refresco de la tabla — sin recargar la página. Confirmado también con una recarga real de que ambos valores quedaron persistidos correctamente en la base.
+
 ## v1.95 — Fix real de "error loading dynamically imported module" + Conteo: líneas no copiadas del Excel a 0 + se quita el ✓ manual por fila (fix + mejoras, con migración pendiente)
 Tres cambios de la misma sesión (15-09-2026), el primero un bug real bloqueante que reportó Andrés en producción.
 

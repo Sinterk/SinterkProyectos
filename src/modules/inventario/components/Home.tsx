@@ -1623,6 +1623,17 @@ function ConteoLineaFila({ linea, editable, onSaved, onPendienteChange }: {
 
   useEffect(() => { onPendienteChange(dirty || status === 'saving') }, [dirty, status, onPendienteChange])
   useEffect(() => () => { if (debounceRef.current) clearTimeout(debounceRef.current) }, [])
+  // Si la línea no se vuelve a montar (mismo `key={l.id}` en la tabla), este
+  // `useState` inicial no se re-ejecuta solo — sin esto, una cantidad que
+  // cambia por fuera (ej. un import de Excel que actualiza una línea ya
+  // existente) queda pisada por el draft viejo hasta recargar la página.
+  // Solo se sincroniza si no hay una edición local en curso, para no pisar lo
+  // que el usuario está tipeando si un import corre justo en paralelo.
+  useEffect(() => {
+    if (debounceRef.current || status === 'saving') return
+    setDraft(String(linea.cantidadContada))
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [linea.cantidadContada])
 
   async function save(n: number) {
     if (debounceRef.current) clearTimeout(debounceRef.current)
