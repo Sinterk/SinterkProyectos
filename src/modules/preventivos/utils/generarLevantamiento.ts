@@ -19,9 +19,10 @@ const BORDER = {
 /**
  * Verde fosforescente para lo pendiente de la brigada de Línea, amarillo
  * para lo pendiente de OyM — pedido explícito de Andrés para distinguir a
- * simple vista quién tiene que corregir cada hallazgo. Solo lo PENDIENTE se
- * destaca (hallazgo sin marcar "resuelto"); uno ya resuelto o un punto sin
- * hallazgo usa el color de banda normal de la fila.
+ * simple vista quién tiene que corregir cada hallazgo. Se destaca la FILA
+ * ENTERA (no solo la celda de Brigada) para que se note de un vistazo; solo
+ * lo PENDIENTE (hallazgo sin marcar "resuelto") lleva color — uno ya
+ * resuelto o un punto sin hallazgo usa el color de banda normal de la fila.
  */
 const BRIGADA_FILL: Record<Brigada, string> = { linea: '39FF14', oym: 'FFFF00' }
 
@@ -29,7 +30,7 @@ function cellStyle(col: number, rowIdx: number, brigadaPendiente?: Brigada) {
   const isHeader = rowIdx === 0
   // idx=1 (impar) → blanco; idx=2 (par) → azul claro — igual que el script Python
   const bandaRgb = isHeader ? '1F4E79' : rowIdx % 2 !== 0 ? 'FFFFFF' : 'EBF3FB'
-  const bgRgb = !isHeader && col === BRIGADA_COL && brigadaPendiente ? BRIGADA_FILL[brigadaPendiente] : bandaRgb
+  const bgRgb = !isHeader && brigadaPendiente ? BRIGADA_FILL[brigadaPendiente] : bandaRgb
 
   return {
     fill:      { patternType: 'solid', fgColor: { rgb: bgRgb } },

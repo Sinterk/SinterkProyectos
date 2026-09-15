@@ -19,6 +19,11 @@
   9. **Correr en el SQL Editor** `supabase/migrations/0072_brigada_hallazgo.sql` — ver v1.97 más abajo (brigada por hallazgo en Preventivos). Después de correrla, entrar a Administración → "Tipos de hallazgo" y asignar la brigada real (Línea/OyM) de cada uno — todos arrancan en "OyM" por defecto, sin ninguna forma de inferirlo desde los datos ya guardados.
 - **Deploy**: el push del 26-08 a `main` falló al desplegar por una interrupción real de GitHub Actions/Pages (confirmada en githubstatus.com, no un problema del repo) — falta reintentar el workflow ("Re-run all jobs") una vez que GitHub se recupere. Fuera de eso, `.github/workflows/deploy.yml` publica bien en cada push a `main`.
 
+## v1.98 — Excel de Levantamiento: se destaca la fila entera, no solo la celda de Brigada (ajuste, sin migración)
+Feedback de Andrés tras ver v1.97: el color debía notarse en toda la fila, no solo en la columna "Brigada". `cellStyle` en `generarLevantamiento.ts` ya no limita el color al `BRIGADA_COL` — si la fila está pendiente, todas sus columnas llevan el fill de la brigada correspondiente.
+
+**Verificado** con el mismo test aislado de v1.97 (lógica real contra `xlsx-js-style`): las 8 columnas de una fila pendiente de Línea salen en `39FF14`, las de OyM en `FFFF00`, y una fila resuelta queda en el color de banda normal.
+
 ## v1.97 — Preventivos: brigada (Línea/OyM) por tipo de hallazgo, editable por punto, reflejada en el Excel de Levantamiento (feature nueva, con migración pendiente)
 Pedido de Andrés: diferenciar en Preventivos cuáles hallazgos corrige la brigada de Línea y cuáles la de OyM. Primera entrega de la funcionalidad — "partamos con esto y veamos cómo avanzar".
 
