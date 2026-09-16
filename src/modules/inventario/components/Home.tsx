@@ -454,7 +454,7 @@ function BodegaTab() {
   useEffect(() => { listUbicaciones({ tipo: 'bodega' }).then(setBodegas).catch(() => {}) }, [])
 
   async function reload() {
-    try { setRows(await getStock({ ubicacionId: ubicacionId || undefined, search: search || undefined })) }
+    try { setRows(await getStock({ ubicacionId: ubicacionId || undefined, search: search || undefined, soloBodega: true })) }
     catch (err) { setError(err instanceof Error ? err.message : String(err)) }
   }
   useEffect(() => { reload() /* eslint-disable-next-line react-hooks/exhaustive-deps */ }, [ubicacionId, search])

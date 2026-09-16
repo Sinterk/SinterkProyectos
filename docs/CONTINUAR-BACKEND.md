@@ -20,6 +20,15 @@
   10. **Borrar un proyecto de prueba real que quedó en la BD** (ver v2.00 más abajo): OTT `726036`, id `2e185b0a-27f8-4212-a15e-a7015c4b59f2`, área ATT — quedó "Cerrado" (con el rol invitado no se puede hard-delete). En el SQL Editor: `delete from projects where id = '2e185b0a-27f8-4212-a15e-a7015c4b59f2';`
 - **Deploy**: el push del 26-08 a `main` falló al desplegar por una interrupción real de GitHub Actions/Pages (confirmada en githubstatus.com, no un problema del repo) — falta reintentar el workflow ("Re-run all jobs") una vez que GitHub se recupere. Fuera de eso, `.github/workflows/deploy.yml` publica bien en cada push a `main`.
 
+## v2.01 — Inventario: Stock ya no mezcla el stock personal de técnicos + opción de borrar bodegas (mejoras, sin migración)
+Tres pedidos de Andrés sobre Inventario/Stock/Bodega.
+
+- **La pestaña Stock (Bodega) ya no mezcla stock de técnicos**: `getStock()` (`inventarioRepo.ts`) gana un parámetro `soloBodega` que filtra por `ubicaciones.tipo = 'bodega'` (join `!inner` para poder filtrar sobre la tabla relacionada). Solo lo usa `BodegaTab` (`Home.tsx`) — Devolución/Asignaciones sigue pidiendo el stock de un técnico puntual sin este filtro, sin cambios ahí. Confirmado contra la BD real: sin el filtro había 572 filas de stock (221 de técnicos, ej. "JOSE DESIDERIO BASANTA AVILEZ"), con el filtro quedan las 351 de bodega, cero coladas.
+- **Se borra la bodega de prueba `TEST-TRASPASO-DESTINO`** (quedó de probar el traspaso entre bodegas, migraciones 0064/0065) — borrada de verdad en la BD.
+- **Nueva opción "🗑 Borrar esta bodega"** en `UbicacionSelect.tsx` (el mismo selector que ya tenía "+ Nueva bodega…", usado en Registro/Conteo/Asignaciones): aparece solo cuando lo seleccionado es una bodega (nunca la ubicación personal de un técnico), con confirmación antes de borrar. Sin RPC nueva — la RLS de `ubicaciones` (`ubic_write`, 0001_init.sql) ya permite DELETE a quien pasa `can_move_inventory()`, y las tablas que de verdad usan una bodega (`movimientos`, `conteos`, `eventos_inventario`, `proyecto_materiales`) no tienen `on delete cascade`: Postgres rechaza el borrado solo. si está en uso (`eliminarUbicacion` traduce ese error de foreign key a un mensaje legible en vez del error crudo).
+
+**Verificado en el navegador y contra la BD real**: el botón de borrar aparece solo al elegir una bodega en el selector de "Nuevo conteo"; se usó para borrar `TEST-TRASPASO-DESTINO` de verdad (confirmado que ya no existe ni aparece en el selector de Stock).
+
 ## v2.00 — Fix real: texto se borraba a mitad de tipeo en un campo nuevo (OTT y análogos), en ATT/Preventivos/Incidencias (fix, sin migración)
 Investigación a pedido de Andrés: "a veces ocurre que mientras se anota una OTT, se borra lo escrito a mitad de camino."
 

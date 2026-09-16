@@ -4,7 +4,7 @@
 // existente y dejaba sin salida al usuario si la bodega no estaba creada.
 
 import { useEffect, useState } from 'react'
-import { crearUbicacion, listUbicaciones } from '@/lib/inventario/inventarioRepo'
+import { crearUbicacion, eliminarUbicacion, listUbicaciones } from '@/lib/inventario/inventarioRepo'
 import type { Ubicacion, UbicacionTipo } from '@/lib/inventario/types'
 
 const NUEVA = '__nueva__'
@@ -23,6 +23,7 @@ export function UbicacionSelect({ value, onChange, tipo, placeholder = 'Elegir u
   const [nombre, setNombre] = useState('')
   const [busy, setBusy] = useState(false)
   const [error, setError] = useState<string | null>(null)
+  const [deleting, setDeleting] = useState(false)
 
   async function reload() {
     try { setUbicaciones(await listUbicaciones(tipo ? { tipo } : undefined)) } catch { /* silencioso: el selector queda vacío */ }
@@ -46,6 +47,28 @@ export function UbicacionSelect({ value, onChange, tipo, placeholder = 'Elegir u
     }
   }
 
+  // Solo se ofrece para bodegas (nunca para la ubicación personal de un
+  // técnico) — pensado para el caso de "+ Nueva bodega…" creada por error
+  // al llenar un conteo o movimiento.
+  const seleccionada = ubicaciones.find((u) => u.id === value)
+  const puedeBorrar = !!seleccionada && seleccionada.tipo === 'bodega'
+
+  async function borrar() {
+    if (!seleccionada) return
+    if (!confirm(`¿Borrar la bodega "${seleccionada.nombre}"? Solo funciona si nunca se usó (sin movimientos ni conteos).`)) return
+    setDeleting(true)
+    setError(null)
+    try {
+      await eliminarUbicacion(seleccionada.id)
+      onChange('')
+      await reload()
+    } catch (err) {
+      setError(err instanceof Error ? err.message : String(err))
+    } finally {
+      setDeleting(false)
+    }
+  }
+
   if (creating) {
     return (
       <div className={className}>
@@ -66,11 +89,22 @@ export function UbicacionSelect({ value, onChange, tipo, placeholder = 'Elegir u
   }
 
   return (
-    <select value={value} className={className}
-      onChange={(e) => (e.target.value === NUEVA ? setCreating(true) : onChange(e.target.value))}>
-      <option value="">{placeholder}</option>
-      {ubicaciones.map((u) => <option key={u.id} value={u.id}>{u.nombre}{u.tipo === 'tecnico' ? ' (técnico)' : ''}</option>)}
-      <option value={NUEVA}>+ Nueva bodega…</option>
-    </select>
+    <div className="flex items-start gap-1.5">
+      <div className="flex-1 min-w-0">
+        <select value={value} className={`${className ?? ''} w-full`}
+          onChange={(e) => (e.target.value === NUEVA ? setCreating(true) : onChange(e.target.value))}>
+          <option value="">{placeholder}</option>
+          {ubicaciones.map((u) => <option key={u.id} value={u.id}>{u.nombre}{u.tipo === 'tecnico' ? ' (técnico)' : ''}</option>)}
+          <option value={NUEVA}>+ Nueva bodega…</option>
+        </select>
+        {error && <p className="text-xs text-red-400 mt-1">{error}</p>}
+      </div>
+      {puedeBorrar && (
+        <button type="button" onClick={borrar} disabled={deleting} title="Borrar esta bodega — solo funciona si nunca se usó"
+          className="text-sm text-red-400 hover:text-red-300 disabled:opacity-40 px-2 py-1.5 rounded-lg border border-slate-600 hover:bg-slate-700 shrink-0">
+          {deleting ? '…' : '🗑'}
+        </button>
+      )}
+    </div>
   )
 }

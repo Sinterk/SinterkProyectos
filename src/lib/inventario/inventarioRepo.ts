@@ -273,6 +273,27 @@ export async function crearUbicacion(nombre: string): Promise<Ubicacion> {
   return ubicacionFromRow(data as UbicacionRow)
 }
 
+/**
+ * Borra una bodega — pensado para el caso de "+ Nueva bodega…" creada por
+ * error desde un conteo/movimiento (ver `UbicacionSelect.tsx`). Sin RPC:
+ * la RLS de `ubicaciones` ya permite DELETE a quien pasa
+ * `can_move_inventory()` (`ubic_write`, 0001_init.sql), y las tablas que
+ * referencian una bodega en uso (`movimientos`, `conteos`,
+ * `eventos_inventario`, `proyecto_materiales`) no tienen `on delete
+ * cascade` — Postgres rechaza el borrado solo si de verdad está en uso
+ * (23503), lo que se traduce acá a un mensaje legible en vez del error
+ * crudo de foreign key.
+ */
+export async function eliminarUbicacion(id: string): Promise<void> {
+  const { error } = await supabase.from('ubicaciones').delete().eq('id', id)
+  if (error) {
+    if (error.code === '23503') {
+      throw new Error('No se puede borrar: esta bodega tiene movimientos, conteos o eventos de inventario asociados.')
+    }
+    throw new Error(`ubicaciones.eliminar: ${error.message}`)
+  }
+}
+
 // ---------------------------------------------------------------------------
 // Stock (pestaña Bodega)
 // ---------------------------------------------------------------------------
@@ -287,17 +308,24 @@ interface StockJoinRow {
   materiales: { sku: string; descripcion: string; stock_minimo: number | null; comentario: string | null } | null
 }
 
-/** Filtro por ubicación/material/lote exactos; `search` filtra en el cliente sobre nombre/sku/descripción. */
+/**
+ * Filtro por ubicación/material/lote exactos; `search` filtra en el cliente
+ * sobre nombre/sku/descripción. `soloBodega`: excluye el stock personal de
+ * los técnicos (pedido de Andrés — la pestaña Stock/Bodega solo debe listar
+ * bodegas, el stock de cada técnico se ve aparte en Devolución/Asignaciones,
+ * que sigue llamando esta misma función sin este filtro).
+ */
 export async function getStock(opts?: {
-  ubicacionId?: string; materialId?: string; lote?: string; search?: string
+  ubicacionId?: string; materialId?: string; lote?: string; search?: string; soloBodega?: boolean
 }): Promise<StockRow[]> {
   let query = supabase
     .from('stock')
-    .select('ubicacion_id, material_id, lote, cantidad_fisico, cantidad_digital, ubicaciones(nombre), materiales(sku, descripcion, stock_minimo, comentario)')
+    .select(`ubicacion_id, material_id, lote, cantidad_fisico, cantidad_digital, ubicaciones${opts?.soloBodega ? '!inner' : ''}(nombre, tipo), materiales(sku, descripcion, stock_minimo, comentario)`)
     .order('lote')
   if (opts?.ubicacionId) query = query.eq('ubicacion_id', opts.ubicacionId)
   if (opts?.materialId) query = query.eq('material_id', opts.materialId)
   if (opts?.lote) query = query.eq('lote', opts.lote)
+  if (opts?.soloBodega) query = query.eq('ubicaciones.tipo', 'bodega')
 
   const { data, error } = await query
   if (error) throw new Error(`stock.list: ${error.message}`)
