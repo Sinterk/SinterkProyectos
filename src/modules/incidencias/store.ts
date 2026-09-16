@@ -18,6 +18,20 @@ export function hasPendingSync(record: Incidencia): boolean {
 }
 
 /**
+ * Qué guardar de una foto al persistir en localStorage — ver el comentario
+ * largo en `persistFoto` de preventivos/store.ts (mismo mecanismo, mismo
+ * motivo real de egress): con `storagePath`, se conserva `previewUrl` y su
+ * timestamp para poder reusar la signed URL mientras siga vigente; sin
+ * `storagePath` (blob local), se vacía porque el blob: URL no sobrevive un
+ * reload.
+ */
+function persistFoto<T extends FotoEntry | undefined>(f: T): T {
+  if (!f) return f
+  if (f.storagePath) return f
+  return { ...f, previewUrl: '' } as T
+}
+
+/**
  * Fusiona un record recién leído del servidor con lo que ya hay en cache.
  *
  * Ver el comentario largo en att/store.ts: antes se decidía comparando
@@ -34,7 +48,7 @@ function mergeFromServer(local: Incidencia | undefined, server: Incidencia, sync
   if (local && local.updatedAt !== synced) return local
   function mergeFoto(f: FotoEntry): FotoEntry {
     const prev = local?.fotos.find((lf) => lf.storagePath && lf.storagePath === f.storagePath)
-    return prev ? { ...f, previewUrl: prev.previewUrl, blobId: prev.blobId } : f
+    return prev ? { ...f, previewUrl: prev.previewUrl, previewUrlAt: prev.previewUrlAt, blobId: prev.blobId } : f
   }
   return { ...server, fotos: server.fotos.map(mergeFoto) }
 }
@@ -207,7 +221,7 @@ export const useIncidenciaStore = create<IncidenciaState>()(
 
           const fotos = saved.fotos.map((f, i) => {
             const prev = old?.fotos[i]
-            return prev ? { ...f, previewUrl: prev.previewUrl, blobId: prev.blobId } : f
+            return prev ? { ...f, previewUrl: prev.previewUrl, previewUrlAt: prev.previewUrlAt, blobId: prev.blobId } : f
           })
           next[saved.id] = { ...saved, fotos }
           return { records: next, syncedAt: { ...s.syncedAt, [saved.id]: saved.updatedAt } }
@@ -282,7 +296,7 @@ export const useIncidenciaStore = create<IncidenciaState>()(
         set((s) => {
           const rec = s.records[id]
           if (!rec) return s
-          const fotos = rec.fotos.map((f, i) => i === index ? { ...f, previewUrl } : f)
+          const fotos = rec.fotos.map((f, i) => i === index ? { ...f, previewUrl, previewUrlAt: Date.now() } : f)
           return { records: { ...s.records, [id]: { ...rec, fotos } } }
         })
       },
@@ -293,7 +307,7 @@ export const useIncidenciaStore = create<IncidenciaState>()(
         records: Object.fromEntries(
           Object.entries(s.records).map(([id, rec]) => [id, {
             ...rec,
-            fotos: rec.fotos.map((f) => ({ ...f, previewUrl: '' })),
+            fotos: rec.fotos.map(persistFoto),
           }])
         ),
         // Tiene que sobrevivir un reload — ver el comentario de `syncedAt` arriba.

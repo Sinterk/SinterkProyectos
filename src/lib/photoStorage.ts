@@ -14,6 +14,27 @@ const BUCKET = 'fotos'
 /** Vigencia de las signed URLs (segundos). 1 h basta para ver/editar un informe. */
 const SIGNED_URL_TTL = 60 * 60
 
+/**
+ * Cuánto se considera "fresca" una signed URL ya resuelta, para poder
+ * reusarla entre sesiones sin pedir una nueva ni volver a bajar la foto.
+ * Un margen de 5 min por debajo de `SIGNED_URL_TTL` evita que se use
+ * hasta el borde y expire mientras la imagen sigue en pantalla.
+ *
+ * Real: el token de la signed URL cambia en cada llamada a `createSignedUrl(s)`,
+ * aunque sea la misma foto — eso hace que el navegador la trate como un
+ * recurso distinto y la vuelva a descargar completa, aunque ya la tuviera en
+ * caché. Reusar la MISMA url (con su mismo token) mientras siga vigente deja
+ * que el caché HTTP del navegador la sirva sin generar egress nuevo. Medido
+ * como causa real de un pico de egress en Supabase (7-8 sep 2026, ver
+ * `docs/CONTINUAR-BACKEND.md`).
+ */
+const SIGNED_URL_FRESH_MS = (SIGNED_URL_TTL - 5 * 60) * 1000
+
+/** ¿Sigue vigente (con margen) una signed URL resuelta en `at` (epoch ms)? */
+export function isSignedUrlFresh(at: number | undefined): boolean {
+  return !!at && Date.now() - at < SIGNED_URL_FRESH_MS
+}
+
 /** Sube un blob al bucket (upsert). Devuelve el path guardado. */
 export async function uploadPhotoObject(path: string, blob: Blob): Promise<string> {
   const { error } = await supabase.storage.from(BUCKET).upload(path, blob, {

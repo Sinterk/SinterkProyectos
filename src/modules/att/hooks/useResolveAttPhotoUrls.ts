@@ -1,6 +1,6 @@
 import { useEffect } from 'react'
 import { useAttStore } from '../store'
-import { getSignedUrls } from '../data/photoStorage'
+import { getSignedUrls, isSignedUrlFresh } from '../data/photoStorage'
 
 /**
  * Espejo online de `useRestoreAttPhotos`: para las fotos que ya viven en Storage
@@ -17,9 +17,9 @@ export function useResolveAttPhotoUrls() {
   // Paths con storagePath y sin previewUrl aún → lo que falta resolver.
   const pendingPaths: string[] = []
   for (const r of Object.values(records)) {
-    if (r.fotoAerea?.storagePath && !r.fotoAerea.previewUrl) pendingPaths.push(r.fotoAerea.storagePath)
+    if (r.fotoAerea?.storagePath && (!r.fotoAerea.previewUrl || !isSignedUrlFresh(r.fotoAerea.previewUrlAt))) pendingPaths.push(r.fotoAerea.storagePath)
     for (const f of r.fotos) {
-      if (f.storagePath && !f.previewUrl) pendingPaths.push(f.storagePath)
+      if (f.storagePath && (!f.previewUrl || !isSignedUrlFresh(f.previewUrlAt))) pendingPaths.push(f.storagePath)
     }
   }
   const pendingKey = pendingPaths.slice().sort().join('|')
@@ -33,12 +33,12 @@ export function useResolveAttPhotoUrls() {
       if (cancelled) return
       const { records: current } = useAttStore.getState()
       for (const r of Object.values(current)) {
-        if (r.fotoAerea?.storagePath && !r.fotoAerea.previewUrl) {
+        if (r.fotoAerea?.storagePath && (!r.fotoAerea.previewUrl || !isSignedUrlFresh(r.fotoAerea.previewUrlAt))) {
           const u = urls.get(r.fotoAerea.storagePath)
           if (u) setFotoAereaPreview(r.id, u)
         }
         r.fotos.forEach((f, i) => {
-          if (f.storagePath && !f.previewUrl) {
+          if (f.storagePath && (!f.previewUrl || !isSignedUrlFresh(f.previewUrlAt))) {
             const u = urls.get(f.storagePath)
             if (u) setFotoPreview(r.id, i, u)
           }

@@ -11,7 +11,7 @@ import { nanoid } from '@/core/utils/nanoid'
 import { uploadPhotoObject } from '@/lib/photoStorage'
 import type { AttRecord, FotoEntry } from '../types'
 
-export { getSignedUrl, getSignedUrls, removePhotoObjects } from '@/lib/photoStorage'
+export { getSignedUrl, getSignedUrls, removePhotoObjects, isSignedUrlFresh } from '@/lib/photoStorage'
 
 /** Ruta determinista de un blob en el bucket. */
 function storagePathFor(blobId: string | undefined): string {

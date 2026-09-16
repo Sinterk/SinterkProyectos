@@ -1,6 +1,6 @@
 import { useEffect } from 'react'
 import { usePreventivoStore } from '../store'
-import { getSignedUrls, getSignedUrlsThumb } from '../data/photoStorage'
+import { getSignedUrls, getSignedUrlsThumb, isSignedUrlFresh } from '../data/photoStorage'
 import type { FotoEntry, FotoKey } from '../types'
 
 const FOTO_KEYS: FotoKey[] = ['fotoLevantamiento', 'fotoAntes', 'fotoDespues']
@@ -39,8 +39,8 @@ export function useResolvePhotoUrls(id: string) {
   const pendingThumb: string[] = []
   function track(f: FotoEntry | undefined) {
     if (!f?.storagePath) return
-    if (!f.previewUrl) pendingFull.push(f.storagePath)
-    if (!f.thumbUrl) pendingThumb.push(f.storagePath)
+    if (!f.previewUrl || !isSignedUrlFresh(f.previewUrlAt)) pendingFull.push(f.storagePath)
+    if (!f.thumbUrl || !isSignedUrlFresh(f.thumbUrlAt)) pendingThumb.push(f.storagePath)
   }
   if (record) {
     track(record.cuadrante.fotoPlano)
@@ -63,8 +63,8 @@ export function useResolvePhotoUrls(id: string) {
 
       function apply(f: FotoEntry | undefined, setPreview: (u: string) => void, setThumb: (u: string) => void) {
         if (!f?.storagePath) return
-        if (!f.previewUrl) { const u = fullUrls.get(f.storagePath); if (u) setPreview(u) }
-        if (!f.thumbUrl) { const u = thumbUrls.get(f.storagePath); if (u) setThumb(u) }
+        if (!f.previewUrl || !isSignedUrlFresh(f.previewUrlAt)) { const u = fullUrls.get(f.storagePath); if (u) setPreview(u) }
+        if (!f.thumbUrl || !isSignedUrlFresh(f.thumbUrlAt)) { const u = thumbUrls.get(f.storagePath); if (u) setThumb(u) }
       }
 
       apply(r.cuadrante.fotoPlano, (u) => setFotoPlanoPreview(r.id, u), (u) => setFotoPlanoThumb(r.id, u))

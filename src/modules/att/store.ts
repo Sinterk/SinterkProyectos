@@ -28,6 +28,20 @@ export function hasPendingSync(record: AttRecord): boolean {
 }
 
 /**
+ * Qué guardar de una foto al persistir en localStorage — ver el comentario
+ * largo en `persistFoto` de preventivos/store.ts (mismo mecanismo, mismo
+ * motivo real de egress): con `storagePath`, se conserva `previewUrl` y su
+ * timestamp para poder reusar la signed URL mientras siga vigente; sin
+ * `storagePath` (blob local), se vacía porque el blob: URL no sobrevive un
+ * reload.
+ */
+function persistFoto<T extends FotoEntry | undefined>(f: T): T {
+  if (!f) return f
+  if (f.storagePath) return f
+  return { ...f, previewUrl: '' } as T
+}
+
+/**
  * Fusiona un record recién leído del servidor con lo que ya hay en cache.
  *
  * Antes esto se decidía comparando `local.updatedAt > server.updatedAt` —
@@ -53,7 +67,7 @@ function mergeFromServer(local: AttRecord | undefined, server: AttRecord, synced
   function mergeFoto(f: FotoEntry): FotoEntry {
     const prev = local?.fotos.find((lf) => lf.storagePath && lf.storagePath === f.storagePath)
       ?? (localAerea?.storagePath === f.storagePath ? localAerea : undefined)
-    return prev ? { ...f, previewUrl: prev.previewUrl, blobId: prev.blobId } : f
+    return prev ? { ...f, previewUrl: prev.previewUrl, previewUrlAt: prev.previewUrlAt, blobId: prev.blobId } : f
   }
 
   return {
@@ -330,10 +344,10 @@ export const useAttStore = create<AttState>()(
           // Conserva previews/blobId locales de fotos ya capturadas (mismo orden que se guardó).
           const fotos = saved.fotos.map((f, i) => {
             const prev = old?.fotos[i]
-            return prev ? { ...f, previewUrl: prev.previewUrl, blobId: prev.blobId } : f
+            return prev ? { ...f, previewUrl: prev.previewUrl, previewUrlAt: prev.previewUrlAt, blobId: prev.blobId } : f
           })
           const fotoAerea = saved.fotoAerea && old?.fotoAerea
-            ? { ...saved.fotoAerea, previewUrl: old.fotoAerea.previewUrl, blobId: old.fotoAerea.blobId }
+            ? { ...saved.fotoAerea, previewUrl: old.fotoAerea.previewUrl, previewUrlAt: old.fotoAerea.previewUrlAt, blobId: old.fotoAerea.blobId }
             : saved.fotoAerea
           next[saved.id] = { ...saved, fotos, fotoAerea }
           // El uuid recién asignado por el servidor no es una edición pendiente.
@@ -494,7 +508,7 @@ export const useAttStore = create<AttState>()(
         set((s) => {
           const rec = s.records[id]
           if (!rec?.fotoAerea) return s
-          return { records: { ...s.records, [id]: { ...rec, fotoAerea: { ...rec.fotoAerea, previewUrl } } } }
+          return { records: { ...s.records, [id]: { ...rec, fotoAerea: { ...rec.fotoAerea, previewUrl, previewUrlAt: Date.now() } } } }
         })
       },
 
@@ -527,7 +541,7 @@ export const useAttStore = create<AttState>()(
         set((s) => {
           const rec = s.records[id]
           if (!rec) return s
-          const fotos = rec.fotos.map((f, i) => i === index ? { ...f, previewUrl } : f)
+          const fotos = rec.fotos.map((f, i) => i === index ? { ...f, previewUrl, previewUrlAt: Date.now() } : f)
           return { records: { ...s.records, [id]: { ...rec, fotos } } }
         })
       },
@@ -538,8 +552,8 @@ export const useAttStore = create<AttState>()(
         records: Object.fromEntries(
           Object.entries(s.records).map(([id, rec]) => [id, {
             ...rec,
-            fotoAerea: rec.fotoAerea ? { ...rec.fotoAerea, previewUrl: '' } : undefined,
-            fotos: rec.fotos.map((f) => ({ ...f, previewUrl: '' })),
+            fotoAerea: persistFoto(rec.fotoAerea),
+            fotos: rec.fotos.map(persistFoto),
           }])
         ),
         // Tiene que sobrevivir un reload: si no, toda edición local parecería

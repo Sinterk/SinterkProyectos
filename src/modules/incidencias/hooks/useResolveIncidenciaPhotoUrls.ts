@@ -1,6 +1,6 @@
 import { useEffect } from 'react'
 import { useIncidenciaStore } from '../store'
-import { getSignedUrls } from '../data/photoStorage'
+import { getSignedUrls, isSignedUrlFresh } from '../data/photoStorage'
 
 /**
  * Espejo online de useRestoreIncidenciaPhotos: para las fotos que ya viven
@@ -13,7 +13,7 @@ export function useResolveIncidenciaPhotoUrls() {
   const pendingPaths: string[] = []
   for (const r of Object.values(records)) {
     for (const f of r.fotos) {
-      if (f.storagePath && !f.previewUrl) pendingPaths.push(f.storagePath)
+      if (f.storagePath && (!f.previewUrl || !isSignedUrlFresh(f.previewUrlAt))) pendingPaths.push(f.storagePath)
     }
   }
   const pendingKey = pendingPaths.slice().sort().join('|')
@@ -28,7 +28,7 @@ export function useResolveIncidenciaPhotoUrls() {
       const { records: current } = useIncidenciaStore.getState()
       for (const r of Object.values(current)) {
         r.fotos.forEach((f, i) => {
-          if (f.storagePath && !f.previewUrl) {
+          if (f.storagePath && (!f.previewUrl || !isSignedUrlFresh(f.previewUrlAt))) {
             const u = urls.get(f.storagePath)
             if (u) setFotoPreview(r.id, i, u)
           }

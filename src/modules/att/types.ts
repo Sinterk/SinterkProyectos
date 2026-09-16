@@ -3,6 +3,8 @@ export interface FotoEntry {
   fileName: string
   blobId?: string
   storagePath?: string // ruta en el bucket `fotos` de Supabase (se llena al subir, paso 2)
+  /** epoch ms de cuándo se resolvió `previewUrl` — para saber si sigue vigente y se puede reusar sin volver a pedirla/descargarla (ver `isSignedUrlFresh`). */
+  previewUrlAt?: number
   capturedAt: string
   annotated: boolean
   categoria: string    // key de FOTO_CATEGORIAS o 'otro'

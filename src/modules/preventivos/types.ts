@@ -11,6 +11,10 @@ export interface FotoEntry {
   storagePath?: string
   /** Signed URL de una miniatura (200×200) de la misma foto — solo para fotos ya subidas; se usa en miniaturas/grillas, nunca en el lightbox ni en exports (ahí siempre `previewUrl`, resolución completa). */
   thumbUrl?: string
+  /** epoch ms de cuándo se resolvió `previewUrl` — para saber si sigue vigente y se puede reusar sin volver a pedirla/descargarla (ver `isSignedUrlFresh`). */
+  previewUrlAt?: number
+  /** epoch ms de cuándo se resolvió `thumbUrl`. */
+  thumbUrlAt?: number
   capturedAt: string
   annotated: boolean
 }

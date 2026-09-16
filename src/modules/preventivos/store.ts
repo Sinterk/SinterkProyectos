@@ -24,6 +24,22 @@ export function hasPendingSync(record: Preventivo): boolean {
   return record.puntos.some((p) => pendingFoto(p.fotoLevantamiento) || pendingFoto(p.fotoAntes) || pendingFoto(p.fotoDespues))
 }
 
+/**
+ * Qué guardar de una foto al persistir en localStorage:
+ * - con `storagePath` (ya subida a Storage): se conserva `previewUrl`/`thumbUrl`
+ *   tal cual, con su timestamp — si sigue vigente (`isSignedUrlFresh`), se
+ *   reusa la misma signed URL al recargar la app en vez de pedir una nueva y
+ *   volver a descargar la foto completa (ver `SIGNED_URL_FRESH_MS`).
+ * - sin `storagePath` (solo blob local, aún sin subir): el `previewUrl` es un
+ *   `URL.createObjectURL` que muere al recargar la página — se vacía para que
+ *   `useRestorePhotoPreviews` lo reconstruya desde IndexedDB al montar.
+ */
+function persistFoto(f: FotoEntry | undefined): FotoEntry | undefined {
+  if (!f) return f
+  if (f.storagePath) return f
+  return { ...f, previewUrl: '' }
+}
+
 /** Todas las fotos (plano + puntos) de un record, indexadas por storagePath. */
 function collectFotosByPath(record: Preventivo | undefined): Map<string, FotoEntry> {
   const map = new Map<string, FotoEntry>()
@@ -58,7 +74,9 @@ function mergeFromServer(local: Preventivo | undefined, server: Preventivo, sync
   function mergeFoto(f: FotoEntry | undefined): FotoEntry | undefined {
     if (!f?.storagePath) return f
     const prev = localFotos.get(f.storagePath)
-    return prev ? { ...f, previewUrl: prev.previewUrl, blobId: prev.blobId, thumbUrl: prev.thumbUrl } : f
+    return prev
+      ? { ...f, previewUrl: prev.previewUrl, previewUrlAt: prev.previewUrlAt, blobId: prev.blobId, thumbUrl: prev.thumbUrl, thumbUrlAt: prev.thumbUrlAt }
+      : f
   }
 
   return {
@@ -265,7 +283,9 @@ export const usePreventivoStore = create<PreventivoState>()(
           function restore(f: FotoEntry | undefined): FotoEntry | undefined {
             if (!f?.storagePath) return f
             const prev = oldFotos.get(f.storagePath)
-            return prev ? { ...f, previewUrl: prev.previewUrl, blobId: prev.blobId, thumbUrl: prev.thumbUrl } : f
+            return prev
+              ? { ...f, previewUrl: prev.previewUrl, previewUrlAt: prev.previewUrlAt, blobId: prev.blobId, thumbUrl: prev.thumbUrl, thumbUrlAt: prev.thumbUrlAt }
+              : f
           }
           const merged: Preventivo = {
             ...saved,
@@ -357,7 +377,7 @@ export const usePreventivoStore = create<PreventivoState>()(
           return {
             records: {
               ...s.records,
-              [id]: { ...rec, cuadrante: { ...rec.cuadrante, fotoPlano: { ...rec.cuadrante.fotoPlano, previewUrl } } },
+              [id]: { ...rec, cuadrante: { ...rec.cuadrante, fotoPlano: { ...rec.cuadrante.fotoPlano, previewUrl, previewUrlAt: Date.now() } } },
             },
           }
         })
@@ -370,7 +390,7 @@ export const usePreventivoStore = create<PreventivoState>()(
           const puntos = rec.puntos.map((p) => {
             if (p.id !== puntoId) return p
             const foto = p[key]
-            return foto ? { ...p, [key]: { ...foto, previewUrl } } : p
+            return foto ? { ...p, [key]: { ...foto, previewUrl, previewUrlAt: Date.now() } } : p
           })
           return { records: { ...s.records, [id]: { ...rec, puntos } } }
         })
@@ -383,7 +403,7 @@ export const usePreventivoStore = create<PreventivoState>()(
           return {
             records: {
               ...s.records,
-              [id]: { ...rec, cuadrante: { ...rec.cuadrante, fotoPlano: { ...rec.cuadrante.fotoPlano, thumbUrl } } },
+              [id]: { ...rec, cuadrante: { ...rec.cuadrante, fotoPlano: { ...rec.cuadrante.fotoPlano, thumbUrl, thumbUrlAt: Date.now() } } },
             },
           }
         })
@@ -396,7 +416,7 @@ export const usePreventivoStore = create<PreventivoState>()(
           const puntos = rec.puntos.map((p) => {
             if (p.id !== puntoId) return p
             const foto = p[key]
-            return foto ? { ...p, [key]: { ...foto, thumbUrl } } : p
+            return foto ? { ...p, [key]: { ...foto, thumbUrl, thumbUrlAt: Date.now() } } : p
           })
           return { records: { ...s.records, [id]: { ...rec, puntos } } }
         })
@@ -492,15 +512,13 @@ export const usePreventivoStore = create<PreventivoState>()(
               ...v,
               cuadrante: {
                 ...v.cuadrante,
-                fotoPlano: v.cuadrante.fotoPlano
-                  ? { ...v.cuadrante.fotoPlano, previewUrl: '' }
-                  : undefined,
+                fotoPlano: persistFoto(v.cuadrante.fotoPlano),
               },
               puntos: v.puntos.map((p) => ({
                 ...p,
-                fotoLevantamiento: p.fotoLevantamiento ? { ...p.fotoLevantamiento, previewUrl: '' } : undefined,
-                fotoAntes: p.fotoAntes ? { ...p.fotoAntes, previewUrl: '' } : undefined,
-                fotoDespues: p.fotoDespues ? { ...p.fotoDespues, previewUrl: '' } : undefined,
+                fotoLevantamiento: persistFoto(p.fotoLevantamiento),
+                fotoAntes: persistFoto(p.fotoAntes),
+                fotoDespues: persistFoto(p.fotoDespues),
               })),
             },
           ]),
