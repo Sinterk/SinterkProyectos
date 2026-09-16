@@ -57,7 +57,7 @@ export function PhotoCapture({ label, fotoKey, entry, editable = true, onCapture
       <>
         <div className={`relative rounded-xl overflow-hidden border-2 ${color} bg-slate-800`}>
           <FotoImg
-            src={entry.previewUrl}
+            src={entry.thumbUrl ?? entry.previewUrl}
             alt={label}
             className="w-full h-36 object-cover cursor-zoom-in"
             onClick={() => setLightbox(true)}

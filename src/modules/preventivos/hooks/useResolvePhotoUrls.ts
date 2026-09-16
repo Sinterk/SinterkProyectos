@@ -1,16 +1,26 @@
 import { useEffect } from 'react'
 import { usePreventivoStore } from '../store'
-import { getSignedUrls } from '../data/photoStorage'
-import type { FotoKey } from '../types'
+import { getSignedUrls, getSignedUrlsThumb } from '../data/photoStorage'
+import type { FotoEntry, FotoKey } from '../types'
 
 const FOTO_KEYS: FotoKey[] = ['fotoLevantamiento', 'fotoAntes', 'fotoDespues']
 
 /**
  * Espejo online de `useRestorePhotoPreviews`: para las fotos que ya viven en
- * Storage (tienen `storagePath` pero aún no `previewUrl`), pide signed URLs
- * en lote y las vuelca al store como `previewUrl`. Las fotos locales (solo
- * `blobId`) las sigue cubriendo `useRestorePhotoPreviews` desde IndexedDB;
- * ambos hooks conviven.
+ * Storage (tienen `storagePath`), pide signed URLs y las vuelca al store.
+ * Dos URLs por foto, resueltas en paralelo:
+ * - `previewUrl` (resolución completa, en lote vía `createSignedUrls`) —
+ *   la sigue usando el lightbox y cualquier export/informe.
+ * - `thumbUrl` (miniatura 200×200 transformada, una signed URL por foto —
+ *   `createSignedUrls` en lote NO soporta `transform`, solo el endpoint de
+ *   una foto a la vez) — la usan las miniaturas/grillas. Pedido de Andrés
+ *   ("¿se puede hacer que la carga de cuadrantes con muchas fotos sea un
+ *   poco más rápida?"): una foto de ~380KB baja a ~9KB con esta
+ *   transformación, verificado contra el bucket real.
+ *
+ * Las fotos locales (solo `blobId`) las sigue cubriendo
+ * `useRestorePhotoPreviews` desde IndexedDB — no necesitan miniatura
+ * aparte, ya son livianas y están en el dispositivo.
  *
  * Acotado al levantamiento `id` — antes recorría TODO `records` (cualquier
  * levantamiento que hubiera quedado cacheado por `syncList()` en la lista,
@@ -23,42 +33,44 @@ const FOTO_KEYS: FotoKey[] = ['fotoLevantamiento', 'fotoAntes', 'fotoDespues']
  */
 export function useResolvePhotoUrls(id: string) {
   const record = usePreventivoStore((s) => s.records[id])
-  const { setFotoPlanoPreview, setPuntoFotoPreview } = usePreventivoStore()
+  const { setFotoPlanoPreview, setPuntoFotoPreview, setFotoPlanoThumb, setPuntoFotoThumb } = usePreventivoStore()
 
-  const pendingPaths: string[] = []
-  if (record) {
-    if (record.cuadrante.fotoPlano?.storagePath && !record.cuadrante.fotoPlano.previewUrl) {
-      pendingPaths.push(record.cuadrante.fotoPlano.storagePath)
-    }
-    for (const p of record.puntos) {
-      for (const key of FOTO_KEYS) {
-        const f = p[key]
-        if (f?.storagePath && !f.previewUrl) pendingPaths.push(f.storagePath)
-      }
-    }
+  const pendingFull: string[] = []
+  const pendingThumb: string[] = []
+  function track(f: FotoEntry | undefined) {
+    if (!f?.storagePath) return
+    if (!f.previewUrl) pendingFull.push(f.storagePath)
+    if (!f.thumbUrl) pendingThumb.push(f.storagePath)
   }
-  const pendingKey = pendingPaths.slice().sort().join('|')
+  if (record) {
+    track(record.cuadrante.fotoPlano)
+    for (const p of record.puntos) for (const key of FOTO_KEYS) track(p[key])
+  }
+  const pendingKey = `${pendingFull.slice().sort().join('|')}::${pendingThumb.slice().sort().join('|')}`
 
   useEffect(() => {
-    if (pendingPaths.length === 0) return
+    if (pendingFull.length === 0 && pendingThumb.length === 0) return
     let cancelled = false
 
     async function resolve() {
-      const urls = await getSignedUrls([...new Set(pendingPaths)])
+      const [fullUrls, thumbUrls] = await Promise.all([
+        pendingFull.length > 0 ? getSignedUrls([...new Set(pendingFull)]) : new Map<string, string>(),
+        pendingThumb.length > 0 ? getSignedUrlsThumb([...new Set(pendingThumb)]) : new Map<string, string>(),
+      ])
       if (cancelled) return
       const r = usePreventivoStore.getState().records[id]
       if (!r) return
-      if (r.cuadrante.fotoPlano?.storagePath && !r.cuadrante.fotoPlano.previewUrl) {
-        const u = urls.get(r.cuadrante.fotoPlano.storagePath)
-        if (u) setFotoPlanoPreview(r.id, u)
+
+      function apply(f: FotoEntry | undefined, setPreview: (u: string) => void, setThumb: (u: string) => void) {
+        if (!f?.storagePath) return
+        if (!f.previewUrl) { const u = fullUrls.get(f.storagePath); if (u) setPreview(u) }
+        if (!f.thumbUrl) { const u = thumbUrls.get(f.storagePath); if (u) setThumb(u) }
       }
+
+      apply(r.cuadrante.fotoPlano, (u) => setFotoPlanoPreview(r.id, u), (u) => setFotoPlanoThumb(r.id, u))
       for (const p of r.puntos) {
         for (const key of FOTO_KEYS) {
-          const f = p[key]
-          if (f?.storagePath && !f.previewUrl) {
-            const u = urls.get(f.storagePath)
-            if (u) setPuntoFotoPreview(r.id, p.id, key, u)
-          }
+          apply(p[key], (u) => setPuntoFotoPreview(r.id, p.id, key, u), (u) => setPuntoFotoThumb(r.id, p.id, key, u))
         }
       }
     }

@@ -10,7 +10,7 @@ import { nanoid } from '@/core/utils/nanoid'
 import { uploadPhotoObject } from '@/lib/photoStorage'
 import type { Preventivo, FotoEntry } from '../types'
 
-export { getSignedUrl, getSignedUrls, removePhotoObjects } from '@/lib/photoStorage'
+export { getSignedUrl, getSignedUrls, getSignedUrlsThumb, removePhotoObjects } from '@/lib/photoStorage'
 
 function storagePathFor(blobId: string | undefined): string {
   return `preventivos/${blobId ?? nanoid()}.jpg`

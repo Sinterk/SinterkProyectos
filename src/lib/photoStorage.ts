@@ -55,6 +55,39 @@ export async function getSignedUrls(
   return map
 }
 
+/**
+ * Miniatura transformada (200×200, calidad 60) de cada foto — pedido de
+ * Andrés: "¿se puede hacer que la carga de cuadrantes con muchas fotos sea
+ * un poco más rápida?". Confirmado contra el bucket real: una foto de
+ * ~380KB (1600px, la que ya deja `compressImage`) baja a ~9KB con esta
+ * transformación — con 100+ fotos por cuadrante es la diferencia entre
+ * bajar ~1MB o ~40MB. `createSignedUrls` (plural) NO soporta `transform`
+ * en la API de Storage (probado directo contra el bucket: el `transform`
+ * se ignora en el endpoint en lote) — solo el endpoint de una foto a la
+ * vez lo acepta, así que esto pide una signed URL por foto en paralelo
+ * (siguen siendo requests livianos, la ganancia real está en los bytes de
+ * imagen que ya no hay que bajar).
+ */
+export async function getSignedUrlsThumb(
+  paths: string[],
+  expiresIn: number = SIGNED_URL_TTL,
+): Promise<Map<string, string>> {
+  const map = new Map<string, string>()
+  if (paths.length === 0) return map
+  const results = await Promise.all(paths.map(async (path) => {
+    const { data, error } = await supabase.storage.from(BUCKET).createSignedUrl(path, expiresIn, {
+      transform: { width: 200, height: 200, resize: 'cover', quality: 60 },
+    })
+    if (error) {
+      console.error(`[photoStorage] signedUrlThumb(${path}):`, error.message)
+      return null
+    }
+    return [path, data.signedUrl] as const
+  }))
+  for (const r of results) if (r) map.set(r[0], r[1])
+  return map
+}
+
 /** Borra objetos del bucket. No falla si la lista viene vacía. */
 export async function removePhotoObjects(paths: (string | undefined | null)[]): Promise<void> {
   const clean = paths.filter((p): p is string => !!p)

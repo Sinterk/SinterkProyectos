@@ -9,6 +9,8 @@ export interface FotoEntry {
   blobId?: string
   /** Ruta en el bucket `fotos` de Supabase (se llena al subir) */
   storagePath?: string
+  /** Signed URL de una miniatura (200×200) de la misma foto — solo para fotos ya subidas; se usa en miniaturas/grillas, nunca en el lightbox ni en exports (ahí siempre `previewUrl`, resolución completa). */
+  thumbUrl?: string
   capturedAt: string
   annotated: boolean
 }

@@ -58,7 +58,7 @@ function mergeFromServer(local: Preventivo | undefined, server: Preventivo, sync
   function mergeFoto(f: FotoEntry | undefined): FotoEntry | undefined {
     if (!f?.storagePath) return f
     const prev = localFotos.get(f.storagePath)
-    return prev ? { ...f, previewUrl: prev.previewUrl, blobId: prev.blobId } : f
+    return prev ? { ...f, previewUrl: prev.previewUrl, blobId: prev.blobId, thumbUrl: prev.thumbUrl } : f
   }
 
   return {
@@ -113,6 +113,8 @@ interface PreventivoState {
    *  URL) no es una edición del usuario, y no debe disparar el autoguardado. */
   setFotoPlanoPreview: (id: string, previewUrl: string) => void
   setPuntoFotoPreview: (id: string, puntoId: string, key: FotoKey, previewUrl: string) => void
+  setFotoPlanoThumb: (id: string, thumbUrl: string) => void
+  setPuntoFotoThumb: (id: string, puntoId: string, key: FotoKey, thumbUrl: string) => void
 }
 
 const emptyC = (): CuadranteInfo => ({
@@ -263,7 +265,7 @@ export const usePreventivoStore = create<PreventivoState>()(
           function restore(f: FotoEntry | undefined): FotoEntry | undefined {
             if (!f?.storagePath) return f
             const prev = oldFotos.get(f.storagePath)
-            return prev ? { ...f, previewUrl: prev.previewUrl, blobId: prev.blobId } : f
+            return prev ? { ...f, previewUrl: prev.previewUrl, blobId: prev.blobId, thumbUrl: prev.thumbUrl } : f
           }
           const merged: Preventivo = {
             ...saved,
@@ -369,6 +371,32 @@ export const usePreventivoStore = create<PreventivoState>()(
             if (p.id !== puntoId) return p
             const foto = p[key]
             return foto ? { ...p, [key]: { ...foto, previewUrl } } : p
+          })
+          return { records: { ...s.records, [id]: { ...rec, puntos } } }
+        })
+      },
+
+      setFotoPlanoThumb(id, thumbUrl) {
+        set((s) => {
+          const rec = s.records[id]
+          if (!rec?.cuadrante.fotoPlano) return s
+          return {
+            records: {
+              ...s.records,
+              [id]: { ...rec, cuadrante: { ...rec.cuadrante, fotoPlano: { ...rec.cuadrante.fotoPlano, thumbUrl } } },
+            },
+          }
+        })
+      },
+
+      setPuntoFotoThumb(id, puntoId, key, thumbUrl) {
+        set((s) => {
+          const rec = s.records[id]
+          if (!rec) return s
+          const puntos = rec.puntos.map((p) => {
+            if (p.id !== puntoId) return p
+            const foto = p[key]
+            return foto ? { ...p, [key]: { ...foto, thumbUrl } } : p
           })
           return { records: { ...s.records, [id]: { ...rec, puntos } } }
         })

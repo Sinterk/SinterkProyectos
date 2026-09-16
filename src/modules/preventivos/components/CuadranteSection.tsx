@@ -123,6 +123,10 @@ export function CuadranteSection({ preventivoId, cuadrante, onSave, soloFotos = 
         {(() => { const estadoPlano = fotoEstadoDe(cuadrante.fotoPlano); return cuadrante.fotoPlano?.previewUrl ? (
           <>
             <div className="relative rounded-xl overflow-hidden border-2 border-slate-600 min-h-[9rem]">
+              {/* El plano queda siempre en resolución completa a propósito (no
+                  `thumbUrl`) — es un documento con texto/diagrama que hay que
+                  poder leer, y es solo 1 foto por cuadrante (no el caso de
+                  "muchas fotos" que se optimizó abajo). */}
               <FotoImg
                 src={cuadrante.fotoPlano.previewUrl}
                 alt="Plano"

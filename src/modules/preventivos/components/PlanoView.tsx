@@ -34,6 +34,10 @@ export function PlanoView() {
       {cuadrante.fotoPlano?.previewUrl ? (
         <div className="relative rounded-2xl overflow-hidden border border-slate-700 bg-slate-900 min-h-[10rem]">
           <div className="px-3 py-2 text-xs font-semibold text-brand-400 border-b border-slate-700">📐 Plano de trabajo</div>
+          {/* El plano queda en resolución completa a propósito — es un
+              documento con texto/diagrama que hay que poder leer, y es solo
+              1 foto por cuadrante (no el caso de "muchas fotos" de la
+              grilla de abajo, que sí usa miniatura). */}
           <FotoImg src={cuadrante.fotoPlano.previewUrl} alt="Plano" className="w-full max-h-80 object-contain" />
           {fotoEstadoDe(cuadrante.fotoPlano) === 'subiendo' && (
             <div className="absolute top-1.5 right-1.5 bg-black/70 rounded-full w-6 h-6 flex items-center justify-center" title="Subiendo al servidor…">
@@ -91,7 +95,7 @@ export function PlanoView() {
                     if (foto?.previewUrl) {
                       return (
                         <div key={key} className={`relative rounded-xl overflow-hidden border-2 ${COLORS[key]}`}>
-                          <FotoImg src={foto.previewUrl} alt={LABELS[key]} className="w-full h-28 object-cover" />
+                          <FotoImg src={foto.thumbUrl ?? foto.previewUrl} alt={LABELS[key]} className="w-full h-28 object-cover" />
                           {estado === 'subiendo' && (
                             <div className="absolute top-1 right-1 bg-black/70 rounded-full w-5 h-5 flex items-center justify-center" title="Subiendo al servidor…">
                               <span className="text-[10px] animate-spin">⏳</span>
