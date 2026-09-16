@@ -14,7 +14,7 @@ import { ResumenProyectoTable } from '@/ui/ResumenProyectoTable'
 import { UbicacionSelect } from '@/ui/UbicacionSelect'
 import { useFileDrop } from '@/ui/useFileDrop'
 import {
-  getStock, getTecnicoLedger, listMovimientos, anularMovimiento, listMateriales, listUbicaciones, TIPO_LABELS_MOV,
+  getStock, listMovimientos, anularMovimiento, listMateriales, listUbicaciones, TIPO_LABELS_MOV,
   updateMaterialStockMinimo, updateMaterialComentario, updateMaterialTendido, crearMaterial,
   listMaterialTipos, crearMaterialTipo, updateMaterialApodo, updateMaterialDescripcion, updateMaterialTipo,
   listProveedores, crearProveedor, updateMaterialProveedores,
@@ -24,7 +24,7 @@ import {
 } from '@/lib/inventario/inventarioRepo'
 import type { ListMovimientosFilters, ImportarSapResultado } from '@/lib/inventario/inventarioRepo'
 import type {
-  Movimiento, StockRow, TecnicoLedgerRow, Ubicacion, Material, MaterialTipo, Proveedor, Paquete,
+  Movimiento, StockRow, Ubicacion, Material, MaterialTipo, Proveedor, Paquete,
   Conteo, ConteoLinea, EventoInventario, EventoResolucion, ResolucionTipo, ConsumoArea,
 } from '@/lib/inventario/types'
 import { parseArchivoXlsx, parseTextoPegado } from '@/lib/inventario/importarSap'
@@ -689,62 +689,65 @@ function ProyectoTab() {
   )
 }
 
-type TecColKey = 'sku' | 'material' | 'lote' | 'proyecto' | 'entregado' | 'instalado' | 'devuelto' | 'rebajado' | 'merma' | 'transito'
-
-const TEC_COLUMNS: { key: TecColKey; label: string; numeric?: boolean; align?: 'right' }[] = [
-  { key: 'sku', label: 'SKU', numeric: true },
-  { key: 'material', label: 'Material' },
-  { key: 'lote', label: 'Lote' },
-  { key: 'proyecto', label: 'Proyecto' },
-  { key: 'entregado', label: 'Entregado', numeric: true, align: 'right' },
-  { key: 'instalado', label: 'Instalado', numeric: true, align: 'right' },
-  { key: 'devuelto', label: 'Devuelto', numeric: true, align: 'right' },
-  { key: 'rebajado', label: 'Rebajado', numeric: true, align: 'right' },
-  { key: 'merma', label: 'Merma', numeric: true, align: 'right' },
-  { key: 'transito', label: 'Tránsito', numeric: true, align: 'right' },
-]
-
 const SIN_PROYECTO_TEC = '🅿️ Sin proyecto'
 
-function tecColValue(r: TecnicoLedgerRow, key: TecColKey): string | number {
-  switch (key) {
-    case 'sku': return r.materialSku
-    case 'material': return r.materialDescripcion
-    case 'lote': return r.lote
-    case 'proyecto': return r.projectOtt ?? ''
-    case 'entregado': return r.cantEntregada
-    case 'instalado': return r.cantInstalada
-    case 'devuelto': return r.cantDevuelta
-    case 'rebajado': return r.cantRebajada
-    case 'merma': return r.cantMerma
-    case 'transito': return r.cantTransito
+const TIPOS_TECNICO = ['salida', 'instalado', 'traslado', 'rebaja', 'merma', 'ajuste', 'solicitud'] as const
+
+/**
+ * Impacto real en el stock FÍSICO PROPIO del trabajador — no alcanza con
+ * mirar el tipo, `usuario_id` no siempre es de quién cambió el stock de
+ * verdad (ver `registrar_movimiento`/`anular_movimiento`,
+ * 0067_entrada_solo_fisico.sql, verificado contra la BD real: sin estos 3
+ * casos el saldo calculado no calzaba con el stock real de `getStock`):
+ *
+ * - 'instalado' puede tomar el material del stock de OTRO integrante del
+ *   mismo proyecto si el propio no alcanzaba — el movimiento queda a
+ *   nombre de este trabajador (para atribuirle la instalación) pero su
+ *   stock no cambió. Solo se sabe mirando si `ubicacionId` del movimiento
+ *   es su propia ubicación (si no, se lo tomaron a otro compañero).
+ * - 'rebaja' (Rebajado SAP) ajusta el digital de la BODEGA de origen,
+ *   nunca el stock del trabajador.
+ * - 'traslado' (Devuelto) normalmente sí debita su stock, salvo que sea la
+ *   reasignación a un preventivo al cerrar un proyecto (puro bookkeeping —
+ *   el material ya estaba físicamente con él desde la entrega).
+ * - 'solicitud' nunca tocó stock, es solo un registro previo al instalado.
+ */
+function impactoParaTecnico(m: Movimiento, tecnicoUbicacionId: string | null): number {
+  const esReasignacionPreventivo = m.nota === 'Reasignado a preventivo al cerrar proyecto' || (m.documento ?? '').startsWith('PREVENTIVO - ')
+  switch (m.tipo) {
+    case 'salida':
+    case 'ajuste':
+      return m.cantidad
+    case 'instalado':
+      return m.ubicacionId === tecnicoUbicacionId ? -m.cantidad : 0
+    case 'traslado':
+      return esReasignacionPreventivo ? 0 : -m.cantidad
+    case 'merma':
+      return -m.cantidad
+    default:
+      return 0 // 'rebaja', 'solicitud': nunca tocan el stock propio del trabajador
   }
 }
 
-/** Igual que en Bodega/Movimientos: texto para el checklist de filtro. */
-function tecColDisplayValue(r: TecnicoLedgerRow, key: TecColKey): string {
-  if (key === 'proyecto') {
-    return r.projectOtt ? `[${r.projectArea === 'ATT' ? 'ATT' : 'Preventivo'}] ${r.projectOtt}` : SIN_PROYECTO_TEC
-  }
-  return String(tecColValue(r, key))
-}
-
-const TEC_NUMERIC_COLS: TecColKey[] = ['entregado', 'instalado', 'devuelto', 'rebajado', 'merma', 'transito']
-
-function sortTecColumnValues(key: TecColKey, values: string[]): string[] {
-  if (key === 'sku') return [...values].sort((a, b) => compareSku(a, b, 'asc'))
-  if (TEC_NUMERIC_COLS.includes(key)) return [...values].sort((a, b) => Number(a) - Number(b))
-  return [...values].sort((a, b) => a.localeCompare(b))
-}
-
+/**
+ * Rediseño pedido por Andrés ("la sección... es confusa"): en vez de un
+ * libro contable agrupado por proyecto (que repetía el mismo material en
+ * varias filas si se usó en más de un proyecto), va en el orden que pidió:
+ * advertencias → trabajador → lo que tiene en posesión ahora (stock real,
+ * no un cálculo aparte) → movimientos de/hacia él, con el saldo que quedó
+ * después de cada uno.
+ */
 function TecnicoTab() {
   const [tecnicos, setTecnicos] = useState<Profile[]>([])
   const [userId, setUserId] = useState('')
-  const [rows, setRows] = useState<TecnicoLedgerRow[] | null>(null)
+  const [ubicacionesTecnico, setUbicacionesTecnico] = useState<Ubicacion[]>([])
+  const [posesion, setPosesion] = useState<StockRow[] | null>(null)
+  const [movimientos, setMovimientos] = useState<Movimiento[] | null>(null)
   const [error, setError] = useState<string | null>(null)
   // Eventos de instalación forzada (stock negativo) de CUALQUIER técnico —
-  // no depende de cuál esté elegido en el selector de abajo. Separados de
-  // los de Conteo (origen bodega), que se resuelven en esa otra pestaña.
+  // no depende de cuál esté elegido en el selector de abajo (sujeto a
+  // revisarse: por ahora es una advertencia global, no por trabajador).
+  // Separados de los de Conteo (origen bodega), que se resuelven aparte.
   const [eventos, setEventos] = useState<EventoInventario[] | null>(null)
 
   async function reloadEventos() {
@@ -757,143 +760,173 @@ function TecnicoTab() {
   }
   useEffect(() => { reloadEventos() }, [])
 
-  // Mismo patrón que Bodega/Movimientos: orden (por defecto, el que ya trae
-  // getTecnicoLedger — por OTT) reemplazado por un clic en una columna;
-  // filtro tipo Google Sheets por columna.
-  const [sort, setSort] = useState<{ key: TecColKey; dir: 'asc' | 'desc' } | null>(null)
-  const [colSelected, setColSelected] = useState<Partial<Record<TecColKey, Set<string>>>>({})
-  const [openMenu, setOpenMenu] = useState<TecColKey | null>(null)
-
   useEffect(() => {
     adminRepo.listProfiles()
       .then((all) => {
-        // Cualquier trabajador activo, sin importar su rol (antes solo
-        // Terreno y Logística) — mismo criterio que "Técnicos asignados" en
-        // Logística y "Equipo por proyecto" en Administración: cualquiera
-        // puede tener stock propio a su nombre.
+        // Cualquier trabajador activo, sin importar su rol — cualquiera
+        // puede tener stock propio a su nombre (ver AsignacionesForm.tsx).
         const cs = all.filter((p) => p.activo)
         setTecnicos(cs)
         if (cs.length > 0) setUserId(cs[0].id)
       })
       .catch(() => {})
+    listUbicaciones({ tipo: 'tecnico' }).then(setUbicacionesTecnico).catch(() => {})
   }, [])
+
+  // La ubicación personal del trabajador se crea recién al primer
+  // movimiento (`ensure_ubicacion_tecnico`) — si nunca tuvo uno, no existe
+  // todavía y no hay nada en posesión que consultar.
+  const tecnicoUbicacionId = ubicacionesTecnico.find((u) => u.ownerUserId === userId)?.id ?? null
 
   useEffect(() => {
     if (!userId) return
-    setRows(null)
-    setColSelected({})
-    setSort(null)
-    getTecnicoLedger(userId).then(setRows).catch((err) => setError(err instanceof Error ? err.message : String(err)))
-  }, [userId])
-
-  const valuesByColumn = useMemo(() => {
-    const result = {} as Record<TecColKey, string[]>
-    for (const col of TEC_COLUMNS) {
-      result[col.key] = sortTecColumnValues(col.key, [...new Set((rows ?? []).map((r) => tecColDisplayValue(r, col.key)))])
+    setError(null)
+    if (tecnicoUbicacionId) {
+      setPosesion(null)
+      getStock({ ubicacionId: tecnicoUbicacionId }).then(setPosesion).catch((err) => setError(err instanceof Error ? err.message : String(err)))
+    } else {
+      setPosesion([])
     }
-    return result
-  }, [rows])
+    setMovimientos(null)
+    listMovimientos({ usuarioId: userId, tipos: [...TIPOS_TECNICO], limit: null })
+      .then(setMovimientos)
+      .catch((err) => setError(err instanceof Error ? err.message : String(err)))
+  }, [userId, tecnicoUbicacionId])
 
-  const displayRows = useMemo(() => {
-    if (!rows) return null
-    let out = rows
-    for (const key of Object.keys(colSelected) as TecColKey[]) {
-      const set = colSelected[key]
-      if (!set) continue
-      out = out.filter((r) => set.has(tecColDisplayValue(r, key)))
-    }
-    if (!sort) return out
-    const sorted = [...out]
-    sorted.sort((a, b) => {
-      if (sort.key === 'sku') return compareSku(a.materialSku, b.materialSku, sort.dir)
-      const va = tecColValue(a, sort.key)
-      const vb = tecColValue(b, sort.key)
-      const cmp = typeof va === 'number' && typeof vb === 'number' ? va - vb : String(va).localeCompare(String(vb))
-      return sort.dir === 'asc' ? cmp : -cmp
+  const enPosesion = useMemo(() => (posesion ?? []).filter((r) => r.cantidadFisico !== 0 || r.cantidadDigital !== 0), [posesion])
+
+  // `listMovimientos` ya viene más reciente primero (fecha desc, created_at
+  // desc) — se recorre al revés para acumular el saldo en orden cronológico
+  // real, y se vuelve a invertir para mostrar arriba lo más reciente, con el
+  // saldo que quedó justo después de ese movimiento. Por material+lote —
+  // el saldo es el stock físico real del trabajador (verificado exacto
+  // contra `getStock` de la misma ubicación), no depende de a qué proyecto
+  // se le haya atribuido.
+  const movimientosConSaldo = useMemo(() => {
+    if (!movimientos) return null
+    const saldoPorClave = new Map<string, number>()
+    const conSaldo = [...movimientos].reverse().map((m) => {
+      const clave = `${m.materialId}|${m.lote}`
+      const impacto = impactoParaTecnico(m, tecnicoUbicacionId)
+      const saldo = (saldoPorClave.get(clave) ?? 0) + impacto
+      saldoPorClave.set(clave, saldo)
+      return { mov: m, saldo, impacto }
     })
-    return sorted
-  }, [rows, colSelected, sort])
+    return conSaldo.reverse()
+  }, [movimientos, tecnicoUbicacionId])
 
   return (
-    <div className="space-y-3">
-      {eventos && eventos.length > 0 && (
-        <EventosAbiertosSection eventos={eventos} onResolved={reloadEventos} />
-      )}
+    <div className="space-y-4">
+      <div>
+        <h2 className="text-xs font-semibold text-brand-400 uppercase tracking-wide mb-2">⚠️ Advertencias</h2>
+        {eventos && eventos.length > 0 ? (
+          <EventosAbiertosSection eventos={eventos} onResolved={reloadEventos} />
+        ) : (
+          <p className="text-xs text-slate-500">Sin advertencias pendientes.</p>
+        )}
+      </div>
 
       {tecnicos.length === 0 ? (
-        <p className="text-xs text-slate-500">No hay técnicos ni logística registrados.</p>
+        <p className="text-xs text-slate-500">No hay trabajadores registrados.</p>
       ) : (
         <>
-          <select value={userId} onChange={(e) => setUserId(e.target.value)} className={`${inputCls} w-full`}>
-            {tecnicos.map((t) => <option key={t.id} value={t.id}>{t.nombre?.trim() || t.email}</option>)}
-          </select>
+          <div>
+            <label className="block text-xs font-semibold text-brand-400 uppercase tracking-wide mb-2">Trabajador</label>
+            <select value={userId} onChange={(e) => setUserId(e.target.value)} className={`${inputCls} w-full`}>
+              {tecnicos.map((t) => <option key={t.id} value={t.id}>{t.nombre?.trim() || t.email}</option>)}
+            </select>
+          </div>
+
           {error && <p className="text-xs text-red-400">{error}</p>}
-          {displayRows === null ? (
-            <p className="text-xs text-slate-500">Cargando…</p>
-          ) : rows && rows.length === 0 ? (
-            <p className="text-xs text-slate-500">Sin material entregado.</p>
-          ) : (
-            <div className="overflow-x-auto rounded-xl border border-slate-700">
-              <table className="w-full text-xs border-collapse">
-                <thead>
-                  <tr className="bg-slate-900/60 text-slate-400 text-left divide-x divide-slate-700">
-                    {TEC_COLUMNS.map((col) => {
-                      const colValues = valuesByColumn[col.key]
-                      const colSelectedSet = colSelected[col.key]
+
+          <div>
+            <h2 className="text-xs font-semibold text-brand-400 uppercase tracking-wide mb-2">📦 Material actualmente en posesión</h2>
+            {enPosesion === null ? (
+              <p className="text-xs text-slate-500">Cargando…</p>
+            ) : enPosesion.length === 0 ? (
+              <p className="text-xs text-slate-500">No tiene material en posesión.</p>
+            ) : (
+              <div className="overflow-x-auto rounded-xl border border-slate-700">
+                <table className="w-full text-xs border-collapse">
+                  <thead>
+                    <tr className="bg-slate-900/60 text-slate-400 text-left divide-x divide-slate-700">
+                      <th className="px-2 py-1.5 font-medium">SKU</th>
+                      <th className="px-2 py-1.5 font-medium">Material</th>
+                      <th className="px-2 py-1.5 font-medium">Lote</th>
+                      <th className="px-2 py-1.5 font-medium text-right">Físico</th>
+                      <th className="px-2 py-1.5 font-medium text-right">Digital</th>
+                    </tr>
+                  </thead>
+                  <tbody>
+                    {enPosesion.map((r) => (
+                      <tr key={`${r.materialId}|${r.lote}`} className="border-t border-slate-700 divide-x divide-slate-700 bg-slate-800/60">
+                        <td className="px-2 py-2 text-slate-300 whitespace-nowrap">{r.materialSku}</td>
+                        <td className="px-2 py-2 max-w-[220px]"><p className="text-white truncate">{r.materialDescripcion}</p></td>
+                        <td className="px-2 py-2 text-slate-300 whitespace-nowrap">{r.lote}</td>
+                        <td className="px-2 py-2 text-right text-white font-semibold whitespace-nowrap">{r.cantidadFisico}</td>
+                        <td className="px-2 py-2 text-right text-white font-semibold whitespace-nowrap">{r.cantidadDigital}</td>
+                      </tr>
+                    ))}
+                  </tbody>
+                </table>
+              </div>
+            )}
+          </div>
+
+          <div>
+            <h2 className="text-xs font-semibold text-brand-400 uppercase tracking-wide mb-2">📜 Movimientos desde/hacia el trabajador</h2>
+            {movimientosConSaldo === null ? (
+              <p className="text-xs text-slate-500">Cargando…</p>
+            ) : movimientosConSaldo.length === 0 ? (
+              <p className="text-xs text-slate-500">Sin movimientos.</p>
+            ) : (
+              <div className="overflow-x-auto rounded-xl border border-slate-700">
+                <table className="w-full text-xs border-collapse">
+                  <thead>
+                    <tr className="bg-slate-900/60 text-slate-400 text-left divide-x divide-slate-700">
+                      <th className="px-2 py-1.5 font-medium">Fecha</th>
+                      <th className="px-2 py-1.5 font-medium">Tipo</th>
+                      <th className="px-2 py-1.5 font-medium">SKU</th>
+                      <th className="px-2 py-1.5 font-medium">Material</th>
+                      <th className="px-2 py-1.5 font-medium">Lote</th>
+                      <th className="px-2 py-1.5 font-medium text-right">Cantidad</th>
+                      <th className="px-2 py-1.5 font-medium text-right">Saldo después</th>
+                      <th className="px-2 py-1.5 font-medium">Proyecto</th>
+                      <th className="px-2 py-1.5 font-medium">Nota</th>
+                    </tr>
+                  </thead>
+                  <tbody>
+                    {movimientosConSaldo.map(({ mov: m, saldo, impacto }) => {
+                      const titulo = impacto === 0
+                        ? (m.tipo === 'rebaja' ? 'Ajusta el digital de la bodega, no el stock del trabajador'
+                          : m.tipo === 'instalado' ? 'Se tomó del stock de otro compañero de proyecto — no afecta el suyo'
+                          : m.tipo === 'solicitud' ? 'Registro previo al instalado — todavía no toca stock'
+                          : 'No mueve stock — reasignación contable al cerrar el proyecto')
+                        : undefined
                       return (
-                        <ColumnHeader key={col.key} col={col}
-                          sort={sort} onSort={(dir) => { setSort(dir ? { key: col.key, dir } : null); setOpenMenu(null) }}
-                          checklist={{
-                            values: colValues,
-                            selected: colSelectedSet ?? null,
-                            onToggleValue: (v) => setColSelected((prev) => {
-                              const current = new Set(prev[col.key] ?? colValues)
-                              if (current.has(v)) current.delete(v); else current.add(v)
-                              const next = { ...prev }
-                              if (current.size === colValues.length) delete next[col.key]
-                              else next[col.key] = current
-                              return next
-                            }),
-                            onSelectAll: () => setColSelected((prev) => {
-                              const next = { ...prev }
-                              delete next[col.key]
-                              return next
-                            }),
-                            onSelectNone: () => setColSelected((prev) => ({ ...prev, [col.key]: new Set() })),
-                          }}
-                          open={openMenu === col.key} onToggle={() => setOpenMenu((k) => (k === col.key ? null : col.key))} />
+                        <tr key={m.id} className="border-t border-slate-700 divide-x divide-slate-700 bg-slate-800/60">
+                          <td className="px-2 py-2 text-slate-300 whitespace-nowrap">{m.fecha.slice(0, 10)}</td>
+                          <td className="px-2 py-2 text-slate-300 whitespace-nowrap">{TIPO_LABELS_MOV[m.tipo] ?? m.tipo}</td>
+                          <td className="px-2 py-2 text-slate-300 whitespace-nowrap">{m.materialSku}</td>
+                          <td className="px-2 py-2 max-w-[200px]"><p className="text-white truncate">{m.materialDescripcion}</p></td>
+                          <td className="px-2 py-2 text-slate-300 whitespace-nowrap">{m.lote}</td>
+                          <td className={`px-2 py-2 text-right font-semibold whitespace-nowrap ${impacto > 0 ? 'text-green-400' : impacto < 0 ? 'text-red-400' : 'text-slate-500'}`}
+                            title={titulo}>
+                            {impacto > 0 ? '+' : impacto < 0 ? '−' : '±'}{m.cantidad}
+                          </td>
+                          <td className="px-2 py-2 text-right text-white font-semibold whitespace-nowrap">{saldo}</td>
+                          <td className="px-2 py-2 text-slate-300 whitespace-nowrap">
+                            {m.projectOtt ? `[${m.area === 'ATT' ? 'ATT' : 'Preventivo'}] ${m.projectOtt}` : SIN_PROYECTO_TEC}
+                          </td>
+                          <td className="px-2 py-2 max-w-[200px]"><p className="text-slate-400 truncate">{m.nota ?? '—'}</p></td>
+                        </tr>
                       )
                     })}
-                  </tr>
-                </thead>
-                <tbody>
-                  {displayRows.length === 0 && (
-                    <tr><td colSpan={TEC_COLUMNS.length} className="px-2 py-3 text-center text-slate-500">
-                      Ningún resultado con los filtros de columna actuales.
-                    </td></tr>
-                  )}
-                  {displayRows.map((r) => (
-                    <tr key={`${r.projectId ?? ''}|${r.materialId}|${r.lote}`}
-                      className="border-t border-slate-700 divide-x divide-slate-700 bg-slate-800/60">
-                      <td className="px-2 py-2 text-slate-300 whitespace-nowrap">{r.materialSku}</td>
-                      <td className="px-2 py-2 max-w-[220px]"><p className="text-white truncate">{r.materialDescripcion}</p></td>
-                      <td className="px-2 py-2 text-slate-300 whitespace-nowrap">{r.lote}</td>
-                      <td className="px-2 py-2 text-slate-300 whitespace-nowrap">
-                        {r.projectOtt ? `[${r.projectArea === 'ATT' ? 'ATT' : 'Preventivo'}] ${r.projectOtt}` : SIN_PROYECTO_TEC}
-                      </td>
-                      <td className="px-2 py-2 text-right text-white whitespace-nowrap">{r.cantEntregada}</td>
-                      <td className="px-2 py-2 text-right text-white whitespace-nowrap">{r.cantInstalada}</td>
-                      <td className="px-2 py-2 text-right text-white whitespace-nowrap">{r.cantDevuelta}</td>
-                      <td className="px-2 py-2 text-right text-white whitespace-nowrap">{r.cantRebajada}</td>
-                      <td className={`px-2 py-2 text-right font-semibold whitespace-nowrap ${r.cantTransito > 0 ? 'text-amber-400' : 'text-white'}`}>
-                        {r.cantTransito}
-                      </td>
-                    </tr>
-                  ))}
-                </tbody>
-              </table>
-            </div>
-          )}
+                  </tbody>
+                </table>
+              </div>
+            )}
+          </div>
         </>
       )}
     </div>
