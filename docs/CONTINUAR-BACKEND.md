@@ -20,6 +20,15 @@
   10. **Borrar un proyecto de prueba real que quedó en la BD** (ver v2.00 más abajo): OTT `726036`, id `2e185b0a-27f8-4212-a15e-a7015c4b59f2`, área ATT — quedó "Cerrado" (con el rol invitado no se puede hard-delete). En el SQL Editor: `delete from projects where id = '2e185b0a-27f8-4212-a15e-a7015c4b59f2';`
 - **Deploy**: el push del 26-08 a `main` falló al desplegar por una interrupción real de GitHub Actions/Pages (confirmada en githubstatus.com, no un problema del repo) — falta reintentar el workflow ("Re-run all jobs") una vez que GitHub se recupere. Fuera de eso, `.github/workflows/deploy.yml` publica bien en cada push a `main`.
 
+## v2.06 — Preventivos: el botón "Informe" se bloquea mientras las fotos siguen resolviéndose (fix real, sin migración)
+Andrés, bug real reportado: "comprueba que no se guarden informes antes que se descarguen las fotos. Alguna vez se me descargó uno sin fotos, al esperar y se cargaron las fotos, se descargó como corresponde."
+
+- **Causa**: `generarInformeEntel.ts` (`prepareImage`) omite en silencio cualquier foto sin `previewUrl` todavía resuelto (`if (!foto?.previewUrl) return null`) — si se toca "Informe" justo al abrir un cuadrante grande, antes de que `useResolvePhotoUrls` termine de pedir las signed URLs, el archivo sale incompleto y sin ningún aviso. `ExportInformeButton.tsx` no tenía ningún resguardo contra esto, solo revisaba que hubiera puntos.
+- **Fix**: el botón usa `fotoEstadoDe` (ya existente, de v1.93) sobre el plano y las 3 fotos de cada punto — si alguna sigue en estado `'descargando'` (existe la foto pero aún no tiene `previewUrl`), el botón queda deshabilitado con "⏳ Cargando fotos…" y un tooltip explicando la espera, y se habilita solo cuando todas terminaron de resolverse.
+- **No afecta** a "Guardar ZIP" (usa el blob local, sin red) ni al export masivo de cerrados (pide sus propias signed URLs frescas antes de armar el ZIP) — ambos ya verificados sin esta condición de carrera en v2.05.
+
+**Verificado en el navegador**: abierto el cuadrante "Las Condes — 1" (134 fotos) justo después de navegar, el botón mostró "Cargando fotos…" deshabilitado de inmediato; a los pocos segundos, una vez resueltas todas las URLs, pasó solo a "Informe" habilitado.
+
 ## v2.05 — Preventivos: miniaturas transformadas en Storage para cuadrantes con muchas fotos (mejora de performance real, sin migración)
 Pedido de Andrés: "¿se puede hacer que la carga de cuadrantes con muchas fotos sea un poco más rápida?"
 
