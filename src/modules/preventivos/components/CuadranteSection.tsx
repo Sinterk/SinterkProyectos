@@ -6,6 +6,7 @@ import { nanoid } from '@/core/utils/nanoid'
 import type { CuadranteInfo } from '../types'
 import { useFileDrop } from '@/ui/useFileDrop'
 import { fotoEstadoDe } from '../utils/fotoEstado'
+import { FotoImg } from './FotoImg'
 
 interface Props {
   preventivoId: string
@@ -121,8 +122,8 @@ export function CuadranteSection({ preventivoId, cuadrante, onSave, soloFotos = 
         <label className="block text-xs text-slate-400 mb-2">📐 Foto del plano de trabajo</label>
         {(() => { const estadoPlano = fotoEstadoDe(cuadrante.fotoPlano); return cuadrante.fotoPlano?.previewUrl ? (
           <>
-            <div className="relative rounded-xl overflow-hidden border-2 border-slate-600">
-              <img
+            <div className="relative rounded-xl overflow-hidden border-2 border-slate-600 min-h-[9rem]">
+              <FotoImg
                 src={cuadrante.fotoPlano.previewUrl}
                 alt="Plano"
                 className="w-full max-h-56 object-contain bg-slate-900 cursor-zoom-in"

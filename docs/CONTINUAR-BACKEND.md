@@ -20,6 +20,14 @@
   10. **Borrar un proyecto de prueba real que quedó en la BD** (ver v2.00 más abajo): OTT `726036`, id `2e185b0a-27f8-4212-a15e-a7015c4b59f2`, área ATT — quedó "Cerrado" (con el rol invitado no se puede hard-delete). En el SQL Editor: `delete from projects where id = '2e185b0a-27f8-4212-a15e-a7015c4b59f2';`
 - **Deploy**: el push del 26-08 a `main` falló al desplegar por una interrupción real de GitHub Actions/Pages (confirmada en githubstatus.com, no un problema del repo) — falta reintentar el workflow ("Re-run all jobs") una vez que GitHub se recupere. Fuera de eso, `.github/workflows/deploy.yml` publica bien en cada push a `main`.
 
+## v2.04 — Preventivos: spinner mientras la FOTO EN SÍ sigue bajando, no solo mientras se resuelve la URL (fix real, sin migración)
+Andrés, tras usar v1.93: "las fotos están cargando pero no aparece una indicación. ¿Pusiste el spinner solo por tiempo?" — no era por tiempo, pero tenía razón en que faltaba algo real.
+
+- **Causa**: el spinner "descargando" de v1.93 (`fotoEstado.ts`) solo cubre la espera de la URL (firmada o blob local) — casi instantánea. Una vez que la URL está lista, el `<img>` normal no avisaba de nada mientras el navegador bajaba los BYTES de la foto en sí, que en una conexión lenta de terreno puede tardar varios segundos — exactamente el hueco que Andrés notó.
+- **Fix**: `FotoImg.tsx` nuevo — un `<img>` con su propio spinner controlado por el evento `onLoad` (no por tiempo), usado en `PhotoCapture.tsx`, `CuadranteSection.tsx` y `PlanoView.tsx` (miniaturas y grilla de fotos por punto). Donde el contenedor no tenía una altura fija (`max-h-*` en vez de `h-*`), se le agregó un `min-height` para que el spinner tenga dónde mostrarse mientras la imagen no tiene dimensiones conocidas todavía.
+
+**Verificado en el navegador** simulando una conexión lenta real (se interceptó `HTMLImageElement.prototype.src` para demorar la descarga a propósito, no un mock del componente): capturado el spinner girando mientras la foto del plano seguía bajando, y confirmado que al terminar la foto se muestra completa y sin problemas de layout.
+
 ## v2.03 — Rediseño de Inventario → Stock → Técnico: advertencias, posesión y movimientos con saldo real (feature + fix real, sin migración)
 Pedido de Andrés: "la sección de inventario/stock/técnico es confusa" — pidió reordenarla como advertencias → trabajador → material en posesión (solo lo que no está en 0) → movimientos con el saldo del trabajador después de cada uno.
 

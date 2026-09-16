@@ -2,6 +2,7 @@ import { useRef, useState, useEffect } from 'react'
 import type { FotoEntry, FotoKey } from '../types'
 import { useFileDrop } from '@/ui/useFileDrop'
 import { fotoEstadoDe } from '../utils/fotoEstado'
+import { FotoImg } from './FotoImg'
 
 interface Props {
   label: string
@@ -55,10 +56,9 @@ export function PhotoCapture({ label, fotoKey, entry, editable = true, onCapture
     return (
       <>
         <div className={`relative rounded-xl overflow-hidden border-2 ${color} bg-slate-800`}>
-          <img
+          <FotoImg
             src={entry.previewUrl}
             alt={label}
-            loading="lazy"
             className="w-full h-36 object-cover cursor-zoom-in"
             onClick={() => setLightbox(true)}
           />
