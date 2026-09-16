@@ -20,6 +20,13 @@
   10. **Borrar un proyecto de prueba real que quedó en la BD** (ver v2.00 más abajo): OTT `726036`, id `2e185b0a-27f8-4212-a15e-a7015c4b59f2`, área ATT — quedó "Cerrado" (con el rol invitado no se puede hard-delete). En el SQL Editor: `delete from projects where id = '2e185b0a-27f8-4212-a15e-a7015c4b59f2';`
 - **Deploy**: el push del 26-08 a `main` falló al desplegar por una interrupción real de GitHub Actions/Pages (confirmada en githubstatus.com, no un problema del repo) — falta reintentar el workflow ("Re-run all jobs") una vez que GitHub se recupere. Fuera de eso, `.github/workflows/deploy.yml` publica bien en cada push a `main`.
 
+## v2.02 — Asignaciones (Inventario → Registro) ahora lista a todos los trabajadores, no solo técnico/log (mejora, sin migración)
+Pedido de Andrés: "la sección de asignaciones debe mostrar todos los trabajadores". El selector de `AsignacionesForm.tsx` filtraba a `activo && (rol === 'tecnico' || rol === 'log')` — hoy nadie tiene rol `log`, así que en la práctica solo dejaba ver a los 30 técnicos y escondía al admin y a los 11 JP. Se sacó el filtro por rol, dejando solo `activo` — el servidor no distingue por rol (`ensure_ubicacion_tecnico` crea la ubicación personal para cualquier usuario).
+
+**Ojo**: el mismo filtro por rol exacto vive calcado en otros 3 lugares que NO se tocaron (fuera de lo pedido) — `RegistrarMovimientoForm.tsx`, `KpiScreen.tsx` y la pestaña Movimientos de `Home.tsx` (inventario). Si Andrés quiere el mismo cambio ahí, avisar.
+
+**Verificado en el navegador**: el selector de "Asignaciones" ahora muestra a ANDRES (admin) y a los JP (CARLOS MUÑOZ, CRISTIAN ZAVALLA, etc.) junto a los técnicos.
+
 ## v2.01 — Inventario: Stock ya no mezcla el stock personal de técnicos + opción de borrar bodegas (mejoras, sin migración)
 Tres pedidos de Andrés sobre Inventario/Stock/Bodega.
 

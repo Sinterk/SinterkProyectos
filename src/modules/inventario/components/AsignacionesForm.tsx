@@ -93,8 +93,13 @@ export function AsignacionesForm({ onRegistered }: { onRegistered?: () => void }
   useEffect(() => {
     listMateriales().then(setMateriales).catch((err) => setLoadError(err instanceof Error ? err.message : String(err)))
     listUbicaciones({ tipo: 'tecnico' }).then(setUbicacionesTecnico).catch(() => {})
+    // Antes solo listaba técnico/log — Andrés: "debe mostrar todos los
+    // trabajadores" (JP también recibe/devuelve material; hoy no hay
+    // ningún perfil con rol 'log' de todas formas). El servidor no
+    // distingue por rol: `ensure_ubicacion_tecnico` crea la ubicación
+    // personal para cualquier usuario que se le pase.
     adminRepo.listProfiles()
-      .then((all) => setTecnicos(all.filter((p) => p.activo && (p.rol === 'tecnico' || p.rol === 'log'))))
+      .then((all) => setTecnicos(all.filter((p) => p.activo)))
       .catch(() => {})
   }, [])
 
