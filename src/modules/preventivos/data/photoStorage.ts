@@ -7,13 +7,56 @@
 
 import { getPhotoBlob } from '@/core/offline/photoStore'
 import { nanoid } from '@/core/utils/nanoid'
-import { uploadPhotoObject } from '@/lib/photoStorage'
+import { compressImage } from '@/core/utils/compressImage'
+import {
+  uploadPhotoObject,
+  getSignedUrls,
+  removePhotoObjects as removePhotoObjectsBase,
+} from '@/lib/photoStorage'
 import type { Preventivo, FotoEntry } from '../types'
 
-export { getSignedUrl, getSignedUrls, getSignedUrlsThumb, removePhotoObjects, isSignedUrlFresh } from '@/lib/photoStorage'
+export { getSignedUrl, getSignedUrls, isSignedUrlFresh } from '@/lib/photoStorage'
 
 function storagePathFor(blobId: string | undefined): string {
   return `preventivos/${blobId ?? nanoid()}.jpg`
+}
+
+/**
+ * Ruta de la miniatura de una foto ya subida — un objeto real aparte, no un
+ * transform al vuelo (R2 no lo tiene, a diferencia de Supabase Storage). Se
+ * deriva del path original en vez de guardarse en `FotoEntry`: no hace
+ * falta persistir nada nuevo, y borrar/mover la original implica lo mismo
+ * para su miniatura sin tener que arrastrar un campo aparte.
+ */
+function thumbPathFor(path: string): string {
+  return path.replace(/^preventivos\//, 'preventivos/thumbs/')
+}
+
+/**
+ * Miniaturas (200px, calidad 60) — pedido de Andrés: "¿se puede hacer que
+ * la carga de cuadrantes con muchas fotos sea un poco más rápida?". Con R2
+ * no hay transform al vuelo, así que la miniatura se genera y sube como
+ * objeto aparte al momento de subir la foto (`ensureUploaded`) — acá solo
+ * se piden las signed URLs de esos objetos ya existentes.
+ */
+export async function getSignedUrlsThumb(
+  paths: string[],
+  expiresIn?: number,
+): Promise<Map<string, string>> {
+  if (paths.length === 0) return new Map()
+  const thumbUrls = await getSignedUrls(paths.map(thumbPathFor), expiresIn)
+  const map = new Map<string, string>()
+  for (const path of paths) {
+    const u = thumbUrls.get(thumbPathFor(path))
+    if (u) map.set(path, u)
+  }
+  return map
+}
+
+/** Borra cada foto Y su miniatura — ver `thumbPathFor`. */
+export async function removePhotoObjects(paths: (string | undefined | null)[]): Promise<void> {
+  const clean = paths.filter((p): p is string => !!p)
+  await removePhotoObjectsBase(clean.flatMap((p) => [p, thumbPathFor(p)]))
 }
 
 async function ensureUploaded(f: FotoEntry): Promise<FotoEntry> {
@@ -25,7 +68,11 @@ async function ensureUploaded(f: FotoEntry): Promise<FotoEntry> {
     return f
   }
   const path = storagePathFor(f.blobId)
-  await uploadPhotoObject(path, entry.blob)
+  const thumb = await compressImage(entry.blob, 200, 0.6)
+  await Promise.all([
+    uploadPhotoObject(path, entry.blob),
+    uploadPhotoObject(thumbPathFor(path), thumb),
+  ])
   return { ...f, storagePath: path }
 }
 
