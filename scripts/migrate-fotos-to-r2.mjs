@@ -5,16 +5,21 @@
 // — así no hace falta tocar ni una fila de la base de datos, `storagePath`
 // sigue siendo válido tal cual.
 //
-// Para las fotos de Preventivos también genera y sube la miniatura
-// (`preventivos/thumbs/{blobId}.jpg`, 200px, calidad 60) — sin esto, las
-// fotos ya existentes se seguirían viendo bien (la app cae a la foto
-// completa si no hay miniatura), pero perderían la mejora de velocidad de
-// v2.05 hasta que alguien las volviera a subir, cosa que para un
-// levantamiento ya cerrado puede no pasar nunca.
+// Para las fotos de Preventivos también genera y sube dos versiones
+// derivadas — sin esto, las fotos ya existentes se seguirían viendo bien
+// (la app cae a la foto completa si falta una versión derivada), pero
+// perderían la mejora de velocidad hasta que alguien las volviera a subir,
+// cosa que para un levantamiento ya cerrado puede no pasar nunca:
+//   - `preventivos/thumbs/{blobId}.jpg` (200px, calidad 60) — v2.05/v2.08,
+//     miniaturas de la grilla.
+//   - `preventivos/informe/{blobId}.jpg` (1000px, calidad 80) — usada por
+//     "Generar Informe Entel" en vez de la foto completa (hasta 1600px),
+//     que igual se termina reduciendo a ~900px al incrustarla en el Excel.
 //
-// Es seguro correrlo más de una vez: si un objeto ya existe en R2, se
-// salta (no lo vuelve a bajar ni a subir). Si se corta a mitad de camino,
-// se puede volver a correr y sigue donde quedó.
+// Es seguro correrlo más de una vez, incluso si ya se corrió antes de
+// agregar alguna de estas versiones: cada archivo se revisa por separado
+// (original/miniatura/informe) y solo se genera/sube lo que todavía falte.
+// Si se corta a mitad de camino, se puede volver a correr y sigue donde quedó.
 //
 // ANTES DE CORRER (una vez, no queda en package.json):
 //   npm install --no-save @supabase/supabase-js @aws-sdk/client-s3 sharp
@@ -93,14 +98,16 @@ async function putR2(key, body, contentType) {
   await s3.send(new PutObjectCommand({ Bucket: process.env.R2_BUCKET_NAME, Key: key, Body: body, ContentType: contentType }))
 }
 
-/** Copia una foto (y, si es de Preventivos, también su miniatura). Idempotente. */
+/** Copia una foto (y, si es de Preventivos, también su miniatura y su versión "informe"). Idempotente. */
 async function migrateOne(path) {
   const isPreventivo = path.startsWith('preventivos/')
   const thumbPath = isPreventivo ? path.replace(/^preventivos\//, 'preventivos/thumbs/') : null
+  const informePath = isPreventivo ? path.replace(/^preventivos\//, 'preventivos/informe/') : null
 
   const needOriginal = !(await existsInR2(path))
   const needThumb = thumbPath ? !(await existsInR2(thumbPath)) : false
-  if (!needOriginal && !needThumb) return 'skip'
+  const needInforme = informePath ? !(await existsInR2(informePath)) : false
+  if (!needOriginal && !needThumb && !needInforme) return 'skip'
 
   const { data, error } = await supabase.storage.from(SUPABASE_BUCKET).download(path)
   if (error) throw new Error(`download(${path}): ${error.message}`)
@@ -116,6 +123,15 @@ async function migrateOne(path) {
         .jpeg({ quality: 60 })
         .toBuffer()
         .then((thumbBuf) => putR2(thumbPath, thumbBuf, 'image/jpeg')),
+    )
+  }
+  if (needInforme) {
+    tasks.push(
+      sharp(buf)
+        .resize(1000, 1000, { fit: 'inside', withoutEnlargement: true })
+        .jpeg({ quality: 80 })
+        .toBuffer()
+        .then((informeBuf) => putR2(informePath, informeBuf, 'image/jpeg')),
     )
   }
   await Promise.all(tasks)

@@ -33,6 +33,19 @@ function thumbPathFor(path: string): string {
 }
 
 /**
+ * Ruta de la versión "informe" de una foto — mismo mecanismo que
+ * `thumbPathFor`. Pedido de Andrés al revisar si generar el Informe Entel
+ * bajaba fotos de más: `generarInformeEntel.ts` descargaba la foto completa
+ * (hasta 1600px, ~350-400KB) solo para reducirla a ~900px al incrustarla en
+ * el Excel (el marco es chico). Esta versión (~1000px, calidad 80) alcanza
+ * de sobra para ese tamaño de incrustación, bajando el peso del informe a
+ * la mitad o menos sin pérdida visible.
+ */
+function informePathFor(path: string): string {
+  return path.replace(/^preventivos\//, 'preventivos/informe/')
+}
+
+/**
  * Miniaturas (200px, calidad 60) — pedido de Andrés: "¿se puede hacer que
  * la carga de cuadrantes con muchas fotos sea un poco más rápida?". Con R2
  * no hay transform al vuelo, así que la miniatura se genera y sube como
@@ -53,10 +66,30 @@ export async function getSignedUrlsThumb(
   return map
 }
 
-/** Borra cada foto Y su miniatura — ver `thumbPathFor`. */
+/**
+ * Signed URLs de la versión "informe" (ver `informePathFor`) — usadas solo
+ * por `generarInformeEntel.ts`. Si una foto no tiene esta versión (p. ej. no
+ * se ha vuelto a correr la migración), el llamador debe caer de vuelta a
+ * `previewUrl` — acá simplemente se omite del Map, no se lanza error.
+ */
+export async function getSignedUrlsInforme(
+  paths: string[],
+  expiresIn?: number,
+): Promise<Map<string, string>> {
+  if (paths.length === 0) return new Map()
+  const informeUrls = await getSignedUrls(paths.map(informePathFor), expiresIn)
+  const map = new Map<string, string>()
+  for (const path of paths) {
+    const u = informeUrls.get(informePathFor(path))
+    if (u) map.set(path, u)
+  }
+  return map
+}
+
+/** Borra cada foto Y sus versiones derivadas (miniatura + informe). */
 export async function removePhotoObjects(paths: (string | undefined | null)[]): Promise<void> {
   const clean = paths.filter((p): p is string => !!p)
-  await removePhotoObjectsBase(clean.flatMap((p) => [p, thumbPathFor(p)]))
+  await removePhotoObjectsBase(clean.flatMap((p) => [p, thumbPathFor(p), informePathFor(p)]))
 }
 
 async function ensureUploaded(f: FotoEntry): Promise<FotoEntry> {
@@ -68,10 +101,14 @@ async function ensureUploaded(f: FotoEntry): Promise<FotoEntry> {
     return f
   }
   const path = storagePathFor(f.blobId)
-  const thumb = await compressImage(entry.blob, 200, 0.6)
+  const [thumb, informe] = await Promise.all([
+    compressImage(entry.blob, 200, 0.6),
+    compressImage(entry.blob, 1000, 0.8),
+  ])
   await Promise.all([
     uploadPhotoObject(path, entry.blob),
     uploadPhotoObject(thumbPathFor(path), thumb),
+    uploadPhotoObject(informePathFor(path), informe),
   ])
   return { ...f, storagePath: path }
 }

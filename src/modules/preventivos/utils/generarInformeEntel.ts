@@ -1,5 +1,6 @@
 import type { Preventivo, Punto } from '../types'
 import { TEMPLATE_ENTEL_B64 } from './templateEntelB64'
+import { getSignedUrlsInforme } from '../data/photoStorage'
 
 // ── Hallazgo → ítem 1-23 ─────────────────────────────────────────────────────
 // Ítem 23 ("Gabinete sin tapa") agregado a la plantilla ACTA (fila 46, ver
@@ -210,12 +211,18 @@ const COL_C_PX = 65.3 * 7 + 5  // ~462 px — ancho columna C (marco derecho)
 // siempre reduce, nunca inventa detalle. Subir a 3× pesa más el .xlsx.
 const SUPERSAMPLE = 2
 
+/**
+ * A propósito RECHAZA la promesa si la imagen no carga (en vez de devolver
+ * un tamaño de relleno) — `prepareImage` lo usa para saber si debe
+ * reintentar con `previewUrl` cuando la versión "informe" no existe
+ * todavía (ver su comentario).
+ */
 function getImgSize(url: string): Promise<{ w: number; h: number }> {
-  return new Promise((resolve) => {
+  return new Promise((resolve, reject) => {
     const img = new Image()
     img.crossOrigin = 'anonymous'
     img.onload  = () => resolve({ w: img.naturalWidth, h: img.naturalHeight })
-    img.onerror = () => resolve({ w: 255, h: 333 }) // fallback: portrait
+    img.onerror = () => reject(new Error(`no se pudo cargar la imagen: ${url}`))
     img.src = url
   })
 }
@@ -229,21 +236,40 @@ function displaySize(w: number, h: number, maxW: number, maxH: number): { dw: nu
 
 type ImgData = { buf: ArrayBuffer; dw: number; dh: number; col0: 0 | 2 }
 
+async function loadAndResize(url: string, col0: 0 | 2): Promise<ImgData> {
+  const size = await getImgSize(url)
+  const colPx = col0 === 0 ? COL_A_PX : COL_C_PX
+  const { dw, dh } = displaySize(size.w, size.h, colPx, FRAME_H)
+  // El buffer va a SUPERSAMPLE× la resolución de despliegue, pero se devuelven
+  // dw/dh sin escalar: el anclaje (tl/br) mantiene el tamaño visible, la imagen
+  // solo gana densidad de píxeles → misma dimensión, sin pixelarse.
+  const buf = await resizeToBuffer(url, dw * SUPERSAMPLE, dh * SUPERSAMPLE)
+  console.log(`[Entel IMG] col=${col0} natural=${size.w}×${size.h} display=${dw}×${dh} buffer=${dw * SUPERSAMPLE}×${dh * SUPERSAMPLE}`)
+  return { buf, dw, dh, col0 }
+}
+
 async function prepareImage(
   foto: Punto['fotoAntes'] | null,
   col0: 0 | 2,
+  informeUrls: Map<string, string>,
 ): Promise<ImgData | null> {
   if (!foto?.previewUrl) return null
+  // Versión "informe" (~1000px) si ya existe — mucho más liviana que la
+  // completa (hasta 1600px) para el mismo tamaño de incrustación. La URL
+  // firmada se genera igual aunque el objeto no exista todavía (foto de
+  // antes de este fix, o falta correr la migración de nuevo) — por eso NO
+  // basta con que esté en el mapa, hay que intentar cargarla de verdad y
+  // recién ahí caer a `previewUrl` si falla.
+  const informeUrl = foto.storagePath ? informeUrls.get(foto.storagePath) : undefined
+  if (informeUrl) {
+    try {
+      return await loadAndResize(informeUrl, col0)
+    } catch {
+      // sigue abajo con previewUrl
+    }
+  }
   try {
-    const size = await getImgSize(foto.previewUrl)
-    const colPx = col0 === 0 ? COL_A_PX : COL_C_PX
-    const { dw, dh } = displaySize(size.w, size.h, colPx, FRAME_H)
-    // El buffer va a SUPERSAMPLE× la resolución de despliegue, pero se devuelven
-    // dw/dh sin escalar: el anclaje (tl/br) mantiene el tamaño visible, la imagen
-    // solo gana densidad de píxeles → misma dimensión, sin pixelarse.
-    const buf = await resizeToBuffer(foto.previewUrl, dw * SUPERSAMPLE, dh * SUPERSAMPLE)
-    console.log(`[Entel IMG] col=${col0} natural=${size.w}×${size.h} display=${dw}×${dh} buffer=${dw * SUPERSAMPLE}×${dh * SUPERSAMPLE}`)
-    return { buf, dw, dh, col0 }
+    return await loadAndResize(foto.previewUrl, col0)
   } catch { return null }
 }
 
@@ -257,6 +283,15 @@ async function llenarFotos(workbook: any, ws: any, preventivo: Preventivo) {
   ws.getColumn('E').width = 12
 
   writeAviso(ws)
+
+  // Se piden todas las URLs "informe" de una vez (un solo llamado a la Edge
+  // Function) en vez de una por foto — mismo criterio que `useResolvePhotoUrls`.
+  const paths = preventivo.puntos.flatMap((p) => {
+    const fotoAnt = p.fotoAntes || p.fotoLevantamiento || null
+    const fotoDsp = p.fotoDespues || null
+    return [fotoAnt?.storagePath, fotoDsp?.storagePath]
+  }).filter((p): p is string => !!p)
+  const informeUrls = await getSignedUrlsInforme(paths)
 
   for (let idx = 0; idx < preventivo.puntos.length; idx++) {
     const p = preventivo.puntos[idx]
@@ -272,7 +307,7 @@ async function llenarFotos(workbook: any, ws: any, preventivo: Preventivo) {
       ? `Observación: ${[p.direccion, p.correccion].filter(Boolean).join(', ')}`
       : 'Observación:'
 
-    await writeBlock(workbook, ws, base, desc, obsAnt, obsDsp, fotoAnt, fotoDsp, p.nombre)
+    await writeBlock(workbook, ws, base, desc, obsAnt, obsDsp, fotoAnt, fotoDsp, p.nombre, informeUrls)
   }
 }
 
@@ -316,6 +351,7 @@ async function writeBlock(
   fotoAnt: Punto['fotoAntes'] | null,
   fotoDsp: Punto['fotoDespues'] | null,
   nombre: string,
+  informeUrls: Map<string, string>,
 ) {
   const centerAlign = { horizontal: 'center' as const, vertical: 'middle' as const, wrapText: true }
   const leftAlign   = { horizontal: 'left'   as const, vertical: 'top'    as const, wrapText: true }
@@ -343,8 +379,8 @@ async function writeBlock(
 
   // Prepare images: get buffers + natural dimensions in parallel
   const [imgAnt, imgDsp] = await Promise.all([
-    prepareImage(fotoAnt, 0),
-    prepareImage(fotoDsp, 2),
+    prepareImage(fotoAnt, 0, informeUrls),
+    prepareImage(fotoDsp, 2, informeUrls),
   ])
 
   // Fixed row height based on a full-block PORTRAIT reference (333px), NOT on the
