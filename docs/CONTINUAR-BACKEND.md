@@ -24,6 +24,11 @@
   14. **Correr en el SQL Editor** `supabase/migrations/0073_kpi_conciliacion_sap.sql` — sin esto, la pestaña "Conciliación SAP" del Panel de KPIs muestra el error `Could not find the function public.kpi_conciliacion_sap` (confirmado en el navegador). Después: mejorar la reportabilidad de material de OyM (ver v2.10 más abajo).
 - **Deploy**: el push del 26-08 a `main` falló al desplegar por una interrupción real de GitHub Actions/Pages (confirmada en githubstatus.com, no un problema del repo) — falta reintentar el workflow ("Re-run all jobs") una vez que GitHub se recupere. Fuera de eso, `.github/workflows/deploy.yml` publica bien en cada push a `main`.
 
+## Fix (21-09-2026, sin versión de app — es un script, no código desplegado): `migrate-fotos-to-r2.mjs` volvía a generar egress en Supabase en cada re-corrida
+Andrés, tras correr el script de nuevo para la versión "informe" (v2.09): "¿el consumo de egress de hoy de Supabase debe ser por el traspaso de fotos?" — sí, y peor de lo esperado: el script siempre volvía a descargar la foto ORIGINAL completa desde Supabase Storage para poder generar cualquier versión derivada que faltara, aunque el original ya estuviera copiado en R2 desde la primera corrida. Cada re-corrida (por ejemplo, al agregar un tamaño derivado nuevo) repetía el egress de TODAS las fotos de Preventivos ya migradas, no solo de las nuevas.
+
+**Fix**: si el original ya existe en R2, el script lo lee desde ahí (`GetObjectCommand`, egress $0) en vez de Supabase — Supabase solo se toca para lo que genuinamente todavía no está en R2. Una futura re-corrida (si se agrega otro tamaño derivado más adelante) ya no repite este costo.
+
 ## v2.10 — Panel de KPIs: pestaña "Conciliación SAP" — Físico vs Digital por SKU (feature nueva, requiere correr `0073_kpi_conciliacion_sap.sql`)
 
 Pedido de Andrés: tener claridad de cuánto material físico falta para estar conciliados con SAP, por SKU, considerando que el material de las bodegas a veces se comparte entre proyectos. La fórmula se validó en detalle contra el esquema real antes de escribir nada (ver el diseño completo más abajo, quedó igual a como se acordó) — pedido explícito de Andrés: "crea el KPI solicitado, para luego afinar detalles en prueba y error", así que esto es una primera versión pensada para iterar, no la versión final.

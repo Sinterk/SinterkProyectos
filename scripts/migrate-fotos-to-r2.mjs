@@ -20,6 +20,9 @@
 // agregar alguna de estas versiones: cada archivo se revisa por separado
 // (original/miniatura/informe) y solo se genera/sube lo que todavía falte.
 // Si se corta a mitad de camino, se puede volver a correr y sigue donde quedó.
+// Si el original ya está en R2, se lee de ahí (egress $0) para generar lo
+// que falte, sin volver a bajarlo de Supabase — una corrida repetida no
+// vuelve a generar egress en Supabase por lo que ya se migró.
 //
 // ANTES DE CORRER (una vez, no queda en package.json):
 //   npm install --no-save @supabase/supabase-js @aws-sdk/client-s3 sharp
@@ -38,7 +41,7 @@
 //   node scripts/migrate-fotos-to-r2.mjs
 
 import { createClient } from '@supabase/supabase-js'
-import { S3Client, PutObjectCommand, HeadObjectCommand } from '@aws-sdk/client-s3'
+import { S3Client, PutObjectCommand, HeadObjectCommand, GetObjectCommand } from '@aws-sdk/client-s3'
 import sharp from 'sharp'
 
 const REQUIRED_ENV = [
@@ -98,6 +101,12 @@ async function putR2(key, body, contentType) {
   await s3.send(new PutObjectCommand({ Bucket: process.env.R2_BUCKET_NAME, Key: key, Body: body, ContentType: contentType }))
 }
 
+async function getR2Buffer(key) {
+  const res = await s3.send(new GetObjectCommand({ Bucket: process.env.R2_BUCKET_NAME, Key: key }))
+  const bytes = await res.Body.transformToByteArray()
+  return Buffer.from(bytes)
+}
+
 /** Copia una foto (y, si es de Preventivos, también su miniatura y su versión "informe"). Idempotente. */
 async function migrateOne(path) {
   const isPreventivo = path.startsWith('preventivos/')
@@ -109,10 +118,21 @@ async function migrateOne(path) {
   const needInforme = informePath ? !(await existsInR2(informePath)) : false
   if (!needOriginal && !needThumb && !needInforme) return 'skip'
 
-  const { data, error } = await supabase.storage.from(SUPABASE_BUCKET).download(path)
-  if (error) throw new Error(`download(${path}): ${error.message}`)
-  const buf = Buffer.from(await data.arrayBuffer())
-  const contentType = data.type || 'image/jpeg'
+  // Si el original ya está en R2 (ej. corriendo esto de nuevo solo por una
+  // versión derivada nueva), se lee de ahí — egress $0 — en vez de volver a
+  // bajarlo de Supabase. Bug real de la primera versión de este script:
+  // siempre volvía a Supabase sin importar qué faltara, generando egress
+  // de nuevo cada vez que se agregaba un tamaño derivado nuevo.
+  let buf, contentType
+  if (needOriginal) {
+    const { data, error } = await supabase.storage.from(SUPABASE_BUCKET).download(path)
+    if (error) throw new Error(`download(${path}): ${error.message}`)
+    buf = Buffer.from(await data.arrayBuffer())
+    contentType = data.type || 'image/jpeg'
+  } else {
+    buf = await getR2Buffer(path)
+    contentType = 'image/jpeg'
+  }
 
   const tasks = []
   if (needOriginal) tasks.push(putR2(path, buf, contentType))
