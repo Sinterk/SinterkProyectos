@@ -79,6 +79,70 @@ interface KpiMaterialRpcRow {
   bodega_stock: string | null
 }
 
+export interface KpiConciliacionFila {
+  materialId: string
+  sku: string
+  descripcion: string
+  fisicoBodegas: number
+  fisicoTecnicos: number
+  fisicoInstaladoAtt: number
+  fisicoMerma: number
+  fisicoTotal: number
+  digitalSap: number
+  /** digitalSap - fisicoTotal. Positivo = falta físico para cuadrar con SAP; negativo = colchón. */
+  diferenciaSap: number
+  fisicoStk: number
+  digitalStk: number
+  diferenciaStk: number
+}
+
+interface KpiConciliacionRpcRow {
+  material_id: string
+  sku: string
+  descripcion: string
+  fisico_bodegas: number
+  fisico_tecnicos: number
+  fisico_instalado_att: number
+  fisico_merma: number
+  fisico_total: number
+  digital_sap: number
+  diferencia_sap: number
+  fisico_stk: number
+  digital_stk: number
+  diferencia_stk: number
+}
+
+/**
+ * KPI de conciliación físico/digital por SKU — ver el comentario largo en
+ * `supabase/migrations/0073_kpi_conciliacion_sap.sql` para la fórmula
+ * completa y por qué SAP y STK se comparan por separado.
+ */
+export async function getKpiConciliacionSap(input: {
+  bodegasSapIds: string[]
+  bodegaStkId: string
+}): Promise<KpiConciliacionFila[]> {
+  const { data, error } = await supabase.rpc('kpi_conciliacion_sap', {
+    p_bodegas_sap_ids: input.bodegasSapIds,
+    p_bodega_stk_id: input.bodegaStkId,
+  })
+  if (error) throw new Error(`kpi_conciliacion_sap: ${error.message}`)
+  return (data as KpiConciliacionRpcRow[] | null ?? []).map((r) => ({
+    materialId: r.material_id,
+    sku: r.sku,
+    descripcion: r.descripcion,
+    fisicoBodegas: Number(r.fisico_bodegas),
+    fisicoTecnicos: Number(r.fisico_tecnicos),
+    fisicoInstaladoAtt: Number(r.fisico_instalado_att),
+    fisicoMerma: Number(r.fisico_merma),
+    fisicoTotal: Number(r.fisico_total),
+    digitalSap: Number(r.digital_sap),
+    diferenciaSap: Number(r.diferencia_sap),
+    fisicoStk: Number(r.fisico_stk),
+    digitalStk: Number(r.digital_stk),
+    diferenciaStk: Number(r.diferencia_stk),
+  }))
+}
+
 export async function getKpiMateriales(input: {
   /** null = todas las áreas combinadas (vista "solo inventario"). */
   area: 'ATT' | 'OyM' | null

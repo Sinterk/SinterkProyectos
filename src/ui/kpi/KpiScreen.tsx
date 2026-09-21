@@ -11,8 +11,9 @@ import { listUbicaciones } from '@/lib/inventario/inventarioRepo'
 import type { Ubicacion } from '@/lib/inventario/types'
 import { KpiMaterialesTable } from './KpiMaterialesTable'
 import { KpiProyectosPanel } from './KpiProyectosPanel'
+import { KpiConciliacionSapTable } from './KpiConciliacionSapTable'
 
-type AreaSel = 'ATT' | 'OyM' | 'inventario'
+type AreaSel = 'ATT' | 'OyM' | 'inventario' | 'conciliacion'
 type InventarioModo = 'bodega' | 'tecnico'
 
 function pad2(n: number): string {
@@ -105,9 +106,12 @@ export function KpiScreen() {
   }
 
   const bodegaC088 = bodegas.find((b) => b.nombre === 'C088')?.id ?? null
+  const bodegaC103 = bodegas.find((b) => b.nombre === 'C103')?.id ?? null
   const bodegaC132 = bodegas.find((b) => b.nombre === 'C132')?.id ?? null
+  const bodegaStk = bodegas.find((b) => b.nombre === 'STK')?.id ?? null
   const bodegaInsumos = bodegas.find((b) => b.nombre === 'Insumos')?.id ?? null
   const excluirInsumos = bodegaInsumos ? [bodegaInsumos] : null
+  const bodegasSapIds = [bodegaC088, bodegaC103, bodegaC132].filter((id): id is string => !!id)
 
   const bodegasDisponibles = bodegas.filter((b) => !bodegaIds.includes(b.id))
   const bodegasElegidas = bodegas.filter((b) => bodegaIds.includes(b.id))
@@ -153,6 +157,10 @@ export function KpiScreen() {
           <button type="button" onClick={() => setArea('inventario')}
             className={`flex-1 text-xs font-semibold py-1.5 rounded-lg ${area === 'inventario' ? 'bg-brand-600 text-white' : 'bg-slate-700 text-slate-300'}`}>
             Inventario
+          </button>
+          <button type="button" onClick={() => setArea('conciliacion')}
+            className={`flex-1 text-xs font-semibold py-1.5 rounded-lg ${area === 'conciliacion' ? 'bg-brand-600 text-white' : 'bg-slate-700 text-slate-300'}`}>
+            Conciliación SAP
           </button>
         </div>
       </div>
@@ -274,6 +282,10 @@ export function KpiScreen() {
               tecnicoIds={tecnicoIds} mostrarOrigenTecnico />
           )}
         </>
+      )}
+
+      {area === 'conciliacion' && (
+        <KpiConciliacionSapTable bodegasSapIds={bodegasSapIds} bodegaStkId={bodegaStk} />
       )}
     </div>
   )

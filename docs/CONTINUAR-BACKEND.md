@@ -20,12 +20,21 @@
   10. **Borrar un proyecto de prueba real que quedó en la BD** (ver v2.00 más abajo): OTT `726036`, id `2e185b0a-27f8-4212-a15e-a7015c4b59f2`, área ATT — quedó "Cerrado" (con el rol invitado no se puede hard-delete). En el SQL Editor: `delete from projects where id = '2e185b0a-27f8-4212-a15e-a7015c4b59f2';`
   11. ~~Migración de fotos a Cloudflare R2~~ — **hecho y confirmado el 21-09** (ver v2.08 más abajo): Edge Function `r2-storage` desplegada, CORS configurado en el bucket `sinterk`, y las 2521 fotos que ya existían migradas con el script (0 fallidas). Probado en el navegador: sign-put + PUT, sign-get + GET, y delete, los 3 contra el bucket real — y las 134 miniaturas de un cuadrante grande cargando bien desde R2.
   12. **Volver a correr `scripts/migrate-fotos-to-r2.mjs`** (ver v2.09 más abajo) — genera la versión "informe" (1000px) que falta en las fotos ya migradas antes de este fix. Es seguro correrlo de nuevo: solo sube lo que falte, no vuelve a tocar lo que ya está. Mientras no se corra, "Generar Informe Entel" sigue funcionando igual que antes (cae a la foto completa), solo sin el ahorro de peso.
-  13. **Construir el KPI de Físico vs Digital por SKU** — diseño ya validado con Andrés (ver sección debajo), sin implementar todavía. Después de implementarlo: mejorar la reportabilidad de material de OyM (ver el mismo apartado).
+  13. ~~Construir el KPI de Físico vs Digital por SKU~~ — **hecho, v2.10** más abajo, pendiente de que Andrés lo pruebe contra datos reales y afine detalles.
+  14. **Correr en el SQL Editor** `supabase/migrations/0073_kpi_conciliacion_sap.sql` — sin esto, la pestaña "Conciliación SAP" del Panel de KPIs muestra el error `Could not find the function public.kpi_conciliacion_sap` (confirmado en el navegador). Después: mejorar la reportabilidad de material de OyM (ver v2.10 más abajo).
 - **Deploy**: el push del 26-08 a `main` falló al desplegar por una interrupción real de GitHub Actions/Pages (confirmada en githubstatus.com, no un problema del repo) — falta reintentar el workflow ("Re-run all jobs") una vez que GitHub se recupere. Fuera de eso, `.github/workflows/deploy.yml` publica bien en cada push a `main`.
 
-## 📐 Diseño validado, no implementado (21-09-2026): KPI Físico vs Digital por SKU
+## v2.10 — Panel de KPIs: pestaña "Conciliación SAP" — Físico vs Digital por SKU (feature nueva, requiere correr `0073_kpi_conciliacion_sap.sql`)
 
-Pedido de Andrés: tener claridad de cuánto material físico falta para estar conciliados con SAP, por SKU, considerando que el material de las bodegas a veces se comparte entre proyectos. Se validó la fórmula en detalle contra el esquema real (no se escribió código todavía) — queda documentado acá para no perder el trabajo si se retoma en otra sesión.
+Pedido de Andrés: tener claridad de cuánto material físico falta para estar conciliados con SAP, por SKU, considerando que el material de las bodegas a veces se comparte entre proyectos. La fórmula se validó en detalle contra el esquema real antes de escribir nada (ver el diseño completo más abajo, quedó igual a como se acordó) — pedido explícito de Andrés: "crea el KPI solicitado, para luego afinar detalles en prueba y error", así que esto es una primera versión pensada para iterar, no la versión final.
+
+- **`kpi_conciliacion_sap(p_bodegas_sap_ids, p_bodega_stk_id)`** (`supabase/migrations/0073_kpi_conciliacion_sap.sql`): mismo patrón que `kpi_materiales` (RPC `security definer`, gate `is_jp_or_admin()`, bodegas por id en vez de hardcodeadas — se pueden ajustar desde la UI sin otra migración). A diferencia de los KPIs existentes, este es un saldo vivo (no pide `desde`/`hasta` — `stock` no tiene historial, mismo motivo ya documentado en el PASO 34).
+- **`KpiConciliacionSapTable.tsx`** nueva, pestaña "Conciliación SAP" en el Panel de KPIs (`KpiScreen.tsx`). Resuelve C088/C103/C132/STK por nombre desde la lista de bodegas ya cargada (mismo patrón que `bodegaC088`/`bodegaInsumos` existentes). A propósito simple para esta v1 — orden por columna + buscador + "solo con diferencia", sin el filtro tipo Google Sheets de `KpiMaterialesTable` — se puede sumar después si hace falta.
+- **Columnas**: Bodegas / Técnicos / Instalado ATT / Merma / Físico total / Digital SAP / Diferencia SAP / Físico STK / Digital STK / Diferencia STK. Diferencia en rojo si falta físico (positiva), verde si hay colchón (negativa).
+
+**Verificado en el navegador**: la pestaña resuelve las 4 bodegas por nombre y llama al RPC correctamente — como la migración `0073` todavía no está corrida en la BD real, devuelve `Could not find the function public.kpi_conciliacion_sap` de forma controlada (sin romper la pantalla), justo el estado esperado hasta que Andrés la corra (pendiente #14 arriba).
+
+### Diseño validado (21-09-2026), como referencia — la fórmula real vive en el comentario de `0073_kpi_conciliacion_sap.sql`
 
 **Fórmula final:**
 ```
