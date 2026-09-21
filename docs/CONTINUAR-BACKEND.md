@@ -20,7 +20,35 @@
   10. **Borrar un proyecto de prueba real que quedó en la BD** (ver v2.00 más abajo): OTT `726036`, id `2e185b0a-27f8-4212-a15e-a7015c4b59f2`, área ATT — quedó "Cerrado" (con el rol invitado no se puede hard-delete). En el SQL Editor: `delete from projects where id = '2e185b0a-27f8-4212-a15e-a7015c4b59f2';`
   11. ~~Migración de fotos a Cloudflare R2~~ — **hecho y confirmado el 21-09** (ver v2.08 más abajo): Edge Function `r2-storage` desplegada, CORS configurado en el bucket `sinterk`, y las 2521 fotos que ya existían migradas con el script (0 fallidas). Probado en el navegador: sign-put + PUT, sign-get + GET, y delete, los 3 contra el bucket real — y las 134 miniaturas de un cuadrante grande cargando bien desde R2.
   12. **Volver a correr `scripts/migrate-fotos-to-r2.mjs`** (ver v2.09 más abajo) — genera la versión "informe" (1000px) que falta en las fotos ya migradas antes de este fix. Es seguro correrlo de nuevo: solo sube lo que falte, no vuelve a tocar lo que ya está. Mientras no se corra, "Generar Informe Entel" sigue funcionando igual que antes (cae a la foto completa), solo sin el ahorro de peso.
+  13. **Construir el KPI de Físico vs Digital por SKU** — diseño ya validado con Andrés (ver sección debajo), sin implementar todavía. Después de implementarlo: mejorar la reportabilidad de material de OyM (ver el mismo apartado).
 - **Deploy**: el push del 26-08 a `main` falló al desplegar por una interrupción real de GitHub Actions/Pages (confirmada en githubstatus.com, no un problema del repo) — falta reintentar el workflow ("Re-run all jobs") una vez que GitHub se recupere. Fuera de eso, `.github/workflows/deploy.yml` publica bien en cada push a `main`.
+
+## 📐 Diseño validado, no implementado (21-09-2026): KPI Físico vs Digital por SKU
+
+Pedido de Andrés: tener claridad de cuánto material físico falta para estar conciliados con SAP, por SKU, considerando que el material de las bodegas a veces se comparte entre proyectos. Se validó la fórmula en detalle contra el esquema real (no se escribió código todavía) — queda documentado acá para no perder el trabajo si se retoma en otra sesión.
+
+**Fórmula final:**
+```
+FÍSICO_total(SKU) =
+    Σ stock.cantidad_fisico  donde ubicacion ∈ {C088, C103, C132, STK}
+  + Σ stock.cantidad_fisico  donde ubicaciones.tipo = 'tecnico'
+  + Σ proyecto_materiales.cant_instalada
+        join projects on project_id = projects.id
+        where projects.area = 'ATT' and projects.estado = 'activo'
+  + Σ proyecto_materiales.cant_merma   (equivalente a movimientos.tipo='merma')
+
+Diferencia_SAP(SKU)  = (Σ stock.cantidad_digital en C088+C103+C132)  − FÍSICO_total
+Diferencia_STK(SKU)  = stock.cantidad_digital(STK)                   − stock.cantidad_fisico(STK)
+```
+Insumos queda fuera de ambas (no tiene digital, es solo umbral de reposición). Diferencia positiva = falta físico para cuadrar con SAP (a investigar); negativa = colchón/buffer.
+
+**Decisiones ya tomadas con Andrés:**
+- "Asignado directo a técnico" y "tránsito de proyecto" son el MISMO término (ambos son `stock.cantidad_fisico` en ubicaciones tipo `tecnico`) — no sumar aparte, se duplicaría.
+- Material instalado de ATT cuenta mientras el proyecto siga `activo`; al cerrarlo se asume ya rebajado en SAP (aunque la rebaja real pueda diferir levemente "para cuadrar" — así lo maneja Andrés hoy).
+- SAP (C088+C103+C132) y STK son dos comparaciones separadas, sin sumar sus digitales — STK tiene su propio "digital" basado en lo reportado comprado a Entel, no es SAP real. Mezclarlos podría tapar un descuadre real de uno con un sobrante del otro.
+- El término de "instalado" se filtra explícitamente por `projects.area = 'ATT'`, no solo por `project_id is not null` — confirmado que Preventivos (`area='OyM'`) también generan `proyecto_materiales.cant_instalada` reales (vía `PuntoMaterialSection.tsx`, dentro de cada punto), así que sin este filtro se mezclarían dos cosas distintas. El consumo de material de Preventivos no necesita un término aparte: ya queda reflejado en el físico de técnico (`instalado` descuenta su stock sin importar el área).
+
+**Hallazgo colateral de Andrés, pendiente aparte (no bloquea el KPI)**: al revisar el flujo de Preventivos se encontró que la pestaña Movimientos muestra el código de proyecto usando `projects.ott` sin distinguir área — para un Preventivo esa columna se reutiliza como el N° de Cuadrante (texto libre, no único entre preventivos, ej. "1"), y esa vista no antepone `[Preventivo]` como sí hacen otras pantallas — así que un movimiento de Preventivo es difícil de rastrear a simple vista, aunque el dato (`project_id`/`area`) esté bien guardado. Aclaración de Andrés sobre el proceso real: en OyM el material se rebaja con un código de incidencia (a veces coincide con la OTT, mecanismo aparte), y los Preventivos reciben ese código de incidencia recién al resolverse y cerrarse (sin generar ticket en Entel, ya que quedan fuera de su alcance). Hoy no hay un control muy fino de material en terreno para OyM — falta mejorar la reportabilidad, aunque las herramientas ya existen. **Pendiente para después del KPI**: trabajar en la reportabilidad de materiales de OyM (mostrar `[Preventivo]` en Movimientos como mínimo; evaluar más adelante si conviene un flujo de rebaja por código de incidencia más explícito).
 
 ## v2.09 — "Generar Informe Entel" baja fotos más livianas en vez de la copia completa (mejora de velocidad, sin migración de datos)
 Pregunta de Andrés tras la migración a R2: "¿esto es subir más peso a la base de datos de fotos?" — al investigar si revisar un cuadrante y generar su informe descargaban la foto dos veces, salió un hallazgo real: revisar solo baja la miniatura (200px, ~9KB), así que generar el informe suele ser la PRIMERA vez que se baja la foto completa (hasta 1600px, ~350-400KB) — y esa foto completa se reducía de todas formas a ~900px al incrustarla en el Excel (el marco es chico).
