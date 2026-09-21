@@ -7,16 +7,17 @@ const FOTO_KEYS: FotoKey[] = ['fotoLevantamiento', 'fotoAntes', 'fotoDespues']
 
 /**
  * Espejo online de `useRestorePhotoPreviews`: para las fotos que ya viven en
- * Storage (tienen `storagePath`), pide signed URLs y las vuelca al store.
- * Dos URLs por foto, resueltas en paralelo:
- * - `previewUrl` (resolución completa, en lote vía `createSignedUrls`) —
- *   la sigue usando el lightbox y cualquier export/informe.
- * - `thumbUrl` (miniatura 200×200 transformada, una signed URL por foto —
- *   `createSignedUrls` en lote NO soporta `transform`, solo el endpoint de
- *   una foto a la vez) — la usan las miniaturas/grillas. Pedido de Andrés
- *   ("¿se puede hacer que la carga de cuadrantes con muchas fotos sea un
- *   poco más rápida?"): una foto de ~380KB baja a ~9KB con esta
- *   transformación, verificado contra el bucket real.
+ * R2 (tienen `storagePath`), pide signed URLs y las vuelca al store. Dos
+ * URLs por foto, cada una en lote (un solo llamado a la Edge Function
+ * `r2-storage` por tipo, no una por foto):
+ * - `previewUrl` (resolución completa) — la sigue usando el lightbox y
+ *   cualquier export/informe.
+ * - `thumbUrl` (miniatura ~200px, objeto real aparte en `preventivos/thumbs/`
+ *   — R2 no tiene transform al vuelo como tenía Supabase Storage, así que
+ *   se genera y sube al momento de capturar la foto, ver `ensureUploaded`
+ *   en `data/photoStorage.ts`) — la usan las miniaturas/grillas. Pedido de
+ *   Andrés ("¿se puede hacer que la carga de cuadrantes con muchas fotos
+ *   sea un poco más rápida?"): una foto de ~380KB baja a ~9KB.
  *
  * Las fotos locales (solo `blobId`) las sigue cubriendo
  * `useRestorePhotoPreviews` desde IndexedDB — no necesitan miniatura
