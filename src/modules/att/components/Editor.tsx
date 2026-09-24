@@ -40,7 +40,7 @@ export function Editor() {
     navigate(volverA, volverState ? { state: volverState } : undefined)
   }
   const isTecnico = useAuth((s) => s.profile?.rol === 'tecnico')
-  const { record, processPhoto, processFotoAerea } = useAtt(id ?? '')
+  const { record: liveRecord, processPhoto, processFotoAerea } = useAtt(id ?? '')
   const syncOne = useAttStore((s) => s.syncOne)
   const setEstado = useAttStore((s) => s.setEstado)
   useRestoreAttPhotos()
@@ -59,11 +59,40 @@ export function Editor() {
 
   // El primer guardado de un borrador local "rekea" su id (nanoid → uuid del
   // servidor) en el store; ese instante deja momentáneamente sin record al id
-  // viejo de la URL, en carrera con la navegación hacia el id nuevo. Solo se
-  // redirige a Home si el record nunca existió para este id (deep-link roto /
-  // recién borrado), no cuando ya existió y desapareció por la promoción.
+  // viejo de la URL, en carrera con la navegación hacia el id nuevo. Antes
+  // solo se evitaba la redirección a Home en ese instante (`hadRecord`) — el
+  // resto del editor igual se desmontaba (`if (!record) return null` más
+  // abajo), lo que se llevaba puesto el foco/selección del campo donde se
+  // estaba escribiendo (bug real reportado por Andrés: al guardar por
+  // primera vez una OTT nueva, "se deselecciona la casilla" un par de
+  // segundos después de dejar de tipear — justo cuando resuelve el primer
+  // guardado). Se puentea con el último record válido conocido mientras la
+  // URL se pone al día, en vez de desmontar todo el árbol.
   const hadRecord = useRef(false)
-  useEffect(() => { if (record) hadRecord.current = true }, [record])
+  const lastRecord = useRef<AttRecord | null>(null)
+  useEffect(() => {
+    if (liveRecord) { hadRecord.current = true; lastRecord.current = liveRecord }
+  }, [liveRecord])
+  const record = liveRecord ?? (hadRecord.current ? lastRecord.current : null)
+  // Por la misma carrera: las secciones de abajo reciben `record.id`, no el
+  // `id` crudo de la URL — cada una hace su propia búsqueda en el store
+  // (`records[recordId]`) y tiene su propio `if (!record) return null`; con
+  // el `id` viejo de la URL, esa búsqueda también fallaba un instante y las
+  // desmontaba a todas.
+  //
+  // La causa real y más grave de la pérdida de foco/selección era otra,
+  // ya arreglada: un hook llamado después de ese mismo `return null` en
+  // SeccionFotos.tsx (ATT e Incidencias) y SeccionDescripcion.tsx — React
+  // detectaba "Rendered fewer hooks than expected" en ese instante y, sin
+  // ningún error boundary, tiraba abajo TODA la app (confirmado con
+  // `console.error` real en el navegador, no solo teoría). Con ese arreglo
+  // ya no hay crash ni pérdida de texto — verificado que el valor tipeado
+  // llega completo. Con este puente además puesto, sigue quedando un
+  // resto MENOR: el campo pierde el foco (hay que volver a hacer clic) en
+  // ese mismo instante, sin perder lo escrito — no se identificó la causa
+  // exacta de ese resto (no es un desmonte de Editor, confirmado con
+  // logging en vivo), parece una reconciliación de React más fina. Queda
+  // para otra pasada si sigue molestando en la práctica.
 
   // Trae la versión del servidor al abrir (deep-link / recarga); no pisa
   // ediciones locales más nuevas (ver `mergeFromServer` en el store). El
@@ -133,10 +162,10 @@ export function Editor() {
         <button type="button" onClick={volver}
           className="text-slate-400 hover:text-white text-sm">← Volver</button>
         <span className="flex-1 text-sm font-semibold text-white truncate">{title}</span>
-        <EstadoProyectoBadge estado={record.estado} onChange={(next) => setEstado(id, next)} />
+        <EstadoProyectoBadge estado={record.estado} onChange={(next) => setEstado(record.id, next)} />
       </div>
 
-      <BarraDatosProyecto recordId={id} record={record} />
+      <BarraDatosProyecto recordId={record.id} record={record} />
 
       <div className="flex gap-2">
         <button type="button" onClick={() => setTab('logistica')}
@@ -160,25 +189,25 @@ export function Editor() {
         isTecnico ? (
           // Rol técnico: en Info de proyecto solo el Registro fotográfico es
           // suyo — la Foto general la busca el JP desde mapa, no la toca el técnico.
-          <SeccionFotos recordId={id} processPhoto={processPhoto} />
+          <SeccionFotos recordId={record.id} processPhoto={processPhoto} />
         ) : (
           <>
-            <SeccionTipo recordId={id} />
-            <SeccionDatos recordId={id} />
-            <SeccionDescripcion recordId={id} processFotoAerea={processFotoAerea} />
-            <SeccionInfra recordId={id} />
-            <SeccionFotos recordId={id} processPhoto={processPhoto} />
+            <SeccionTipo recordId={record.id} />
+            <SeccionDatos recordId={record.id} />
+            <SeccionDescripcion recordId={record.id} processFotoAerea={processFotoAerea} />
+            <SeccionInfra recordId={record.id} />
+            <SeccionFotos recordId={record.id} processPhoto={processPhoto} />
           </>
         )
       ) : tab === 'logistica' ? (
-        isUuid(id) ? (
-          <LogisticaTab projectId={id} area="ATT"
+        isUuid(record.id) ? (
+          <LogisticaTab projectId={record.id} area="ATT"
             ott={record.ott} direccion={record.direccion} fechaInicio={fechaInicioDe(record)} />
         ) : (
           <p className="text-xs text-slate-500 text-center py-8">Guarda el informe primero para gestionar logística.</p>
         )
-      ) : isUuid(id) ? (
-        <EstadoPagoTab projectId={id} tramos={record.tramos} />
+      ) : isUuid(record.id) ? (
+        <EstadoPagoTab projectId={record.id} tramos={record.tramos} />
       ) : (
         <p className="text-xs text-slate-500 text-center py-8">Guarda el informe primero para armar el Estado de Pago.</p>
       )}

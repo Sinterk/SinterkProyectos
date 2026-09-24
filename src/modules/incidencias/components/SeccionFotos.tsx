@@ -14,8 +14,6 @@ export function SeccionFotos({ recordId, processPhoto }: Props) {
   const inputRef = useRef<HTMLInputElement>(null)
   const [loading, setLoading] = useState(false)
 
-  if (!record) return null
-
   async function processFiles(files: File[]) {
     setLoading(true)
     try {
@@ -26,12 +24,18 @@ export function SeccionFotos({ recordId, processPhoto }: Props) {
     }
   }
 
+  // useFileDrop tiene que llamarse ANTES del `if (!record) return null` de
+  // abajo — ver el comentario largo en att/components/SeccionDescripcion.tsx
+  // (mismo bug real: "Rendered fewer hooks than expected" tiraba abajo toda
+  // la app durante el rekey de un registro nuevo).
+  const { isDragging, dropProps } = useFileDrop(processFiles)
+
+  if (!record) return null
+
   async function handleCapture(e: React.ChangeEvent<HTMLInputElement>) {
     const file = e.target.files?.[0]
     if (file) await processFiles([file])
   }
-
-  const { isDragging, dropProps } = useFileDrop(processFiles)
 
   return (
     <div {...dropProps}

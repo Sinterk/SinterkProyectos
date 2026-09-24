@@ -17,8 +17,6 @@ export function SeccionDescripcion({ recordId, processFotoAerea }: Props) {
   const aereoInputRef = useRef<HTMLInputElement>(null)
   const [loadingAereo, setLoadingAereo] = useState(false)
 
-  if (!record) return null
-
   async function processAereoFile(file: File) {
     setLoadingAereo(true)
     try { await processFotoAerea(file) } finally {
@@ -27,12 +25,24 @@ export function SeccionDescripcion({ recordId, processFotoAerea }: Props) {
     }
   }
 
+  // useFileDrop tiene que llamarse ANTES del `if (!record) return null` de
+  // abajo — un hook nunca puede quedar después de un return condicional,
+  // regla de React. Acá era real, no solo teórico: durante el instante en
+  // que un borrador nuevo pasa de id local a uuid del servidor (rekey),
+  // `record` queda undefined un tick — con el hook después del return, ese
+  // tick llamaba menos hooks que el render anterior, React tiraba "Rendered
+  // fewer hooks than expected" y, sin un error boundary, se caía TODA la
+  // app (no solo este componente) — bug real reportado por Andrés: al
+  // guardar una OTT nueva por primera vez, se perdía el foco/selección del
+  // campo que se estaba escribiendo justo en ese instante.
+  const { isDragging: isDraggingAereo, dropProps: dropPropsAereo } = useFileDrop(([file]) => { if (file) processAereoFile(file) })
+
+  if (!record) return null
+
   async function handleAereoCapture(e: React.ChangeEvent<HTMLInputElement>) {
     const file = e.target.files?.[0]
     if (file) await processAereoFile(file)
   }
-
-  const { isDragging: isDraggingAereo, dropProps: dropPropsAereo } = useFileDrop(([file]) => { if (file) processAereoFile(file) })
 
   return (
     <div className="bg-slate-800 rounded-2xl border border-slate-700 p-4 space-y-5">
