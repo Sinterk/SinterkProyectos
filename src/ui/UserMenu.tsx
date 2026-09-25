@@ -2,6 +2,11 @@ import { useEffect, useRef, useState } from 'react'
 import { Link } from 'react-router-dom'
 import { useAuth, guestPassword, ROL_LABELS } from '@/lib/auth'
 
+// Manuales de uso (Google Docs). 'jp' y 'log' son roles de oficina; 'tecnico'
+// es terreno; 'admin' ve ambos.
+const MANUAL_OFICINA_URL = 'https://docs.google.com/document/d/1_9UJbAGgGmtKcS-vTljhgq3buYEucTJw/edit?usp=sharing'
+const MANUAL_TERRENO_URL = 'https://docs.google.com/document/d/1lmsqncQX9OBi3ZjpFGdrAN6ya267k2fW/edit?usp=sharing'
+
 export function UserMenu() {
   const { session, profile, isGuest, changePassword, signOut } = useAuth()
   const [open, setOpen] = useState(false)
@@ -59,6 +64,20 @@ export function UserMenu() {
               className="block px-4 py-3 text-sm text-brand-400 hover:bg-slate-700/60 border-b border-slate-700 transition-colors">
               📊 KPI
             </Link>
+          )}
+
+          {(profile?.rol === 'admin' || profile?.rol === 'jp' || profile?.rol === 'log') && (
+            <a href={MANUAL_OFICINA_URL} target="_blank" rel="noopener noreferrer" onClick={() => setOpen(false)}
+              className="block px-4 py-3 text-sm text-brand-400 hover:bg-slate-700/60 border-b border-slate-700 transition-colors">
+              📖 Manual de uso (Oficina)
+            </a>
+          )}
+
+          {(profile?.rol === 'admin' || profile?.rol === 'tecnico') && (
+            <a href={MANUAL_TERRENO_URL} target="_blank" rel="noopener noreferrer" onClick={() => setOpen(false)}
+              className="block px-4 py-3 text-sm text-brand-400 hover:bg-slate-700/60 border-b border-slate-700 transition-colors">
+              📖 Manual de uso (Terreno)
+            </a>
           )}
 
           <Link to="/sugerencias" onClick={() => setOpen(false)}
