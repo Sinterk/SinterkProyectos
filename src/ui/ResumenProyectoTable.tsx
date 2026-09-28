@@ -294,6 +294,13 @@ export function ResumenProyectoTable({ projectId, area, puntos, refreshKey = 0, 
     const nombre = m.nombre?.trim() || m.email || ''
     return area === 'OyM' && materialId ? `${nombre} (${stockDeTecnico(m.id, materialId, lote)})` : nombre
   }
+  /** Etiqueta de la opción ORIGEN_TECNICO del selector de Origen — nombra al
+   *  técnico de la fila y cuánto tiene, en vez de un genérico "Técnico". Sin
+   *  técnico elegido todavía en la fila, cae a un texto genérico. */
+  function origenTecnicoLabel(tecnicoUserId: string, materialId: string, lote: string): string {
+    const m = members.find((mm) => mm.id === tecnicoUserId)
+    return m ? `👤 ${tecnicoLabel(m, materialId, lote)}` : '👤 Técnico (ya lo tiene)'
+  }
 
   useEffect(() => { if (!tecnicoEdicion && members.length > 0) setTecnicoEdicion(members[0].id) }, [members, tecnicoEdicion])
   const defaultBodegaId = bodegas.find((b) => b.nombre === BODEGA_DEFECTO_POR_AREA[area])?.id ?? ''
@@ -783,7 +790,7 @@ export function ResumenProyectoTable({ projectId, area, puntos, refreshKey = 0, 
                     <span className="block truncate w-20">Descripción</span>
                   </th>
                   <th className="px-2 py-2 font-medium whitespace-nowrap">SKU</th>
-                  <th className="px-2 py-2 font-medium whitespace-nowrap">Bodega</th>
+                  <th className="px-2 py-2 font-medium whitespace-nowrap">{area === 'OyM' ? 'Origen' : 'Bodega'}</th>
                   <th className="px-2 py-2 font-medium whitespace-nowrap">Lote</th>
                   <th className="px-2 py-2 font-medium text-center whitespace-nowrap">Solicitado</th>
                   <th className="px-2 py-2 font-medium text-center whitespace-nowrap">Entregado</th>
@@ -825,8 +832,8 @@ export function ResumenProyectoTable({ projectId, area, puntos, refreshKey = 0, 
                         <select value={fila.ubicacionBodegaId}
                           onChange={(e) => actualizarFilaNueva(fila.localId, { ubicacionBodegaId: e.target.value, lote: esFerreteriaFila ? LOTE_FISICO_FERRETERIA : '' })}
                           className="w-24 bg-slate-700 text-white text-xs rounded px-1.5 py-1 border border-slate-600 focus:border-brand-500 focus:outline-none">
-                          <option value="">Bodega…</option>
-                          {area === 'OyM' && <option value={ORIGEN_TECNICO}>👤 Técnico (ya lo tiene)</option>}
+                          <option value="">{area === 'OyM' ? 'Origen…' : 'Bodega…'}</option>
+                          {area === 'OyM' && <option value={ORIGEN_TECNICO}>{origenTecnicoLabel(fila.tecnicoUserId, fila.materialId, fila.lote)}</option>}
                           {bodegas.map((b) => <option key={b.id} value={b.id}>{b.nombre}</option>)}
                         </select>
                         {puntos && (
@@ -905,8 +912,8 @@ export function ResumenProyectoTable({ projectId, area, puntos, refreshKey = 0, 
                       <td className="px-2 py-2 align-top">
                         <select value={getRowBodega(row)} onChange={(e) => setRowBodega(key, e.target.value)}
                           className="w-24 bg-slate-700 text-white text-xs rounded px-1.5 py-1 border border-slate-600 focus:border-brand-500 focus:outline-none">
-                          <option value="">Bodega…</option>
-                          {area === 'OyM' && <option value={ORIGEN_TECNICO}>👤 Técnico (ya lo tiene)</option>}
+                          <option value="">{area === 'OyM' ? 'Origen…' : 'Bodega…'}</option>
+                          {area === 'OyM' && <option value={ORIGEN_TECNICO}>{origenTecnicoLabel(getRowTecnico(key), row.materialId, getRowLote(row))}</option>}
                           {bodegas.map((b) => <option key={b.id} value={b.id}>{b.nombre}</option>)}
                         </select>
                       </td>
