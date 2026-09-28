@@ -77,22 +77,33 @@ const CAMPO_REASIGNACION: Campo = 'cantRezagada'
 const CAMPO_NECESITA_BODEGA: Campo[] = ['cantEntregada', 'cantDevuelta', 'cantRebajada']
 
 /**
- * Solo OyM: valor especial para el selector "Bodega" de una fila que en
- * realidad significa "esta fila sale del stock que el técnico ya trae
- * encima, no de una bodega" — a diferencia de ATT, en OyM lo normal es que
- * el material YA esté con el técnico (asignación preventiva, ver
- * AsignacionesForm) antes de que exista la incidencia, así que Instalado no
- * debería asumir una bodega por defecto. Pedido explícito de Andrés:
- * mantener que si el técnico no tiene stock suficiente, Instalado igual se
- * registra en negativo desde el técnico (no se cae solo a bodega) — sacar
- * derecho de una bodega es una elección manual y explícita de esta fila,
- * nunca automática, "para que no haya sorpresas del motivo" por el que bajó
- * el stock de una bodega. Con este origen elegido, Entregado se deshabilita
- * en la fila (no tiene sentido: no salió nada de ninguna bodega) y el
- * selector de Técnico muestra cuánto tiene cada uno del material/lote de esa
- * fila, para elegir de cuál conviene sacarlo.
+ * Solo OyM: valores especiales del selector "Origen" de una fila (uno por
+ * cada técnico asignado, `ORIGEN_TECNICO_PREFIX + userId`) que en realidad
+ * significan "esta fila sale del stock que ESE técnico ya trae encima, no
+ * de una bodega" — a diferencia de ATT, en OyM lo normal es que el material
+ * YA esté con el técnico (asignación preventiva, ver AsignacionesForm)
+ * antes de que exista la incidencia, así que Instalado no debería asumir
+ * una bodega por defecto. Pedido explícito de Andrés: mantener que si el
+ * técnico no tiene stock suficiente, Instalado igual se registra en
+ * negativo desde el técnico (no se cae solo a bodega) — sacar derecho de
+ * una bodega es una elección manual y explícita de esta fila, nunca
+ * automática, "para que no haya sorpresas del motivo" por el que bajó el
+ * stock de una bodega.
+ *
+ * Elegir uno de estos valores en "Origen" TAMBIÉN fija el selector de
+ * Técnico de la fila a ese mismo técnico (y viceversa: cambiar el técnico
+ * mientras el origen ya es "de técnico" actualiza el origen para que
+ * apunte al nuevo) — son la misma decisión mostrada en dos lugares, pedido
+ * explícito de Andrés para que nunca queden desincronizados. Con origen de
+ * técnico elegido, Entregado se deshabilita en la fila (no tiene sentido:
+ * no salió nada de ninguna bodega) y la opción de Origen de cada técnico
+ * muestra cuánto tiene del material/lote de esa fila, para elegir de cuál
+ * conviene sacarlo.
  */
-const ORIGEN_TECNICO = '__origen_tecnico__'
+const ORIGEN_TECNICO_PREFIX = '__origen_tecnico__:'
+function esOrigenTecnico(v: string): boolean { return v.startsWith(ORIGEN_TECNICO_PREFIX) }
+function origenTecnicoValue(userId: string): string { return ORIGEN_TECNICO_PREFIX + userId }
+function origenTecnicoUserId(v: string): string { return v.slice(ORIGEN_TECNICO_PREFIX.length) }
 /**
  * El material del proyecto se muestra en DOS tablas (pedido de Andrés):
  * la física (lo que se mueve de verdad) y la digital (la baja contable en
@@ -224,7 +235,7 @@ export function ResumenProyectoTable({ projectId, area, puntos, refreshKey = 0, 
   const [members, setMembers] = useState<MemberProfile[]>([])
   const [bodegas, setBodegas] = useState<Ubicacion[]>([])
   // Solo OyM: stock propio de cada técnico asignado, para mostrar "(cantidad)"
-  // junto a su nombre al elegir de dónde sale un Instalado (ver ORIGEN_TECNICO).
+  // junto a su nombre al elegir de dónde sale un Instalado (ver ORIGEN_TECNICO_PREFIX).
   const [ubicacionesTecnico, setUbicacionesTecnico] = useState<Ubicacion[]>([])
   const [stockTecnicos, setStockTecnicos] = useState<StockRow[]>([])
   const [error, setError] = useState<string | null>(null)
@@ -294,13 +305,6 @@ export function ResumenProyectoTable({ projectId, area, puntos, refreshKey = 0, 
     const nombre = m.nombre?.trim() || m.email || ''
     return area === 'OyM' && materialId ? `${nombre} (${stockDeTecnico(m.id, materialId, lote)})` : nombre
   }
-  /** Etiqueta de la opción ORIGEN_TECNICO del selector de Origen — nombra al
-   *  técnico de la fila y cuánto tiene, en vez de un genérico "Técnico". Sin
-   *  técnico elegido todavía en la fila, cae a un texto genérico. */
-  function origenTecnicoLabel(tecnicoUserId: string, materialId: string, lote: string): string {
-    const m = members.find((mm) => mm.id === tecnicoUserId)
-    return m ? `👤 ${tecnicoLabel(m, materialId, lote)}` : '👤 Técnico (ya lo tiene)'
-  }
 
   useEffect(() => { if (!tecnicoEdicion && members.length > 0) setTecnicoEdicion(members[0].id) }, [members, tecnicoEdicion])
   const defaultBodegaId = bodegas.find((b) => b.nombre === BODEGA_DEFECTO_POR_AREA[area])?.id ?? ''
@@ -332,7 +336,8 @@ export function ResumenProyectoTable({ projectId, area, puntos, refreshKey = 0, 
   // estado de React, se perdía al recargar). Sin entregas todavía
   // (`ubicacionBodegaId` null), sigue cayendo al default del área.
   function getRowBodega(row: ResumenMaterialProyecto): string {
-    return rowBodegaOverride[rowKey(row)] || row.ubicacionBodegaId || (area === 'OyM' ? ORIGEN_TECNICO : bodegaEdicion)
+    return rowBodegaOverride[rowKey(row)] || row.ubicacionBodegaId
+      || (area === 'OyM' ? origenTecnicoValue(getRowTecnico(rowKey(row))) : bodegaEdicion)
   }
   function setRowBodega(key: string, ubicacionBodegaId: string) {
     setRowBodegaOverride((prev) => ({ ...prev, [key]: ubicacionBodegaId }))
@@ -346,7 +351,7 @@ export function ResumenProyectoTable({ projectId, area, puntos, refreshKey = 0, 
   }
 
   function agregarFilaNueva() {
-    setNuevasFilas((prev) => [...prev, filaVacia(members[0]?.id ?? '', area === 'OyM' ? ORIGEN_TECNICO : defaultBodegaId)])
+    setNuevasFilas((prev) => [...prev, filaVacia(members[0]?.id ?? '', area === 'OyM' ? origenTecnicoValue(members[0]?.id ?? '') : defaultBodegaId)])
   }
   function actualizarFilaNueva(localId: string, patch: Partial<Pick<NuevaFila, 'materialId' | 'lote' | 'puntoId' | 'tecnicoUserId' | 'ubicacionBodegaId' | 'nota'>>) {
     setNuevasFilas((prev) => prev.map((f) => (f.localId === localId ? { ...f, ...patch } : f)))
@@ -374,7 +379,7 @@ export function ResumenProyectoTable({ projectId, area, puntos, refreshKey = 0, 
     if (!materialId) return
     // Origen "técnico" (solo OyM): no hay bodega que autodetectar, el
     // material sale del stock propio del técnico elegido en la fila.
-    if (fila.ubicacionBodegaId === ORIGEN_TECNICO) return
+    if (esOrigenTecnico(fila.ubicacionBodegaId)) return
     try {
       const stockRows = await getStock({ materialId })
       const bodegaIds = new Set(bodegas.map((b) => b.id))
@@ -592,14 +597,14 @@ export function ResumenProyectoTable({ projectId, area, puntos, refreshKey = 0, 
         const raw = byCampo[campo]
         const n = Number(raw)
         if (!raw || !(n > 0)) continue
-        // Origen "técnico" (ver ORIGEN_TECNICO): no es una bodega real. Un
-        // Devuelto desde ahí siempre vuelve a la bodega del área (C132 en
-        // OyM) — es la única bodega que tiene sentido para "el técnico
-        // devuelve lo que traía". Cualquier otro campo que necesite bodega
-        // (en la práctica solo Entregado, que la UI ya deshabilita en esta
-        // fila) queda sin bodega y cae al error normal de abajo.
+        // Origen de técnico (ver ORIGEN_TECNICO_PREFIX): no es una bodega
+        // real. Un Devuelto desde ahí siempre vuelve a la bodega del área
+        // (C132 en OyM) — es la única bodega que tiene sentido para "el
+        // técnico devuelve lo que traía". Cualquier otro campo que necesite
+        // bodega (en la práctica solo Entregado, que la UI ya deshabilita
+        // en esta fila) queda sin bodega y cae al error normal de abajo.
         let bodegaFila = getRowBodega(row)
-        if (bodegaFila === ORIGEN_TECNICO) bodegaFila = campo === 'cantDevuelta' ? defaultBodegaId : ''
+        if (esOrigenTecnico(bodegaFila)) bodegaFila = campo === 'cantDevuelta' ? defaultBodegaId : ''
         if (CAMPO_NECESITA_BODEGA.includes(campo) && !bodegaFila) {
           nextErrors[`${key}|${campo}`] = 'Falta elegir bodega'
           nextEdits[key] = { ...nextEdits[key], [campo]: raw }
@@ -661,7 +666,7 @@ export function ResumenProyectoTable({ projectId, area, puntos, refreshKey = 0, 
         if (!raw || !(n > 0)) continue
         // Mismo criterio que en la tabla de filas existentes (ver más arriba): origen "técnico" → Devuelto va a la bodega del área, el resto queda sin bodega.
         let bodegaFila = fila.ubicacionBodegaId
-        if (bodegaFila === ORIGEN_TECNICO) bodegaFila = campo === 'cantDevuelta' ? defaultBodegaId : ''
+        if (esOrigenTecnico(bodegaFila)) bodegaFila = campo === 'cantDevuelta' ? defaultBodegaId : ''
         if (CAMPO_NECESITA_BODEGA.includes(campo) && !bodegaFila) {
           nextErrors[`${fila.localId}|${campo}`] = 'Falta elegir bodega'
           nextFilaEdits[campo] = raw
@@ -830,10 +835,22 @@ export function ResumenProyectoTable({ projectId, area, puntos, refreshKey = 0, 
                       </td>
                       <td className="px-2 py-2 align-top space-y-1">
                         <select value={fila.ubicacionBodegaId}
-                          onChange={(e) => actualizarFilaNueva(fila.localId, { ubicacionBodegaId: e.target.value, lote: esFerreteriaFila ? LOTE_FISICO_FERRETERIA : '' })}
-                          className="w-24 bg-slate-700 text-white text-xs rounded px-1.5 py-1 border border-slate-600 focus:border-brand-500 focus:outline-none">
+                          onChange={(e) => {
+                            const v = e.target.value
+                            actualizarFilaNueva(fila.localId, {
+                              ubicacionBodegaId: v,
+                              // Elegir el origen de un técnico también fija el
+                              // selector de Técnico de la fila a ese mismo
+                              // técnico — son la misma decisión (ver ORIGEN_TECNICO_PREFIX).
+                              tecnicoUserId: esOrigenTecnico(v) ? origenTecnicoUserId(v) : fila.tecnicoUserId,
+                              lote: esFerreteriaFila ? LOTE_FISICO_FERRETERIA : '',
+                            })
+                          }}
+                          className="w-32 bg-slate-700 text-white text-xs rounded px-1.5 py-1 border border-slate-600 focus:border-brand-500 focus:outline-none">
                           <option value="">{area === 'OyM' ? 'Origen…' : 'Bodega…'}</option>
-                          {area === 'OyM' && <option value={ORIGEN_TECNICO}>{origenTecnicoLabel(fila.tecnicoUserId, fila.materialId, fila.lote)}</option>}
+                          {area === 'OyM' && members.map((m) => (
+                            <option key={m.id} value={origenTecnicoValue(m.id)}>👤 {tecnicoLabel(m, fila.materialId, fila.lote)}</option>
+                          ))}
                           {bodegas.map((b) => <option key={b.id} value={b.id}>{b.nombre}</option>)}
                         </select>
                         {puntos && (
@@ -849,7 +866,7 @@ export function ResumenProyectoTable({ projectId, area, puntos, refreshKey = 0, 
                         {esFerreteriaFila ? (
                           <span className="text-slate-400 text-xs">Físico</span>
                         ) : (
-                          <LoteSelect materialId={fila.materialId} ubicacionId={fila.ubicacionBodegaId === ORIGEN_TECNICO ? null : (fila.ubicacionBodegaId || null)} naturaleza="fisico"
+                          <LoteSelect materialId={fila.materialId} ubicacionId={esOrigenTecnico(fila.ubicacionBodegaId) ? null : (fila.ubicacionBodegaId || null)} naturaleza="fisico"
                             checkAvailability={false} value={fila.lote}
                             onChange={(lote) => actualizarFilaNueva(fila.localId, { lote })}
                             className="w-24 bg-slate-700 text-white text-xs rounded px-1.5 py-1 border border-slate-600 focus:border-brand-500 focus:outline-none" />
@@ -859,8 +876,8 @@ export function ResumenProyectoTable({ projectId, area, puntos, refreshKey = 0, 
                         // "Asignado a técnico" no aplica a una fila nueva: no hay
                         // nada entregado todavía que se pueda reasignar. Entregado
                         // tampoco aplica con origen "técnico": no sale nada de
-                        // ninguna bodega en esta fila (ver ORIGEN_TECNICO).
-                        const origenTecnico = fila.ubicacionBodegaId === ORIGEN_TECNICO && campo === 'cantEntregada'
+                        // ninguna bodega en esta fila (ver ORIGEN_TECNICO_PREFIX).
+                        const origenTecnico = esOrigenTecnico(fila.ubicacionBodegaId) && campo === 'cantEntregada'
                         if (campo === CAMPO_REASIGNACION || !editableCampos.includes(campo) || origenTecnico) {
                           return (
                             <td key={campo} className="px-2 py-2 text-center whitespace-nowrap align-top text-slate-600"
@@ -888,7 +905,15 @@ export function ResumenProyectoTable({ projectId, area, puntos, refreshKey = 0, 
                       </td>
                       <td className="px-2 py-2 align-top">
                         <select value={fila.tecnicoUserId}
-                          onChange={(e) => actualizarFilaNueva(fila.localId, { tecnicoUserId: e.target.value })}
+                          onChange={(e) => {
+                            const v = e.target.value
+                            actualizarFilaNueva(fila.localId, {
+                              tecnicoUserId: v,
+                              // Si el origen de esta fila ya es "de técnico", cambiar
+                              // el técnico acá también mueve el origen al nuevo.
+                              ubicacionBodegaId: esOrigenTecnico(fila.ubicacionBodegaId) ? origenTecnicoValue(v) : fila.ubicacionBodegaId,
+                            })
+                          }}
                           className="w-28 bg-slate-700 text-white text-xs rounded px-1.5 py-1 border border-slate-600 focus:border-brand-500 focus:outline-none">
                           <option value="">Técnico…</option>
                           {members.map((m) => <option key={m.id} value={m.id}>{tecnicoLabel(m, fila.materialId, fila.lote)}</option>)}
@@ -910,10 +935,20 @@ export function ResumenProyectoTable({ projectId, area, puntos, refreshKey = 0, 
                       </td>
                       <td className="px-2 py-2 text-slate-300 whitespace-nowrap">{row.materialSku}</td>
                       <td className="px-2 py-2 align-top">
-                        <select value={getRowBodega(row)} onChange={(e) => setRowBodega(key, e.target.value)}
-                          className="w-24 bg-slate-700 text-white text-xs rounded px-1.5 py-1 border border-slate-600 focus:border-brand-500 focus:outline-none">
+                        <select value={getRowBodega(row)}
+                          onChange={(e) => {
+                            const v = e.target.value
+                            setRowBodega(key, v)
+                            // Elegir el origen de un técnico también fija el
+                            // selector de Técnico de la fila a ese mismo
+                            // técnico — son la misma decisión (ver ORIGEN_TECNICO_PREFIX).
+                            if (esOrigenTecnico(v)) setRowTecnico(key, origenTecnicoUserId(v))
+                          }}
+                          className="w-32 bg-slate-700 text-white text-xs rounded px-1.5 py-1 border border-slate-600 focus:border-brand-500 focus:outline-none">
                           <option value="">{area === 'OyM' ? 'Origen…' : 'Bodega…'}</option>
-                          {area === 'OyM' && <option value={ORIGEN_TECNICO}>{origenTecnicoLabel(getRowTecnico(key), row.materialId, getRowLote(row))}</option>}
+                          {area === 'OyM' && members.map((m) => (
+                            <option key={m.id} value={origenTecnicoValue(m.id)}>👤 {tecnicoLabel(m, row.materialId, getRowLote(row))}</option>
+                          ))}
                           {bodegas.map((b) => <option key={b.id} value={b.id}>{b.nombre}</option>)}
                         </select>
                       </td>
@@ -921,7 +956,7 @@ export function ResumenProyectoTable({ projectId, area, puntos, refreshKey = 0, 
                         {esFerreteriaFila ? (
                           <span className="text-slate-400 text-xs">Físico</span>
                         ) : (
-                          <LoteSelect materialId={row.materialId} ubicacionId={getRowBodega(row) === ORIGEN_TECNICO ? null : (getRowBodega(row) || null)} naturaleza="fisico"
+                          <LoteSelect materialId={row.materialId} ubicacionId={esOrigenTecnico(getRowBodega(row)) ? null : (getRowBodega(row) || null)} naturaleza="fisico"
                             checkAvailability={false} value={getRowLote(row)}
                             onChange={(lote) => setRowLote(key, lote)}
                             className="w-24 bg-slate-700 text-white text-xs rounded px-1.5 py-1 border border-slate-600 focus:border-brand-500 focus:outline-none" />
@@ -938,9 +973,9 @@ export function ResumenProyectoTable({ projectId, area, puntos, refreshKey = 0, 
                         }
                         const err = cellErrors[`${key}|${campo}`]
                         // Entregado no aplica con origen "técnico": no sale nada de
-                        // bodega en esta fila (ver ORIGEN_TECNICO) — se deja ver el
+                        // bodega en esta fila (ver ORIGEN_TECNICO_PREFIX) — se deja ver el
                         // total histórico, pero sin poder sumarle más acá.
-                        const origenTecnico = campo === 'cantEntregada' && getRowBodega(row) === ORIGEN_TECNICO
+                        const origenTecnico = campo === 'cantEntregada' && esOrigenTecnico(getRowBodega(row))
                         return (
                           <td key={campo} className="px-2 py-2 text-center whitespace-nowrap align-top">
                             <div className="flex items-center justify-center gap-1">
@@ -970,7 +1005,18 @@ export function ResumenProyectoTable({ projectId, area, puntos, refreshKey = 0, 
                           className="w-32 bg-slate-700 text-white text-xs rounded px-1.5 py-1 border border-slate-600 focus:border-brand-500 focus:outline-none" />
                       </td>
                       <td className="px-2 py-2 align-top">
-                        <select value={getRowTecnico(key)} onChange={(e) => setRowTecnico(key, e.target.value)}
+                        <select value={getRowTecnico(key)}
+                          onChange={(e) => {
+                            const v = e.target.value
+                            setRowTecnico(key, v)
+                            // Si el origen de esta fila ya es "de técnico", cambiar
+                            // el técnico acá también mueve el origen al nuevo — sin
+                            // pasar por setRowBodega, que de paso borraría el lote
+                            // tecleado (acá el lote no depende de qué técnico).
+                            if (esOrigenTecnico(getRowBodega(row))) {
+                              setRowBodegaOverride((prev) => ({ ...prev, [key]: origenTecnicoValue(v) }))
+                            }
+                          }}
                           className="w-28 bg-slate-700 text-white text-xs rounded px-1.5 py-1 border border-slate-600 focus:border-brand-500 focus:outline-none">
                           <option value="">Técnico…</option>
                           {members.map((m) => <option key={m.id} value={m.id}>{tecnicoLabel(m, row.materialId, getRowLote(row))}</option>)}
