@@ -113,14 +113,18 @@ export function AsignacionesForm({ onRegistered }: { onRegistered?: () => void }
       .then((rows) => setStockTecnico(rows.filter((r) => r.cantidadFisico > 0)))
       .catch((err) => setDevError(err instanceof Error ? err.message : String(err)))
   }
+  // Antes solo se pedía en Devolución (hacía falta ahí para elegir cuánto
+  // devolver). Se pide siempre que hay técnico elegido, sea cual sea la
+  // pestaña, para poder mostrar "Lo que tiene ahora" también en Entrega/
+  // Conteo — pedido de Andrés: ver el material ya asignado al momento de
+  // asignar más, no solo al devolver.
   useEffect(() => {
-    if (tipo !== 'devolucion') return
     setStockTecnico(null)
     setADevolver({})
     setBodegaPorFila({})
     reloadStockTecnico()
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [tipo, tecnicoUbicacionId])
+  }, [tecnicoUbicacionId])
 
   function documentoAuto(t: AsigTipo): string {
     const label = t === 'entrega' ? 'preventivos' : t === 'devolucion' ? 'Devolución' : 'Conteo'
@@ -284,6 +288,8 @@ export function AsignacionesForm({ onRegistered }: { onRegistered?: () => void }
         </label>
       </div>
 
+      {tipo !== 'devolucion' && tecnicoUserId && <StockTecnicoActual stockTecnico={stockTecnico} />}
+
       {tipo === 'devolucion' ? (
         <div className="space-y-2">
           <span className={labelCls}>Materiales asignados al técnico</span>
@@ -429,6 +435,48 @@ export function AsignacionesForm({ onRegistered }: { onRegistered?: () => void }
             className="w-full text-sm font-semibold py-2 rounded-xl bg-brand-600 hover:bg-brand-700 disabled:opacity-40 text-white">
             {submitting ? 'Registrando…' : 'Registrar'}
           </button>
+        </div>
+      )}
+    </div>
+  )
+}
+
+/**
+ * Resumen de solo lectura de lo que el técnico elegido tiene AHORA en su
+ * stock propio — antes esto solo se veía en la pestaña Devolución (donde
+ * hacía falta para elegir cuánto devolver). Pedido de Andrés: verlo también
+ * al Entregar/Contar, para saber qué ya tiene antes de asignarle más.
+ */
+function StockTecnicoActual({ stockTecnico }: { stockTecnico: StockRow[] | null }) {
+  return (
+    <div className="space-y-1.5">
+      <span className={labelCls}>Lo que tiene asignado ahora</span>
+      {stockTecnico === null ? (
+        <p className="text-xs text-slate-500">Cargando…</p>
+      ) : stockTecnico.length === 0 ? (
+        <p className="text-xs text-slate-500">Este técnico no tiene materiales asignados.</p>
+      ) : (
+        <div className="overflow-x-auto rounded-xl border border-slate-700">
+          <table className="w-full text-xs border-collapse">
+            <thead>
+              <tr className="bg-slate-900 text-slate-400 text-left divide-x divide-slate-700">
+                <th className="px-2 py-1.5">SKU</th>
+                <th className="px-2 py-1.5">Descripción</th>
+                <th className="px-2 py-1.5">Lote</th>
+                <th className="px-2 py-1.5 text-right">Cantidad</th>
+              </tr>
+            </thead>
+            <tbody>
+              {stockTecnico.map((r) => (
+                <tr key={`${r.materialId}|${r.lote}`} className="border-t border-slate-800 divide-x divide-slate-800">
+                  <td className="px-2 py-1.5 text-slate-300 whitespace-nowrap">{r.materialSku}</td>
+                  <td className="px-2 py-1.5 text-slate-300">{r.materialDescripcion}</td>
+                  <td className="px-2 py-1.5 text-slate-400">{r.lote || '—'}</td>
+                  <td className="px-2 py-1.5 text-right text-white">{r.cantidadFisico}</td>
+                </tr>
+              ))}
+            </tbody>
+          </table>
         </div>
       )}
     </div>

@@ -13,6 +13,7 @@ import type { Profile } from '@/lib/auth'
 import { useAuth, ROL_LABELS } from '@/lib/auth'
 import { anularMovimiento, listMovimientos, TIPO_LABELS_MOV } from '@/lib/inventario/inventarioRepo'
 import type { Movimiento } from '@/lib/inventario/types'
+import { AsignacionesForm } from '@/modules/inventario/components/AsignacionesForm'
 import { ResumenProyectoTable } from './ResumenProyectoTable'
 import { ObservacionesSection } from './ObservacionesSection'
 
@@ -50,8 +51,33 @@ export function LogisticaTab({ projectId, area, puntos, incluirComentarios = tru
       )}
       <ResumenProyectoTable projectId={projectId} area={area} puntos={puntos} membersVersion={membersVersion}
         ott={ott} direccion={direccion} fechaInicio={fechaInicio} />
+      {!isTecnico && area === 'OyM' && <AsignacionMaterialSection />}
       {!isTecnico && <MovimientosProyectoSection projectId={projectId} />}
       {incluirComentarios && <ObservacionesSection projectId={projectId} />}
+    </div>
+  )
+}
+
+/**
+ * Asignar material a un técnico (preventivo, sin proyecto) sin salir de la
+ * incidencia — antes solo se podía desde Inventario → Registro →
+ * Asignaciones. Solo OyM: en ATT el material se asigna específicamente por
+ * OTT (ver ResumenProyectoTable), acá en cambio lo normal es que el técnico
+ * YA traiga material asignado de antes (ver ORIGEN_TECNICO en
+ * ResumenProyectoTable) — pedido de Andrés: "deberán estar desde la ventana
+ * de OyM las asignaciones de materiales a técnicos". Colapsado por defecto,
+ * mismo criterio que Movimientos de esta OTT: no es algo que se consulte
+ * cada vez que se abre la incidencia.
+ */
+function AsignacionMaterialSection() {
+  const [abierto, setAbierto] = useState(false)
+  return (
+    <div className="bg-slate-800 rounded-2xl border border-slate-700 p-4 space-y-3">
+      <button type="button" onClick={() => setAbierto((v) => !v)}
+        className="w-full flex items-center justify-between text-xs font-semibold text-brand-400 uppercase tracking-wide">
+        <span>{abierto ? '▾' : '▸'} Asignar material a técnico</span>
+      </button>
+      {abierto && <AsignacionesForm />}
     </div>
   )
 }
