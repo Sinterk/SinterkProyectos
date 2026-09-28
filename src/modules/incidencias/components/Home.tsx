@@ -167,8 +167,8 @@ function MigrationBanner({ pending }: { pending: Incidencia[] }) {
   )
 }
 
-function IncidenciaCard({ record, onSelect, onDelete }: {
-  record: Incidencia; onSelect: () => void; onDelete: () => void
+export function IncidenciaCard({ record, onSelect, onDelete }: {
+  record: Incidencia; onSelect: () => void; onDelete?: () => void
 }) {
   const fotoCount = record.fotos.length
 
@@ -198,8 +198,10 @@ function IncidenciaCard({ record, onSelect, onDelete }: {
             </div>
           )}
         </button>
-        <button type="button" onClick={onDelete}
-          className="text-slate-600 hover:text-red-400 text-lg p-1 leading-none shrink-0">×</button>
+        {onDelete && (
+          <button type="button" onClick={onDelete}
+            className="text-slate-600 hover:text-red-400 text-lg p-1 leading-none shrink-0">×</button>
+        )}
       </div>
     </div>
   )

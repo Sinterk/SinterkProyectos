@@ -186,8 +186,8 @@ function MigrationBanner({ pending }: { pending: Preventivo[] }) {
   )
 }
 
-function CuadranteCard({ record, onSelect, onDelete }: {
-  record: Preventivo; onSelect: () => void; onDelete: () => void
+export function CuadranteCard({ record, onSelect, onDelete }: {
+  record: Preventivo; onSelect: () => void; onDelete?: () => void
 }) {
   const fotos = record.puntos.reduce(
     (n, p) => n + (p.fotoLevantamiento ? 1 : 0) + (p.fotoAntes ? 1 : 0) + (p.fotoDespues ? 1 : 0), 0)
@@ -227,8 +227,10 @@ function CuadranteCard({ record, onSelect, onDelete }: {
             </div>
           )}
         </button>
-        <button type="button" onClick={onDelete}
-          className="text-slate-600 hover:text-red-400 text-lg p-1 leading-none shrink-0">×</button>
+        {onDelete && (
+          <button type="button" onClick={onDelete}
+            className="text-slate-600 hover:text-red-400 text-lg p-1 leading-none shrink-0">×</button>
+        )}
       </div>
     </div>
   )

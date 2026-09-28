@@ -200,8 +200,8 @@ function MigrationBanner({ pending }: { pending: AttRecord[] }) {
   )
 }
 
-function AttCard({ record, totales, onSelect, onDelete }: {
-  record: AttRecord; totales?: TotalesMaterialProyecto; onSelect: () => void; onDelete: () => void
+export function AttCard({ record, totales, onSelect, onDelete }: {
+  record: AttRecord; totales?: TotalesMaterialProyecto; onSelect: () => void; onDelete?: () => void
 }) {
   const fotoCount = record.fotos.length
   const tipoLabel = record.tipoProyecto ? TIPO_PROYECTO_LABELS[record.tipoProyecto] : null
@@ -266,8 +266,10 @@ function AttCard({ record, totales, onSelect, onDelete }: {
             )}
           </div>
         </button>
-        <button type="button" onClick={onDelete}
-          className="text-slate-600 hover:text-red-400 text-lg p-1 leading-none shrink-0">×</button>
+        {onDelete && (
+          <button type="button" onClick={onDelete}
+            className="text-slate-600 hover:text-red-400 text-lg p-1 leading-none shrink-0">×</button>
+        )}
       </div>
     </div>
   )
