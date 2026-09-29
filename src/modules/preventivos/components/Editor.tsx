@@ -137,12 +137,11 @@ export function Editor() {
             datosGeneralesHoja={[
               { label: 'Cuadrante', value: record.cuadrante.cuadrante || '—' },
               { label: 'Nombre', value: record.cuadrante.nombreCuadrante || '—' },
-              { label: 'Comuna', value: record.cuadrante.comuna || '—' },
               { label: 'Dirección', value: record.cuadrante.direccion || '—' },
               { label: 'Zona', value: record.cuadrante.zona || '—' },
-              { label: 'Fecha', value: record.cuadrante.fecha || '—' },
               { label: 'Responsable', value: record.cuadrante.responsable || '—' },
-            ]} />
+            ]}
+            fechasHoja={[{ label: 'Fecha', value: record.cuadrante.fecha || '' }]} />
         ) : (
           <p className="text-xs text-slate-500 text-center py-8">Guarda el levantamiento primero para gestionar logística.</p>
         )

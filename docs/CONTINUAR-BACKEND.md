@@ -29,6 +29,18 @@
   19. ~~Materiales de OyM: asignar desde la incidencia + origen técnico/bodega al instalar~~ — **hecho, v2.13** más abajo.
 - **Deploy**: el push del 26-08 a `main` falló al desplegar por una interrupción real de GitHub Actions/Pages (confirmada en githubstatus.com, no un problema del repo) — falta reintentar el workflow ("Re-run all jobs") una vez que GitHub se recupere. Fuera de eso, `.github/workflows/deploy.yml` publica bien en cada push a `main`.
 
+## v2.15 — "Asignación de materiales" (antes "Hoja de logística"): rediseño para caber en 1 hoja
+
+Andrés probó v2.14 contra una OTT real (2 materiales, 2 técnicos) y salieron 2 páginas — pidió ajustes puntuales para volver a 1 sola hoja:
+
+- Título pasa a "Asignación de materiales", sin subtítulo (antes había un título + una línea con el OTT debajo — esa identificación ya vive en Datos generales, no hace falta repetirla).
+- `datosGenerales` de ATT pierde "Nombre del proyecto" y "Comuna"; Preventivos pierde "Comuna" — quedan solo los campos que de verdad hacen falta para identificar el trabajo en papel.
+- Fecha de inicio/término (ATT) o Fecha única (Preventivos/Incidencias) se mueven a la esquina superior derecha, junto al título — dejan de ocupar una fila en Datos generales. Si no hay fecha, se imprime solo la etiqueta ("Fecha de término:") sin ningún "—" — pedido explícito, para completarla a lápiz en terreno sin tener que tachar nada.
+- **El cambio real que devolvió la hoja a 1 página**: las firmas pasan de 2 bloques de 3 cajas cada uno (~200pt de alto total) a **una sola tabla compacta**, una fila por técnico, con las columnas de salida e instalado lado a lado (Técnico | Firma salida | Fecha | Firma instalado | Fecha) — sin reservar cajas de más para un tercer técnico que no está asignado (a diferencia de "Técnicos asignados", que sigue reservando 3 filas). ~20pt por técnico en vez de ~130pt por bloque.
+- De paso: filas en blanco de Material bajan de 8 a 6, líneas en blanco de Observaciones de 5 a 4, y se recortan un poco los márgenes/espacios entre secciones — todo para dejar margen de sobra, no solo lo justo.
+
+**Verificado en el navegador contra la OTT real que probó Andrés** (72603683032, interceptando el blob del PDF antes de la descarga): quedó en **1 sola página** con los 2 materiales y los 2 técnicos reales, fechas en la esquina (inicio con valor real, término en blanco sin guion), y la tabla de firmas combinada legible.
+
 ## v2.14 — "Hoja de logística" en PDF, para que el técnico firme en papel
 
 Conversación con Andrés (29-09-2026) sobre si hace falta guía de despacho legal (SII) para el material que sale con los técnicos: la conclusión práctica fue no perseguir una firma 100% digital todavía — "lo más sencillo es pasar a papel con esto. Actualmente los técnicos siempre salen con el plano impreso. Lo que se debe agregar es que exista un papel donde puedan firmar." Se evaluaron ventajas/desventajas de un flujo 100% papel con transcripción posterior (riesgo real: reintroduce el mismo retraso que probablemente causa el problema de stock negativo ya anotado en el pendiente #16) — la solución que se implementó mantiene el ingreso en vivo en la app como antes, y solo agrega el papel como respaldo firmado generado DESDE esos datos, no como fuente primaria a transcribir.

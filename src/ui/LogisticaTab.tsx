@@ -40,10 +40,12 @@ interface Props {
   tituloHoja?: string
   /** Datos generales (los de arriba del editor, encima de las pestañas) para la Hoja de logística en PDF. */
   datosGeneralesHoja?: { label: string; value: string }[]
+  /** Fecha(s) para la esquina superior derecha de la Hoja de logística — 1 o 2 (ATT: inicio/término). */
+  fechasHoja?: { label: string; value: string }[]
 }
 
 export function LogisticaTab({
-  projectId, area, puntos, incluirComentarios = true, ott, direccion, fechaInicio, tituloHoja, datosGeneralesHoja,
+  projectId, area, puntos, incluirComentarios = true, ott, direccion, fechaInicio, tituloHoja, datosGeneralesHoja, fechasHoja,
 }: Props) {
   const isTecnico = useAuth((s) => s.profile?.rol === 'tecnico')
   // EquipoSection y ResumenProyectoTable leen `project_members` cada uno por
@@ -57,7 +59,8 @@ export function LogisticaTab({
         <EquipoSection projectId={projectId} onMembersChanged={() => setMembersVersion((v) => v + 1)} />
       )}
       {!isTecnico && tituloHoja && (
-        <HojaLogisticaButton projectId={projectId} titulo={tituloHoja} datosGenerales={datosGeneralesHoja ?? []} />
+        <HojaLogisticaButton projectId={projectId} titulo={tituloHoja}
+          datosGenerales={datosGeneralesHoja ?? []} fechas={fechasHoja ?? []} />
       )}
       <ResumenProyectoTable projectId={projectId} area={area} puntos={puntos} membersVersion={membersVersion}
         ott={ott} direccion={direccion} fechaInicio={fechaInicio} />
@@ -73,12 +76,13 @@ export function LogisticaTab({
  * salen con el plano impreso, falta un papel donde puedan firmar el
  * retiro/instalación de material (ver docs/CONTINUAR-BACKEND.md). Junta lo
  * mismo que ya se ve en esta pantalla (técnicos, tabla de material,
- * observaciones) más espacio en blanco para escribir a mano y 2 bloques de
- * firma (salida / instalado, 3 espacios cada uno). No requiere red aparte de
- * lo que esta pestaña ya cargó — usa las mismas funciones de repo.
+ * observaciones) más espacio en blanco para escribir a mano y una tabla de
+ * firmas compacta (una fila por técnico, salida e instalado lado a lado —
+ * pensada para caber en 1 sola hoja). No requiere red aparte de lo que esta
+ * pestaña ya cargó — usa las mismas funciones de repo.
  */
-function HojaLogisticaButton({ projectId, titulo, datosGenerales }: {
-  projectId: string; titulo: string; datosGenerales: { label: string; value: string }[]
+function HojaLogisticaButton({ projectId, titulo, datosGenerales, fechas }: {
+  projectId: string; titulo: string; datosGenerales: { label: string; value: string }[]; fechas: { label: string; value: string }[]
 }) {
   const [generando, setGenerando] = useState(false)
   const [error, setError] = useState<string | null>(null)
@@ -95,6 +99,7 @@ function HojaLogisticaButton({ projectId, titulo, datosGenerales }: {
       await generarHojaLogistica({
         titulo,
         datosGenerales,
+        fechas,
         tecnicos: members.map((m) => m.nombre?.trim() || m.email || ''),
         material: resumen.map((r) => ({
           sku: r.materialSku, descripcion: r.materialDescripcion, lote: r.lote,
