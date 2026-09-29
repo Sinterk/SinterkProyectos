@@ -132,7 +132,17 @@ export function Editor() {
       {tab === 'logistica' ? (
         isUuid(record.id) ? (
           <LogisticaTab projectId={record.id} area="OyM"
-            puntos={puntos.filter((p) => isUuid(p.id)).map((p) => ({ id: p.id, nombre: p.nombre || 'Punto sin nombre' }))} />
+            puntos={puntos.filter((p) => isUuid(p.id)).map((p) => ({ id: p.id, nombre: p.nombre || 'Punto sin nombre' }))}
+            tituloHoja={`${record.cuadrante.cuadrante || 'Levantamiento'}${record.cuadrante.comuna ? ` — ${record.cuadrante.comuna}` : ''}`}
+            datosGeneralesHoja={[
+              { label: 'Cuadrante', value: record.cuadrante.cuadrante || '—' },
+              { label: 'Nombre', value: record.cuadrante.nombreCuadrante || '—' },
+              { label: 'Comuna', value: record.cuadrante.comuna || '—' },
+              { label: 'Dirección', value: record.cuadrante.direccion || '—' },
+              { label: 'Zona', value: record.cuadrante.zona || '—' },
+              { label: 'Fecha', value: record.cuadrante.fecha || '—' },
+              { label: 'Responsable', value: record.cuadrante.responsable || '—' },
+            ]} />
         ) : (
           <p className="text-xs text-slate-500 text-center py-8">Guarda el levantamiento primero para gestionar logística.</p>
         )

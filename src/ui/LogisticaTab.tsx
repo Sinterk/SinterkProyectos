@@ -11,9 +11,10 @@ import { adminRepo } from '@/lib/adminRepo'
 import type { MemberProfile } from '@/lib/adminRepo'
 import type { Profile } from '@/lib/auth'
 import { useAuth, ROL_LABELS } from '@/lib/auth'
-import { anularMovimiento, listMovimientos, TIPO_LABELS_MOV } from '@/lib/inventario/inventarioRepo'
+import { anularMovimiento, getResumenProyecto, listMovimientos, listObservaciones, TIPO_LABELS_MOV } from '@/lib/inventario/inventarioRepo'
 import type { Movimiento } from '@/lib/inventario/types'
 import { AsignacionesForm } from '@/modules/inventario/components/AsignacionesForm'
+import { generarHojaLogistica } from './generarHojaLogistica'
 import { ResumenProyectoTable } from './ResumenProyectoTable'
 import { ObservacionesSection } from './ObservacionesSection'
 
@@ -35,9 +36,15 @@ interface Props {
   ott?: string
   direccion?: string
   fechaInicio?: string
+  /** Título corto del proyecto para la Hoja de logística en PDF — ej. "OTT 72603688266". Si no se pasa, no se ofrece imprimir. */
+  tituloHoja?: string
+  /** Datos generales (los de arriba del editor, encima de las pestañas) para la Hoja de logística en PDF. */
+  datosGeneralesHoja?: { label: string; value: string }[]
 }
 
-export function LogisticaTab({ projectId, area, puntos, incluirComentarios = true, ott, direccion, fechaInicio }: Props) {
+export function LogisticaTab({
+  projectId, area, puntos, incluirComentarios = true, ott, direccion, fechaInicio, tituloHoja, datosGeneralesHoja,
+}: Props) {
   const isTecnico = useAuth((s) => s.profile?.rol === 'tecnico')
   // EquipoSection y ResumenProyectoTable leen `project_members` cada uno por
   // su cuenta (listas separadas, sin estado compartido) — sin este contador,
@@ -49,11 +56,71 @@ export function LogisticaTab({ projectId, area, puntos, incluirComentarios = tru
       {!isTecnico && (
         <EquipoSection projectId={projectId} onMembersChanged={() => setMembersVersion((v) => v + 1)} />
       )}
+      {!isTecnico && tituloHoja && (
+        <HojaLogisticaButton projectId={projectId} titulo={tituloHoja} datosGenerales={datosGeneralesHoja ?? []} />
+      )}
       <ResumenProyectoTable projectId={projectId} area={area} puntos={puntos} membersVersion={membersVersion}
         ott={ott} direccion={direccion} fechaInicio={fechaInicio} />
       {!isTecnico && area === 'OyM' && <AsignacionMaterialSection />}
       {!isTecnico && <MovimientosProyectoSection projectId={projectId} />}
       {incluirComentarios && <ObservacionesSection projectId={projectId} />}
+    </div>
+  )
+}
+
+/**
+ * "Hoja de logística" imprimible (PDF) — pedido de Andrés: los técnicos ya
+ * salen con el plano impreso, falta un papel donde puedan firmar el
+ * retiro/instalación de material (ver docs/CONTINUAR-BACKEND.md). Junta lo
+ * mismo que ya se ve en esta pantalla (técnicos, tabla de material,
+ * observaciones) más espacio en blanco para escribir a mano y 2 bloques de
+ * firma (salida / instalado, 3 espacios cada uno). No requiere red aparte de
+ * lo que esta pestaña ya cargó — usa las mismas funciones de repo.
+ */
+function HojaLogisticaButton({ projectId, titulo, datosGenerales }: {
+  projectId: string; titulo: string; datosGenerales: { label: string; value: string }[]
+}) {
+  const [generando, setGenerando] = useState(false)
+  const [error, setError] = useState<string | null>(null)
+
+  async function generar() {
+    setGenerando(true)
+    setError(null)
+    try {
+      const [members, resumen, observaciones] = await Promise.all([
+        adminRepo.listMembers(projectId),
+        getResumenProyecto(projectId),
+        listObservaciones(projectId, null),
+      ])
+      await generarHojaLogistica({
+        titulo,
+        datosGenerales,
+        tecnicos: members.map((m) => m.nombre?.trim() || m.email || ''),
+        material: resumen.map((r) => ({
+          sku: r.materialSku, descripcion: r.materialDescripcion, lote: r.lote,
+          solicitado: r.cantSolicitada, entregado: r.cantEntregada, instalado: r.cantInstalada,
+          devuelto: r.cantDevuelta, merma: r.cantMerma,
+        })),
+        observaciones: observaciones.map((o) => `${o.texto} — ${o.usuarioNombre ?? 'Alguien'}, ${new Date(o.createdAt).toLocaleDateString('es-CL')}`),
+      })
+    } catch (err) {
+      setError(err instanceof Error ? err.message : String(err))
+    } finally {
+      setGenerando(false)
+    }
+  }
+
+  return (
+    <div className="bg-slate-800 rounded-2xl border border-slate-700 p-4 flex items-center justify-between gap-3">
+      <div>
+        <p className="text-sm font-medium text-white">🖨️ Hoja de logística</p>
+        <p className="text-[11px] text-slate-500 mt-0.5">PDF imprimible para que los técnicos firmen la salida y el cierre de materiales.</p>
+        {error && <p className="text-[11px] text-red-400 mt-1">{error}</p>}
+      </div>
+      <button type="button" disabled={generando} onClick={() => { generar().catch(() => {}) }}
+        className="bg-slate-700 hover:bg-slate-600 disabled:opacity-50 text-white text-xs font-semibold px-3 py-2 rounded-xl shrink-0 whitespace-nowrap">
+        {generando ? 'Generando…' : 'Generar PDF'}
+      </button>
     </div>
   )
 }

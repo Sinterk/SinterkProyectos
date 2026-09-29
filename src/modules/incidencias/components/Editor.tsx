@@ -74,7 +74,14 @@ export function Editor() {
 
       {tab === 'materiales' && (
         isUuid(record.id) ? (
-          <LogisticaTab projectId={record.id} area="OyM" incluirComentarios={false} />
+          <LogisticaTab projectId={record.id} area="OyM" incluirComentarios={false}
+            tituloHoja={`Incidencia ${record.codigo || 'sin código'}`}
+            datosGeneralesHoja={[
+              { label: 'Código', value: record.codigo || '—' },
+              { label: 'Dirección', value: record.direccion || '—' },
+              { label: 'Ingeniero', value: record.ingeniero || '—' },
+              { label: 'Fecha', value: new Date(record.createdAt).toLocaleDateString('es-CL') },
+            ]} />
         ) : (
           <p className="text-xs text-slate-500 text-center py-8">Guarda la incidencia primero (agrega el código) para gestionar materiales.</p>
         )

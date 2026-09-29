@@ -202,7 +202,16 @@ export function Editor() {
       ) : tab === 'logistica' ? (
         isUuid(record.id) ? (
           <LogisticaTab projectId={record.id} area="ATT"
-            ott={record.ott} direccion={record.direccion} fechaInicio={fechaInicioDe(record)} />
+            ott={record.ott} direccion={record.direccion} fechaInicio={fechaInicioDe(record)}
+            tituloHoja={`OTT ${record.ott || 'sin número'}`}
+            datosGeneralesHoja={[
+              { label: 'OTT', value: record.ott || '—' },
+              { label: 'Nombre del proyecto', value: record.nombreProyecto || '—' },
+              { label: 'Dirección', value: record.direccion || '—' },
+              { label: 'Comuna', value: [record.comuna, record.region].filter(Boolean).join(', ') || '—' },
+              { label: 'Fecha de inicio', value: fechaInicioDe(record) || '—' },
+              { label: 'Fecha de término', value: record.fechaCierre || '—' },
+            ]} />
         ) : (
           <p className="text-xs text-slate-500 text-center py-8">Guarda el informe primero para gestionar logística.</p>
         )
