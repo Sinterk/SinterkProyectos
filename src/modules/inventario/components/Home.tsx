@@ -9,6 +9,7 @@ import { LpuCodigoSelect } from '@/ui/LpuCodigoSelect'
 import { MaterialSelect } from '@/ui/MaterialSelect'
 import { RegistrarMovimientoForm } from '@/ui/RegistrarMovimientoForm'
 import { AsignacionesForm } from './AsignacionesForm'
+import { ExportarStockExcelButton } from './ExportarStockExcelModal'
 import { ListaRegistros } from './ListaRegistros'
 import { ResumenProyectoTable } from '@/ui/ResumenProyectoTable'
 import { UbicacionSelect } from '@/ui/UbicacionSelect'
@@ -121,10 +122,13 @@ function StockTab() {
 
   return (
     <div className="space-y-3">
-      <div className="flex gap-2">
-        <SubTabButton active={sub === 'bodega'} onClick={() => setSub('bodega')}>Bodega</SubTabButton>
-        <SubTabButton active={sub === 'proyecto'} onClick={() => setSub('proyecto')}>Proyecto</SubTabButton>
-        <SubTabButton active={sub === 'tecnico'} onClick={() => setSub('tecnico')}>Técnico</SubTabButton>
+      <div className="flex gap-2 items-center">
+        <div className="flex gap-2 flex-1">
+          <SubTabButton active={sub === 'bodega'} onClick={() => setSub('bodega')}>Bodega</SubTabButton>
+          <SubTabButton active={sub === 'proyecto'} onClick={() => setSub('proyecto')}>Proyecto</SubTabButton>
+          <SubTabButton active={sub === 'tecnico'} onClick={() => setSub('tecnico')}>Técnico</SubTabButton>
+        </div>
+        <ExportarStockExcelButton />
       </div>
       {sub === 'bodega' && <BodegaTab />}
       {sub === 'proyecto' && <ProyectoTab />}

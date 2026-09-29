@@ -29,6 +29,16 @@
   19. ~~Materiales de OyM: asignar desde la incidencia + origen técnico/bodega al instalar~~ — **hecho, v2.13** más abajo.
 - **Deploy**: el push del 26-08 a `main` falló al desplegar por una interrupción real de GitHub Actions/Pages (confirmada en githubstatus.com, no un problema del repo) — falta reintentar el workflow ("Re-run all jobs") una vez que GitHub se recupere. Fuera de eso, `.github/workflows/deploy.yml` publica bien en cada push a `main`.
 
+## v2.16 — Exportar stock a Excel (Inventario > Stock)
+
+Pedido de Andrés: poder bajar el stock (físico, digital o ambos) de una o varias bodegas a un Excel, desde Inventario > Stock.
+
+- **`src/modules/inventario/utils/generarStockExcel.ts`** (nuevo): arma el `.xlsx` con `xlsx-js-style` (mismo patrón que `generarLevantamiento.ts`, no el de plantilla de `generarInformeEntel.ts` — acá es una tabla plana para filtrar en Excel, sin formato fijo que respetar). Columnas dinámicas según lo elegido: siempre SKU/Descripción/Bodega/Lote, más Físico y/o Digital. Mismo orden que la tabla de Stock &gt; Bodega (Bodega, SKU, Lote).
+- **`src/modules/inventario/components/ExportarStockExcelModal.tsx`** (nuevo): botón "📊 Exportar a Excel" que abre una ventana modal (mismo patrón que `ZipArchiveViewer.tsx`) con checklist de bodegas (todas tildadas por defecto, con un botón Todas/Ninguna) y selector Físico/Digital/Ambos. Al generar, pide todo el stock de bodega en una sola consulta (`getStock({ soloBodega: true })`) y filtra en el cliente a las bodegas elegidas — no hace una consulta por bodega.
+- Botón agregado en `Home.tsx` → `StockTab`, junto a las sub-pestañas Bodega/Proyecto/Técnico (visible sea cual sea la sub-pestaña activa).
+
+**Verificado en el navegador contra datos reales**: exportación con las 5 bodegas + Ambos dio 372 filas con las 6 columnas esperadas, ordenadas correctamente; exportación con solo C088 + Físico dio 147 filas, solo esa bodega, solo la columna Físico — confirmado leyendo el `.xlsx` generado de vuelta (interceptando el blob antes de la descarga) en vez de solo confiar en que no tirara error.
+
 ## v2.15 — "Asignación de materiales" (antes "Hoja de logística"): rediseño para caber en 1 hoja
 
 Andrés probó v2.14 contra una OTT real (2 materiales, 2 técnicos) y salieron 2 páginas — pidió ajustes puntuales para volver a 1 sola hoja:
