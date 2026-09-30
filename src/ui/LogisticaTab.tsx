@@ -11,7 +11,7 @@ import { adminRepo } from '@/lib/adminRepo'
 import type { MemberProfile } from '@/lib/adminRepo'
 import type { Profile } from '@/lib/auth'
 import { useAuth, ROL_LABELS } from '@/lib/auth'
-import { anularMovimiento, getResumenProyecto, listMovimientos, listObservaciones, TIPO_LABELS_MOV } from '@/lib/inventario/inventarioRepo'
+import { anularMovimiento, getResumenProyecto, listMateriales, listMovimientos, listObservaciones, listUbicaciones, TIPO_LABELS_MOV } from '@/lib/inventario/inventarioRepo'
 import type { Movimiento } from '@/lib/inventario/types'
 import { AsignacionesForm } from '@/modules/inventario/components/AsignacionesForm'
 import { generarHojaLogistica } from './generarHojaLogistica'
@@ -91,18 +91,26 @@ function HojaLogisticaButton({ projectId, titulo, datosGenerales, fechas }: {
     setGenerando(true)
     setError(null)
     try {
-      const [members, resumen, observaciones] = await Promise.all([
+      const [members, resumen, observaciones, materiales, bodegas] = await Promise.all([
         adminRepo.listMembers(projectId),
         getResumenProyecto(projectId),
         listObservaciones(projectId, null),
+        listMateriales(),
+        listUbicaciones({ tipo: 'bodega' }),
       ])
+      // Apodo en vez de descripción cuando existe — mismo criterio que
+      // MaterialSelect en toda la app. getResumenProyecto no trae el apodo
+      // (solo sku/descripción), así que se resuelve acá con el catálogo.
+      const apodoPorMaterial = new Map(materiales.map((m) => [m.id, m.apodo]))
+      const nombreBodega = new Map(bodegas.map((b) => [b.id, b.nombre]))
       await generarHojaLogistica({
         titulo,
         datosGenerales,
         fechas,
         tecnicos: members.map((m) => m.nombre?.trim() || m.email || ''),
         material: resumen.map((r) => ({
-          sku: r.materialSku, descripcion: r.materialDescripcion, lote: r.lote,
+          sku: r.materialSku, descripcion: apodoPorMaterial.get(r.materialId) || r.materialDescripcion, lote: r.lote,
+          origen: r.ubicacionBodegaId ? (nombreBodega.get(r.ubicacionBodegaId) ?? '') : '',
           solicitado: r.cantSolicitada, entregado: r.cantEntregada, instalado: r.cantInstalada,
           devuelto: r.cantDevuelta, merma: r.cantMerma,
         })),

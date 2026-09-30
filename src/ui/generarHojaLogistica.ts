@@ -13,6 +13,8 @@ export interface HojaLogisticaMaterial {
   sku: string
   descripcion: string
   lote: string
+  /** Bodega de la que salió (si ya se registró un Entregado) — vacío si no se sabe todavía, para completar a mano. */
+  origen: string
   solicitado: number
   entregado: number
   instalado: number
@@ -97,8 +99,9 @@ function stampFooter(doc: jsPDF, titulo: string) {
 interface Col { label: string; w: number; align?: 'left' | 'center' | 'right' }
 const MATERIAL_COLS: Col[] = [
   { label: 'SKU', w: 56 },
-  { label: 'Descripción', w: 184 },
+  { label: 'Descripción', w: 124 },
   { label: 'Lote', w: 66 },
+  { label: 'Origen', w: 60 },
   { label: 'Solicit.', w: 38, align: 'right' },
   { label: 'Entreg.', w: 38, align: 'right' },
   { label: 'Instal.', w: 38, align: 'right' },
@@ -249,7 +252,7 @@ export async function generarHojaLogistica(input: HojaLogisticaInput): Promise<v
   for (const m of input.material) {
     y = chk(doc, y, ROW_H)
     tableRowGeneric(doc, ML, y, ROW_H, MATERIAL_COLS, [
-      m.sku, m.descripcion, m.lote,
+      m.sku, m.descripcion, m.lote, m.origen,
       String(m.solicitado || ''), String(m.entregado || ''), String(m.instalado || ''),
       String(m.devuelto || ''), String(m.merma || ''),
     ])

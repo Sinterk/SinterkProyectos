@@ -30,6 +30,16 @@
   20. ~~Correr en el SQL Editor `supabase/migrations/0074_entrada_acredita_digital_siempre.sql`~~ — **corrida y confirmada por Andrés el 30-09**. Ver v2.17 más abajo.
 - **Deploy**: el push del 26-08 a `main` falló al desplegar por una interrupción real de GitHub Actions/Pages (confirmada en githubstatus.com, no un problema del repo) — falta reintentar el workflow ("Re-run all jobs") una vez que GitHub se recupere. Fuera de eso, `.github/workflows/deploy.yml` publica bien en cada push a `main`.
 
+## v2.20 — PDF: columna Origen/bodega + usa el apodo del material si existe
+
+Andrés: "debe haber una columna de origen/bodega, el que sea más angosto. Quita espacio de descripción. También, si el material tiene un nombre alternativo, que se use ese."
+
+- **Columna "Origen"** nueva en la tabla de Material (60pt, entre Lote y Solicitado) — muestra la bodega real de la que salió el material (`ResumenMaterialProyecto.ubicacionBodegaId`, resuelta a nombre con `listUbicaciones`), vacía si todavía no se registró ningún Entregado desde una bodega (para completar a mano).
+- **Descripción** cede el ancho para Origen (venía en 184pt desde v2.19) — los anchos de columna siguen sumando exactamente 504pt (todo el ancho de la hoja).
+- **Apodo en vez de descripción** cuando el material lo tiene — mismo criterio que ya usa `MaterialSelect` en toda la app (`m.apodo || m.descripcion`). `getResumenProyecto` no trae el apodo (solo sku/descripción), así que `HojaLogisticaButton` en `LogisticaTab.tsx` ahora también pide `listMateriales()` para resolverlo por `materialId`.
+
+**Verificado en el navegador contra la OTT real de siempre** (72603683032): la columna Origen mostró "STK"/"C088"/"STK" correctamente, y las descripciones salieron como "Mufa M6" y "CMIC EVER" (sus apodos reales) en vez de los nombres largos completos del catálogo — sigue en 1 sola página.
+
 ## v2.19 — Ajustes al PDF: fechas alineadas + tabla de Material usa toda la hoja
 
 Andrés, tras ver el PDF genérico (v2.18): "la fecha queda en la esquina superior derecha muy a la derecha... déjalo para que aunque esté sin información de fecha, quede a la altura de donde queda con fecha. Así también hay espacio para escribir a mano la info. También, agranda la tabla de material para que se use toda la hoja."
