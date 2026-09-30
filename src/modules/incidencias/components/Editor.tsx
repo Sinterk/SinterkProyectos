@@ -77,9 +77,9 @@ export function Editor() {
           <LogisticaTab projectId={record.id} area="OyM" incluirComentarios={false}
             tituloHoja={`Incidencia ${record.codigo || 'sin código'}`}
             datosGeneralesHoja={[
-              { label: 'Código', value: record.codigo || '—' },
-              { label: 'Dirección', value: record.direccion || '—' },
-              { label: 'Ingeniero', value: record.ingeniero || '—' },
+              { label: 'Código', value: record.codigo || '' },
+              { label: 'Dirección', value: record.direccion || '' },
+              { label: 'Ingeniero', value: record.ingeniero || '' },
             ]}
             fechasHoja={[{ label: 'Fecha', value: new Date(record.createdAt).toLocaleDateString('es-CL') }]} />
         ) : (

@@ -135,11 +135,11 @@ export function Editor() {
             puntos={puntos.filter((p) => isUuid(p.id)).map((p) => ({ id: p.id, nombre: p.nombre || 'Punto sin nombre' }))}
             tituloHoja={`${record.cuadrante.cuadrante || 'Levantamiento'}${record.cuadrante.comuna ? ` — ${record.cuadrante.comuna}` : ''}`}
             datosGeneralesHoja={[
-              { label: 'Cuadrante', value: record.cuadrante.cuadrante || '—' },
-              { label: 'Nombre', value: record.cuadrante.nombreCuadrante || '—' },
-              { label: 'Dirección', value: record.cuadrante.direccion || '—' },
-              { label: 'Zona', value: record.cuadrante.zona || '—' },
-              { label: 'Responsable', value: record.cuadrante.responsable || '—' },
+              { label: 'Cuadrante', value: record.cuadrante.cuadrante || '' },
+              { label: 'Nombre', value: record.cuadrante.nombreCuadrante || '' },
+              { label: 'Dirección', value: record.cuadrante.direccion || '' },
+              { label: 'Zona', value: record.cuadrante.zona || '' },
+              { label: 'Responsable', value: record.cuadrante.responsable || '' },
             ]}
             fechasHoja={[{ label: 'Fecha', value: record.cuadrante.fecha || '' }]} />
         ) : (

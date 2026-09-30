@@ -30,6 +30,16 @@
   20. ~~Correr en el SQL Editor `supabase/migrations/0074_entrada_acredita_digital_siempre.sql`~~ — **corrida y confirmada por Andrés el 30-09**. Ver v2.17 más abajo.
 - **Deploy**: el push del 26-08 a `main` falló al desplegar por una interrupción real de GitHub Actions/Pages (confirmada en githubstatus.com, no un problema del repo) — falta reintentar el workflow ("Re-run all jobs") una vez que GitHub se recupere. Fuera de eso, `.github/workflows/deploy.yml` publica bien en cada push a `main`.
 
+## v2.18 — "Asignación de materiales" genérica en blanco, descargable desde ATT
+
+Pedido de Andrés (30-09-2026): "Haz un formato PDF de asignación de materiales genérico, para ser llenado a papel. Debe poder descargarse desde la ventana de ATT, junto al botón de calendario."
+
+- **`generarHojaLogisticaGenerica()`** (nueva, en `generarHojaLogistica.ts`): llama a `generarHojaLogistica` con todo vacío — sin necesidad de tocar esa función ni su lógica de layout. `tecnicos: ['', '', '']` ya le basta a las secciones existentes (Técnicos asignados/Firmas) para reservar 3 filas en blanco, mismo truco que ya usaban internamente.
+- Botón **"📄 Asignación"** en `att/components/Home.tsx`, junto a "📅 Calendario" (pedido explícito de dónde ponerlo).
+- **De paso, un ajuste de consistencia**: "Datos generales" ahora omite el "—" cuando el valor viene vacío, igual que ya hacían las fechas desde v2.15 — antes esto no se notaba en la versión genérica porque no existía, pero además hacía que la versión de una OTT real mostrara "—" en vez de dejar el campo en blanco para completar a mano cuando faltaba un dato (ej. Dirección vacía en una OTT real). Se corrigió tanto en el generador (`generarHojaLogistica.ts`) como en los 3 `Editor.tsx` (ATT/Preventivos/Incidencias), que hasta ahora armaban ellos mismos el "—" antes de pasarlo.
+
+**Verificado en el navegador** (interceptando el blob antes de la descarga, mismo método que v2.14-v2.17): la versión genérica salió en 1 página, completamente en blanco (OTT/Dirección/fechas sin guion, 3 filas de técnicos vacías, tabla de material y firmas vacías); se volvió a generar el PDF de una OTT real (72603683032) para confirmar que sigue mostrando los datos reales correctamente y que "Dirección" (vacía en esa OTT) ahora sale en blanco en vez de "—".
+
 ## v2.17 — Entrada acredita digital siempre (no solo Ferretería con lote real), salvo "Compra propia"
 
 Pregunta de Andrés (30-09-2026): "las entradas registradas sin lote, ¿están quedando actualmente registradas en digital?" — la respuesta con el código de ese momento era no, en ningún caso (ni Ferretería sin lote real, ni ningún material no-Ferretería con o sin lote — eso último nunca tocaba digital, desde el 0005 original). Al preguntarle si el ajuste debía ser solo para Ferretería o para todos los materiales: "Todas las entradas a una bodega deben entrar en su stock digital, en especial de las bodegas C088, C103, C132. Deben entrar en físico y digital."

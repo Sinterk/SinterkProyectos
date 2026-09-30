@@ -9,6 +9,7 @@ import { useAuth } from '@/lib/auth'
 import { TIPO_PROYECTO_LABELS } from '../types'
 import type { AttRecord } from '../types'
 import { DescargarCerradosPanel } from './DescargarCerradosPanel'
+import { generarHojaLogisticaGenerica } from '@/ui/generarHojaLogistica'
 import { ZipArchiveViewer } from '@/ui/ZipArchiveViewer'
 
 type EstadoFilter = 'activo' | 'cerrado' | 'todos'
@@ -88,6 +89,11 @@ export function Home() {
           <button type="button" onClick={() => navigate('/att/calendario')}
             className="bg-slate-700 hover:bg-slate-600 text-white text-sm font-semibold px-3 py-2 rounded-xl">
             📅 Calendario
+          </button>
+          <button type="button" onClick={() => { generarHojaLogisticaGenerica().catch(console.error) }}
+            title="PDF en blanco de Asignación de materiales, para llenar a mano — sin ligar a ninguna OTT"
+            className="bg-slate-700 hover:bg-slate-600 text-white text-sm font-semibold px-3 py-2 rounded-xl">
+            📄 Asignación
           </button>
           <button type="button" onClick={() => setShowViewer(true)}
             className="bg-slate-700 hover:bg-slate-600 text-white text-sm font-semibold px-3 py-2 rounded-xl">

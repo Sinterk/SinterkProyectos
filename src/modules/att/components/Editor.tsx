@@ -205,8 +205,8 @@ export function Editor() {
             ott={record.ott} direccion={record.direccion} fechaInicio={fechaInicioDe(record)}
             tituloHoja={`OTT ${record.ott || 'sin número'}`}
             datosGeneralesHoja={[
-              { label: 'OTT', value: record.ott || '—' },
-              { label: 'Dirección', value: record.direccion || '—' },
+              { label: 'OTT', value: record.ott || '' },
+              { label: 'Dirección', value: record.direccion || '' },
             ]}
             fechasHoja={[
               { label: 'Fecha de inicio', value: fechaInicioDe(record) || '' },

@@ -189,7 +189,9 @@ export async function generarHojaLogistica(input: HojaLogisticaInput): Promise<v
       const lbl = `${d.label}: `
       doc.text(lbl, x, y)
       doc.setFont('helvetica', 'normal')
-      doc.text(d.value || '—', x + doc.getTextWidth(lbl), y, { maxWidth: colW - doc.getTextWidth(lbl) - 10 })
+      // Sin valor, no se imprime "—": mismo criterio que las fechas, para
+      // poder completar a mano en vez de tachar un guion (ver v2.15/v2.18).
+      if (d.value) doc.text(d.value, x + doc.getTextWidth(lbl), y, { maxWidth: colW - doc.getTextWidth(lbl) - 10 })
     })
     y += 15
   }
@@ -256,4 +258,30 @@ export async function generarHojaLogistica(input: HojaLogisticaInput): Promise<v
 
   const fileName = `Asignacion de materiales - ${input.titulo}.pdf`.replace(/[\\/:*?"<>|]/g, '')
   doc.save(fileName)
+}
+
+/**
+ * Versión en blanco, sin ligar a ninguna OTT — para tener a mano e imprimir
+ * de antemano, sin depender de generarla desde una OTT específica ya
+ * guardada (pedido de Andrés: descargable desde la ventana de ATT, junto al
+ * botón de Calendario). Mismo formato que la de una OTT real: 3 líneas para
+ * escribir los técnicos a mano (`tecnicos: ['', '', '']` ya le basta a
+ * `firmaTabla`/Técnicos asignados para reservar 3 filas en blanco, sin
+ * necesidad de tocar esa lógica).
+ */
+export async function generarHojaLogisticaGenerica(): Promise<void> {
+  await generarHojaLogistica({
+    titulo: 'genérico',
+    datosGenerales: [
+      { label: 'OTT', value: '' },
+      { label: 'Dirección', value: '' },
+    ],
+    fechas: [
+      { label: 'Fecha de inicio', value: '' },
+      { label: 'Fecha de término', value: '' },
+    ],
+    tecnicos: ['', '', ''],
+    material: [],
+    observaciones: [],
+  })
 }
