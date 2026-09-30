@@ -142,6 +142,43 @@ const FIRMA_COLS: Col[] = [
 const FIRMA_ROW_H = 26
 const LINEAS_VACIAS_OBS = 4
 
+// ── Registro en sitio: entrega / instalación ──────────────────────────────────
+// Ticket de registro en el sitio (control de acceso del cliente, distinto de
+// la firma del técnico) — uno al retirar/entregar el material, otro al
+// finalizar la instalación. Pedido explícito: "misma altura abajo de la caja
+// de material, a la izquierda Registro entrega y derecha registro
+// instalación" — dos cajas lado a lado, entre Material y Observaciones.
+const REGISTRO_BOX_H = 70
+const REGISTRO_LABELS = ['Registro entrega', 'Registro instalación']
+const REGISTRO_CAMPOS = ['Nombre:', 'Fecha:', 'Firma:']
+
+function alturaRegistroSitio(): number {
+  return 22 /* heading */ + REGISTRO_BOX_H
+}
+
+function registroSitio(doc: jsPDF, y: number): number {
+  y = heading(doc, 'Registro en sitio', y)
+  y = chk(doc, y, REGISTRO_BOX_H)
+  const gap = 8
+  const boxW = (CW - gap) / 2
+  for (let i = 0; i < 2; i++) {
+    const x = ML + i * (boxW + gap)
+    box(doc, x, y, boxW, REGISTRO_BOX_H)
+    doc.setFont('helvetica', 'bold'); doc.setFontSize(9); setTxt(doc, BLACK)
+    doc.text(REGISTRO_LABELS[i], x + 6, y + 14)
+    doc.setFont('helvetica', 'normal'); doc.setFontSize(8); setTxt(doc, GREY_TXT)
+    let fy = y + 30
+    for (const campo of REGISTRO_CAMPOS) {
+      doc.text(campo, x + 6, fy)
+      setDraw(doc, BLACK); doc.setLineWidth(0.3)
+      doc.line(x + 6 + doc.getTextWidth(campo) + 4, fy + 1, x + boxW - 6, fy + 1)
+      fy += 14
+    }
+    setTxt(doc, BLACK)
+  }
+  return y + REGISTRO_BOX_H + 6
+}
+
 /** Alto que va a ocupar Observaciones — pura medición (splitTextToSize no dibuja), para calcular cuántas filas de Material entran antes sin adivinar. */
 function alturaObservaciones(doc: jsPDF, observaciones: string[]): number {
   let h = 22 // heading
@@ -268,7 +305,8 @@ export async function generarHojaLogistica(input: HojaLogisticaInput): Promise<v
   // menos que MIN_FILAS_VACIAS, el resto lo sigue cubriendo `chk()` saltando
   // de página si hiciera falta.
   const MIN_FILAS_VACIAS = 4
-  const restoDespuesDeMaterial = 6 /* gap a Observaciones */ + alturaObservaciones(doc, input.observaciones)
+  const restoDespuesDeMaterial = 6 /* gap a Registro en sitio */ + alturaRegistroSitio()
+    + 6 /* gap a Observaciones */ + alturaObservaciones(doc, input.observaciones)
     + 4 /* gap a Firmas */ + alturaFirmas(input.tecnicos)
   const filasVacias = Math.max(MIN_FILAS_VACIAS, Math.floor((CONT_B - y - restoDespuesDeMaterial) / ROW_H))
   for (let i = 0; i < filasVacias; i++) {
@@ -277,6 +315,9 @@ export async function generarHojaLogistica(input: HojaLogisticaInput): Promise<v
     y += ROW_H
   }
   y += 6
+
+  // ── Registro en sitio (entrega / instalación) ────────────────────────────────
+  y = registroSitio(doc, y)
 
   // ── Observaciones (las ya registradas + espacio en blanco) ──────────────────
   y = heading(doc, 'Observaciones', y)

@@ -30,6 +30,14 @@
   20. ~~Correr en el SQL Editor `supabase/migrations/0074_entrada_acredita_digital_siempre.sql`~~ — **corrida y confirmada por Andrés el 30-09**. Ver v2.17 más abajo.
 - **Deploy**: el push del 26-08 a `main` falló al desplegar por una interrupción real de GitHub Actions/Pages (confirmada en githubstatus.com, no un problema del repo) — falta reintentar el workflow ("Re-run all jobs") una vez que GitHub se recupere. Fuera de eso, `.github/workflows/deploy.yml` publica bien en cada push a `main`.
 
+## v2.22 — Hoja de logística: sección "Registro en sitio" (entrega / instalación)
+
+Andrés: "Quiero agregar algo al formato de asignación de materiales: debe haber un ticket de 'registrado' en el sitio. uno de entrega y otro de finalizado el proyecto." Se le preguntó dónde ubicarlo (junto a Firmas / arriba junto a la fecha / sección aparte) — eligió: "mejor en la misma altura abajo de la caja de material, a la izquierda Registro entrega y derecha registro instalación".
+
+- **`generarHojaLogistica.ts`**: nueva sección "Registro en sitio" entre Material y Observaciones — dos cajas lado a lado (mitad del ancho cada una), "Registro entrega" a la izquierda y "Registro instalación" a la derecha, cada una con líneas en blanco para Nombre/Fecha/Firma (`registroSitio()`, `REGISTRO_BOX_H=70`).
+- El cálculo dinámico de filas en blanco de Material (`restoDespuesDeMaterial`) ahora también reserva el alto de esta sección (`alturaRegistroSitio()`), igual que ya hacía con Observaciones y Firmas — sigue cabiendo en 1 sola hoja.
+- Verificado en el navegador con el formato genérico y con la OTT real 72603683032 (interceptando el blob del PDF e inspeccionándolo en un iframe) — ambos casos caben en una página.
+
 ## v2.21 — Fix real: "Sugerir rebaja" ya no propone lotes de otras bodegas
 
 Andrés: "cuando no queda stock digital de un item al rebajar, propone lotes de otras bodegas. Eso no debe pasar. Debe indicar que no hay stock digital en esa bodega, no indicar lotes de otras bodegas."
