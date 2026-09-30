@@ -144,39 +144,35 @@ const LINEAS_VACIAS_OBS = 4
 
 // ── Registro en sitio: entrega / instalación ──────────────────────────────────
 // Ticket de registro en el sitio (control de acceso del cliente, distinto de
-// la firma del técnico) — uno al retirar/entregar el material, otro al
-// finalizar la instalación. Pedido explícito: "misma altura abajo de la caja
-// de material, a la izquierda Registro entrega y derecha registro
-// instalación" — dos cajas lado a lado, entre Material y Observaciones.
-const REGISTRO_BOX_H = 70
-const REGISTRO_LABELS = ['Registro entrega', 'Registro instalación']
-const REGISTRO_CAMPOS = ['Nombre:', 'Fecha:', 'Firma:']
+// la firma del técnico). Pedido explícito: "debe ser más pequeño, no una
+// sección grande" + formato "REGISTRO EN SITIO: Entrega [] Instalación []" —
+// una sola línea inline con 2 casilleros chicos para escribir el N° de
+// ticket, no una sección con heading propio.
+const REGISTRO_LINE_H = 20
+const REGISTRO_CHK_W = 26
+const REGISTRO_CHK_H = 14
 
 function alturaRegistroSitio(): number {
-  return 22 /* heading */ + REGISTRO_BOX_H
+  return REGISTRO_LINE_H
 }
 
 function registroSitio(doc: jsPDF, y: number): number {
-  y = heading(doc, 'Registro en sitio', y)
-  y = chk(doc, y, REGISTRO_BOX_H)
-  const gap = 8
-  const boxW = (CW - gap) / 2
-  for (let i = 0; i < 2; i++) {
-    const x = ML + i * (boxW + gap)
-    box(doc, x, y, boxW, REGISTRO_BOX_H)
-    doc.setFont('helvetica', 'bold'); doc.setFontSize(9); setTxt(doc, BLACK)
-    doc.text(REGISTRO_LABELS[i], x + 6, y + 14)
-    doc.setFont('helvetica', 'normal'); doc.setFontSize(8); setTxt(doc, GREY_TXT)
-    let fy = y + 30
-    for (const campo of REGISTRO_CAMPOS) {
-      doc.text(campo, x + 6, fy)
-      setDraw(doc, BLACK); doc.setLineWidth(0.3)
-      doc.line(x + 6 + doc.getTextWidth(campo) + 4, fy + 1, x + boxW - 6, fy + 1)
-      fy += 14
-    }
-    setTxt(doc, BLACK)
+  y = chk(doc, y, REGISTRO_LINE_H)
+  const baseline = y + 12
+  doc.setFont('helvetica', 'bold'); doc.setFontSize(9.5); setTxt(doc, BLACK)
+  let x = ML
+  doc.text('REGISTRO EN SITIO:', x, baseline)
+  x += doc.getTextWidth('REGISTRO EN SITIO:') + 10
+
+  const partes = ['Entrega', 'Instalación']
+  doc.setFont('helvetica', 'normal'); doc.setFontSize(9)
+  for (const label of partes) {
+    doc.text(label, x, baseline)
+    x += doc.getTextWidth(label) + 6
+    box(doc, x, baseline - REGISTRO_CHK_H + 2, REGISTRO_CHK_W, REGISTRO_CHK_H)
+    x += REGISTRO_CHK_W + 18
   }
-  return y + REGISTRO_BOX_H + 6
+  return y + REGISTRO_LINE_H
 }
 
 /** Alto que va a ocupar Observaciones — pura medición (splitTextToSize no dibuja), para calcular cuántas filas de Material entran antes sin adivinar. */
