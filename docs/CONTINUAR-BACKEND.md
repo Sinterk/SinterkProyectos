@@ -27,7 +27,20 @@
   17. ~~Lista de OTT del técnico en celular muestra muy poca info~~ — **hecho, v2.12** más abajo: `AsignacionesScreen.tsx` ahora reusa las mismas tarjetas de oficina (`AttCard`/`CuadranteCard`/`IncidenciaCard`, exportadas para esto) agrupadas por área, con el mismo orden `updatedAt desc`. Sin botón de eliminar (no se expone esa acción acá).
   18. ~~Versión imprimible de materiales por OTT~~ — **hecho, v2.14** más abajo: "Hoja de logística" en PDF, con firma en papel (salida/instalado).
   19. ~~Materiales de OyM: asignar desde la incidencia + origen técnico/bodega al instalar~~ — **hecho, v2.13** más abajo.
+  20. **Correr en el SQL Editor `supabase/migrations/0074_entrada_acredita_digital_siempre.sql`** — ver v2.17 más abajo: cambia que TODA Entrada (no solo Ferretería) acredite digital además de físico, salvo "Compra propia". Hasta que se corra, el comportamiento sigue siendo el viejo (código ya actualizado, migración todavía no aplicada — mismo patrón de siempre).
 - **Deploy**: el push del 26-08 a `main` falló al desplegar por una interrupción real de GitHub Actions/Pages (confirmada en githubstatus.com, no un problema del repo) — falta reintentar el workflow ("Re-run all jobs") una vez que GitHub se recupere. Fuera de eso, `.github/workflows/deploy.yml` publica bien en cada push a `main`.
+
+## v2.17 — Entrada acredita digital siempre (no solo Ferretería con lote real), salvo "Compra propia"
+
+Pregunta de Andrés (30-09-2026): "las entradas registradas sin lote, ¿están quedando actualmente registradas en digital?" — la respuesta con el código de ese momento era no, en ningún caso (ni Ferretería sin lote real, ni ningún material no-Ferretería con o sin lote — eso último nunca tocaba digital, desde el 0005 original). Al preguntarle si el ajuste debía ser solo para Ferretería o para todos los materiales: "Todas las entradas a una bodega deben entrar en su stock digital, en especial de las bodegas C088, C103, C132. Deben entrar en físico y digital."
+
+- **`supabase/migrations/0074_entrada_acredita_digital_siempre.sql`** (nueva, **pendiente de correr**, ver pendiente #20 arriba): reescribe la rama `'entrada'` de `registrar_movimiento`/`corregir_movimiento`/`anular_movimiento` (mismas firmas que 0067, sin necesidad de dropear nada):
+  - Ferretería: se quita la exclusión `v_lote not in ('SinDefinir', 'Físico')` del crédito digital — ahora acredita digital bajo el lote indicado (o `'SinDefinir'` si no se puso ninguno) siempre que no esté marcada "Compra propia". El físico sigue exactamente igual (fijo en el lote reservado `'Físico'`, nunca distingue lote).
+  - Materiales que NO son Ferretería: antes una Entrada nunca tocaba digital, con o sin lote. Ahora acredita digital bajo el mismo lote que el físico (o `'SinDefinir'`), salvo "Compra propia" — antes esa casilla no tenía ningún efecto acá porque no había nada que saltarse.
+  - Lo único que sigue sin acreditar digital pase lo que pase: el lote reservado `'Físico'` de Ferretería (nunca es un lote SAP real) y cualquier entrada con "Compra propia" marcado.
+- **`RegistrarMovimientoForm.tsx`**: texto de ayuda actualizado para reflejar que ahora es universal, no solo de Ferretería.
+
+**Sin verificar contra la BD real todavía** — la migración está escrita y revisada (mismo patrón que 0067, mismas ramas del resto de tipos sin tocar) pero Andrés todavía no la corre. Hasta entonces el comportamiento en producción sigue siendo el viejo.
 
 ## v2.16 — Exportar stock a Excel (Inventario > Stock)
 

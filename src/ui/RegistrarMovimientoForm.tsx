@@ -404,8 +404,9 @@ export function RegistrarMovimientoForm({ fixedProject, puntos, lockTipoUI, solo
         <span className={labelCls}>Material</span>
         {esEntrada && (
           <p className="text-[11px] text-slate-500">
-            Si conoces el lote real de SAP, indícalo — para Ferretería el físico siempre queda en "Físico"
-            (no distingue lote), pero ese lote también queda acreditado en digital, para que calce con SAP.
+            Toda entrada queda acreditada en físico Y en digital, bajo el lote que indiques (o "SinDefinir" si no
+            pones ninguno) — para Ferretería el físico siempre queda aparte en "Físico" (no distingue lote), pero el
+            digital sigue el lote real igual que el resto.
             {soloFisico && ' Con "Compra propia" marcado, esta entrada NO toca el stock digital sin importar el lote que pongas.'}
           </p>
         )}
