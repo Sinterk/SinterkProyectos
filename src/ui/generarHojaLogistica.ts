@@ -90,18 +90,22 @@ function stampFooter(doc: jsPDF, titulo: string) {
 }
 
 // ── Tabla genérica de material (encabezado + filas + filas en blanco) ────────
+// Anchos suman exactamente CW (504pt) — usan todo el ancho de la hoja, no
+// solo una fracción (pedido explícito: "agranda la tabla... para que se use
+// toda la hoja"). ROW_H también subió (16→20) para que haya espacio real
+// donde escribir a mano, no solo más ancho.
 interface Col { label: string; w: number; align?: 'left' | 'center' | 'right' }
 const MATERIAL_COLS: Col[] = [
-  { label: 'SKU', w: 50 },
-  { label: 'Descripción', w: 166 },
-  { label: 'Lote', w: 60 },
+  { label: 'SKU', w: 56 },
+  { label: 'Descripción', w: 184 },
+  { label: 'Lote', w: 66 },
   { label: 'Solicit.', w: 38, align: 'right' },
   { label: 'Entreg.', w: 38, align: 'right' },
   { label: 'Instal.', w: 38, align: 'right' },
   { label: 'Devuelto', w: 42, align: 'right' },
   { label: 'Merma', w: 42, align: 'right' },
 ]
-const ROW_H = 16
+const ROW_H = 20
 
 function tableRowGeneric(doc: jsPDF, x0: number, y: number, h: number, cols: Col[], values: string[], opts?: { header?: boolean }) {
   let x = x0
@@ -133,6 +137,25 @@ const FIRMA_COLS: Col[] = [
   { label: 'Fecha', w: 62, align: 'center' },
 ]
 const FIRMA_ROW_H = 26
+const LINEAS_VACIAS_OBS = 4
+
+/** Alto que va a ocupar Observaciones — pura medición (splitTextToSize no dibuja), para calcular cuántas filas de Material entran antes sin adivinar. */
+function alturaObservaciones(doc: jsPDF, observaciones: string[]): number {
+  let h = 22 // heading
+  doc.setFontSize(9)
+  for (const obs of observaciones) {
+    const lines: string[] = doc.splitTextToSize(`• ${obs}`, CW)
+    h += lines.length * 12 + 2
+  }
+  h += LINEAS_VACIAS_OBS * 16
+  return h
+}
+
+/** Alto que va a ocupar la tabla de Firmas — mismo criterio que `firmaTabla`, sin dibujar. */
+function alturaFirmas(tecnicos: string[]): number {
+  const filas = tecnicos.length > 0 ? tecnicos.length : 1
+  return 22 + ROW_H + filas * FIRMA_ROW_H + 8
+}
 
 function firmaTabla(doc: jsPDF, y: number, tecnicos: string[]): number {
   y = heading(doc, 'Firmas — salida e instalado', y)
@@ -161,17 +184,24 @@ export async function generarHojaLogistica(input: HojaLogisticaInput): Promise<v
   doc.text('Asignación de materiales', ML, y + 12)
 
   if (input.fechas.length > 0) {
-    const fx = PW - MR
+    // Ancla el inicio de la etiqueta en una X FIJA (no pegada al margen
+    // derecho): antes, sin valor, la etiqueta igual quedaba pegada al borde
+    // (right-align sobre un ancho 0) — sin espacio para escribir la fecha a
+    // mano. Ahora todas las etiquetas empiezan en la misma columna, con
+    // espacio reservado a la derecha para el valor (impreso o a mano),
+    // tenga o no tenga dato.
+    const WRITE_W = 70
+    doc.setFont('helvetica', 'bold'); doc.setFontSize(8.5)
+    const maxLblW = Math.max(...input.fechas.map((f) => doc.getTextWidth(`${f.label}: `)))
+    const labelX = PW - MR - maxLblW - WRITE_W
     let fy = y
-    doc.setFontSize(8.5)
     for (const f of input.fechas) {
       doc.setFont('helvetica', 'bold'); setTxt(doc, BLACK)
-      const lbl = `${f.label}: `
-      const lblW = doc.getTextWidth(lbl)
-      doc.setFont('helvetica', 'normal')
-      const valW = f.value ? doc.getTextWidth(f.value) : 0
-      doc.text(lbl, fx - lblW - valW, fy)
-      if (f.value) doc.text(f.value, fx - valW, fy)
+      doc.text(`${f.label}: `, labelX, fy)
+      if (f.value) {
+        doc.setFont('helvetica', 'normal')
+        doc.text(f.value, labelX + maxLblW, fy)
+      }
       fy += 12
     }
   }
@@ -225,8 +255,20 @@ export async function generarHojaLogistica(input: HojaLogisticaInput): Promise<v
     ])
     y += ROW_H
   }
-  const FILAS_VACIAS = 6
-  for (let i = 0; i < FILAS_VACIAS; i++) {
+  // Filas en blanco DINÁMICAS: en vez de un número fijo, se calcula cuánto
+  // espacio queda en la hoja después de reservar lo que van a necesitar
+  // Observaciones y Firmas (medido, no dibujado — ver alturaObservaciones/
+  // alturaFirmas) y se llena con filas de Material — pedido explícito:
+  // "agranda la tabla de material para que se use toda la hoja". Con un
+  // formulario genérico (sin datos) esto llena la hoja entera; con una OTT
+  // real con mucho contenido, simplemente hay menos filas de sobra — nunca
+  // menos que MIN_FILAS_VACIAS, el resto lo sigue cubriendo `chk()` saltando
+  // de página si hiciera falta.
+  const MIN_FILAS_VACIAS = 4
+  const restoDespuesDeMaterial = 6 /* gap a Observaciones */ + alturaObservaciones(doc, input.observaciones)
+    + 4 /* gap a Firmas */ + alturaFirmas(input.tecnicos)
+  const filasVacias = Math.max(MIN_FILAS_VACIAS, Math.floor((CONT_B - y - restoDespuesDeMaterial) / ROW_H))
+  for (let i = 0; i < filasVacias; i++) {
     y = chk(doc, y, ROW_H)
     tableRowGeneric(doc, ML, y, ROW_H, MATERIAL_COLS, [])
     y += ROW_H
@@ -242,8 +284,7 @@ export async function generarHojaLogistica(input: HojaLogisticaInput): Promise<v
     doc.text(lines, ML, y + 9)
     y += lines.length * 12 + 2
   }
-  const LINEAS_VACIAS = 4
-  for (let i = 0; i < LINEAS_VACIAS; i++) {
+  for (let i = 0; i < LINEAS_VACIAS_OBS; i++) {
     y = chk(doc, y, 16)
     setDraw(doc, BLACK); doc.setLineWidth(0.3)
     doc.line(ML, y + 13, PW - MR, y + 13)

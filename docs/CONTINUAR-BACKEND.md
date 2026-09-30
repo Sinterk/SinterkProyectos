@@ -30,6 +30,15 @@
   20. ~~Correr en el SQL Editor `supabase/migrations/0074_entrada_acredita_digital_siempre.sql`~~ — **corrida y confirmada por Andrés el 30-09**. Ver v2.17 más abajo.
 - **Deploy**: el push del 26-08 a `main` falló al desplegar por una interrupción real de GitHub Actions/Pages (confirmada en githubstatus.com, no un problema del repo) — falta reintentar el workflow ("Re-run all jobs") una vez que GitHub se recupere. Fuera de eso, `.github/workflows/deploy.yml` publica bien en cada push a `main`.
 
+## v2.19 — Ajustes al PDF: fechas alineadas + tabla de Material usa toda la hoja
+
+Andrés, tras ver el PDF genérico (v2.18): "la fecha queda en la esquina superior derecha muy a la derecha... déjalo para que aunque esté sin información de fecha, quede a la altura de donde queda con fecha. Así también hay espacio para escribir a mano la info. También, agranda la tabla de material para que se use toda la hoja."
+
+- **Fechas de la esquina**: antes se alineaban a la derecha (`right-align`) sobre el ancho real del valor — sin valor, el ancho era 0 y la etiqueta quedaba pegada al borde, sin espacio para escribirla a mano. Ahora el punto de inicio de la etiqueta es una X fija (calculada una sola vez, la más ancha de las etiquetas) con 70pt reservados a la derecha para el valor — con o sin dato, "Fecha de inicio:" y "Fecha de término:" quedan alineadas en la misma columna, y siempre queda el mismo espacio en blanco para completar a mano.
+- **Tabla de Material más grande**: los anchos de columna ahora suman exactamente el ancho de la hoja (504pt, antes 474pt) y el alto de fila subió de 16 a 20pt (más cómodo para escribir a mano). Las filas en blanco ya no son un número fijo (antes 6 siempre): se calculan según cuánto espacio quede libre en la hoja después de reservar lo que van a necesitar Observaciones y Firmas (medido con `splitTextToSize`, sin dibujar) — con el formulario genérico esto llena casi toda la hoja; con una OTT real con más contenido, hay menos de sobra, nunca menos de 4. Sigue cabiendo en 1 página en ambos casos probados.
+
+**Verificado en el navegador** (blob interceptado, zoom del visor de PDF al 60% para ver la hoja completa): formulario genérico con fechas alineadas y ~18 filas de Material en blanco llenando la hoja; PDF de la misma OTT real de antes (72603683032) con 3 materiales reales + filas en blanco proporcionalmente menos (por los técnicos/datos ya ocupados), fecha de inicio real alineada con fecha de término vacía en la misma columna — ambos en 1 sola página.
+
 ## v2.18 — "Asignación de materiales" genérica en blanco, descargable desde ATT
 
 Pedido de Andrés (30-09-2026): "Haz un formato PDF de asignación de materiales genérico, para ser llenado a papel. Debe poder descargarse desde la ventana de ATT, junto al botón de calendario."
