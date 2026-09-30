@@ -30,6 +30,18 @@
   20. ~~Correr en el SQL Editor `supabase/migrations/0074_entrada_acredita_digital_siempre.sql`~~ — **corrida y confirmada por Andrés el 30-09**. Ver v2.17 más abajo.
 - **Deploy**: el push del 26-08 a `main` falló al desplegar por una interrupción real de GitHub Actions/Pages (confirmada en githubstatus.com, no un problema del repo) — falta reintentar el workflow ("Re-run all jobs") una vez que GitHub se recupere. Fuera de eso, `.github/workflows/deploy.yml` publica bien en cada push a `main`.
 
+## v2.21 — Fix real: "Sugerir rebaja" ya no propone lotes de otras bodegas
+
+Andrés: "cuando no queda stock digital de un item al rebajar, propone lotes de otras bodegas. Eso no debe pasar. Debe indicar que no hay stock digital en esa bodega, no indicar lotes de otras bodegas."
+
+Esto revierte un comportamiento que en su momento fue pedido explícito (ver v1.99/PASO documentado: "ordena primero los de C088 y después los de otras bodegas") — Andrés confirmó ahora que ese fallback a otras bodegas no debe pasar más.
+
+- **`sugerirRebaja()`** (`ResumenProyectoTable.tsx`): las 3 ramas (cable con lote real, cable sin lote, resto agrupado por material) ahora solo consultan `getStock({..., ubicacionId: defaultBodegaId})` — la bodega del área (C088 ATT / C132 OyM) — nunca el resto. Si no alcanza ahí, la línea queda con el faltante y sin lote, para completar a mano — ya no busca ni propone un lote de otra bodega.
+- El aviso en la línea sin lote pasa de "Sin lote con stock suficiente" (genérico) a **"Sin stock digital suficiente en `<nombre de la bodega>`"** — nombra la bodega explícitamente, como pidió.
+- El selector de Bodega de esa línea sigue permitiendo elegir otra a mano si de verdad corresponde — solo se quitó la sugerencia automática entre bodegas, no la posibilidad de corregirlo manualmente.
+
+**Verificado en el navegador contra la OTT real de siempre** (72603683032): `STKCMIC` tiene stock digital real en otras bodegas (STK: 17, C103: 1 — visto en la columna Origen del PDF) pero nada en C088 — "Sugerir rebaja" ahora dice correctamente "Sin stock digital suficiente en C088" en vez de proponer el lote de STK o C103 como antes. No se guardó nada (solo se generó la sugerencia, sin tocar "Guardar cambios").
+
 ## v2.20 — PDF: columna Origen/bodega + usa el apodo del material si existe
 
 Andrés: "debe haber una columna de origen/bodega, el que sea más angosto. Quita espacio de descripción. También, si el material tiene un nombre alternativo, que se use ese."

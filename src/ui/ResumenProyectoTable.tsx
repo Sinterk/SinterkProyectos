@@ -459,24 +459,34 @@ export function ResumenProyectoTable({ projectId, area, puntos, refreshKey = 0, 
    * las `manual` que ya se hayan agregado (mismo patrón que "Regenerar
    * avance" del Estado de Pago: botón, no automático).
    *
+   * Solo mira la bodega del área (C088 en ATT, C132 en OyM —
+   * `defaultBodegaId`) — nunca otras. Antes, si esa bodega no tenía stock
+   * digital suficiente, se seguía buscando en el resto de las bodegas; eso
+   * quedó mal (bug real reportado por Andrés): la rebaja terminaba
+   * proponiendo un lote de una bodega que no tiene nada que ver con el
+   * proyecto, en vez de simplemente avisar que no hay stock digital ahí.
+   * Ahora, si no alcanza en la bodega del área, la línea queda con el
+   * faltante y sin lote — para completar a mano, nunca "resuelta" con un
+   * lote ajeno.
+   *
    * CABLE es un caso aparte (pedido explícito de Andrés) — nunca se reparte
    * entre varios lotes:
    *   - Si el físico YA tiene un lote real (no 'SinDefinir'), la rebaja va
-   *     contra ESE MISMO lote, siempre, sin buscar ni comparar disponible —
-   *     es de ahí de donde salió de verdad. El digital ya permite negativo
-   *     (0055), así que no hace falta que "alcance" para usarlo.
-   *   - Si el físico todavía no tiene lote, se busca UN lote digital que
-   *     cubra toda la cantidad — nunca varios. Si ninguno alcanza solo,
-   *     queda una línea sin lote con el total, para completar a mano.
+   *     contra ESE MISMO lote en la bodega del área, siempre, sin buscar ni
+   *     comparar disponible — es de ahí de donde salió de verdad. El
+   *     digital ya permite negativo (0055), así que no hace falta que
+   *     "alcance" para usarlo.
+   *   - Si el físico todavía no tiene lote, se busca UN lote digital (en la
+   *     bodega del área) que cubra toda la cantidad — nunca varios. Si
+   *     ninguno alcanza solo, queda una línea sin lote con el total, para
+   *     completar a mano.
    * Cable tampoco se agrupa por material entre lotes distintos: cada fila
    * física (material+lote) es su propia línea de rebaja.
    *
-   * Todo lo demás sigue igual que antes: se agrupa por material (sin
-   * importar el lote físico) y se reparte entre TODOS los lotes digitales
-   * disponibles, en cualquier bodega, priorizando la del área (C088 en ATT,
-   * C132 en OyM — `defaultBodegaId`) de MENOR a MAYOR cantidad; agotada esa
-   * bodega, sigue con el resto también de menor a mayor. Si ni sumando todo
-   * alcanza, la línea final queda con el faltante y sin lote.
+   * Todo lo demás: se agrupa por material (sin importar el lote físico) y
+   * se reparte entre los lotes digitales de la bodega del área, de MENOR a
+   * MAYOR cantidad. Si ni sumando todos alcanza, la línea final queda con
+   * el faltante y sin lote.
    */
   async function sugerirRebaja() {
     setError(null)
@@ -495,29 +505,25 @@ export function ResumenProyectoTable({ projectId, area, puntos, refreshKey = 0, 
         if (necesario <= 0) continue
 
         if (row.lote && row.lote !== 'SinDefinir') {
-          const stockLote = await getStock({ materialId: row.materialId, lote: row.lote })
-          const ubicacion = stockLote.find((s) => s.ubicacionId === defaultBodegaId) ?? stockLote[0]
+          // Rebaja siempre contra la bodega del área y ESE MISMO lote real
+          // — sin buscar ni comparar disponible en otras bodegas.
           auto.push({
             localId: nanoid(8), materialId: row.materialId, materialSku: row.materialSku, materialDescripcion: row.materialDescripcion,
-            lote: row.lote, ubicacionBodegaId: ubicacion?.ubicacionId ?? defaultBodegaId, cantidad: String(necesario), origen: 'auto',
+            lote: row.lote, ubicacionBodegaId: defaultBodegaId, cantidad: String(necesario), origen: 'auto',
           })
           continue
         }
 
         // Sin lote físico todavía: un solo lote digital que cubra todo,
-        // nunca varios. Entre los que alcanzan, prioriza la bodega del
-        // área y, dentro de esa prioridad, el más ajustado (menor sobrante).
-        const stockMaterial = await getStock({ materialId: row.materialId })
+        // nunca varios, y solo mirando la bodega del área — el más ajustado
+        // (menor sobrante) entre los que alcanzan.
+        const stockMaterial = await getStock({ materialId: row.materialId, ubicacionId: defaultBodegaId })
         const candidato = stockMaterial
           .filter((s) => s.cantidadDigital >= necesario)
-          .sort((a, b) => {
-            const prioridadA = a.ubicacionId === defaultBodegaId
-            const prioridadB = b.ubicacionId === defaultBodegaId
-            return prioridadA !== prioridadB ? (prioridadA ? -1 : 1) : a.cantidadDigital - b.cantidadDigital
-          })[0]
+          .sort((a, b) => a.cantidadDigital - b.cantidadDigital)[0]
         auto.push({
           localId: nanoid(8), materialId: row.materialId, materialSku: row.materialSku, materialDescripcion: row.materialDescripcion,
-          lote: candidato?.lote ?? '', ubicacionBodegaId: candidato?.ubicacionId ?? defaultBodegaId,
+          lote: candidato?.lote ?? '', ubicacionBodegaId: defaultBodegaId,
           cantidad: String(necesario), origen: 'auto',
         })
       }
@@ -532,11 +538,11 @@ export function ResumenProyectoTable({ projectId, area, puntos, refreshKey = 0, 
         let restante = Math.round(info.necesario * 100) / 100
         if (restante <= 0) continue
 
-        const stockMaterial = await getStock({ materialId })
+        const stockMaterial = await getStock({ materialId, ubicacionId: defaultBodegaId })
         const lotes = stockMaterial
           .filter((s) => s.cantidadDigital > 0)
-          .map((s) => ({ ubicacionId: s.ubicacionId, lote: s.lote, disponible: s.cantidadDigital, prioridad: s.ubicacionId === defaultBodegaId }))
-          .sort((a, b) => (a.prioridad !== b.prioridad ? (a.prioridad ? -1 : 1) : a.disponible - b.disponible))
+          .map((s) => ({ ubicacionId: s.ubicacionId, lote: s.lote, disponible: s.cantidadDigital }))
+          .sort((a, b) => a.disponible - b.disponible)
 
         for (const l of lotes) {
           if (restante <= 0) break
@@ -548,8 +554,10 @@ export function ResumenProyectoTable({ projectId, area, puntos, refreshKey = 0, 
           restante -= usar
         }
         if (restante > 0) {
-          // Sin lote que cubra el resto en NINGUNA bodega — se deja
-          // explícito, en vez de inventar uno, para completar a mano.
+          // Sin stock digital suficiente en la bodega del área — se deja
+          // explícito, SIN proponer un lote de otra bodega, para completar
+          // a mano (bug real reportado por Andrés: antes seguía buscando en
+          // el resto de las bodegas).
           auto.push({
             localId: nanoid(8), materialId, materialSku: info.sku, materialDescripcion: info.descripcion,
             lote: '', ubicacionBodegaId: defaultBodegaId, cantidad: String(restante), origen: 'auto',
@@ -1364,7 +1372,11 @@ function RebajaPendienteSection({
                         checkAvailability={false} value={l.lote}
                         onChange={(lote) => onActualizar(l.localId, { lote })}
                         className="w-24 bg-slate-700 text-white text-xs rounded px-1.5 py-1 border border-slate-600 focus:border-brand-500 focus:outline-none" />
-                      {sinLote && <p className="text-[9px] text-amber-400 mt-0.5">Sin lote con stock suficiente</p>}
+                      {sinLote && (
+                        <p className="text-[9px] text-amber-400 mt-0.5">
+                          Sin stock digital suficiente en {bodegas.find((b) => b.id === l.ubicacionBodegaId)?.nombre ?? 'esa bodega'}
+                        </p>
+                      )}
                     </td>
                     <td className="px-2 py-2 text-center align-top">
                       <input type="number" min="0" step="any" value={l.cantidad}
