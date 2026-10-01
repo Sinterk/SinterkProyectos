@@ -30,6 +30,16 @@
   20. ~~Correr en el SQL Editor `supabase/migrations/0074_entrada_acredita_digital_siempre.sql`~~ — **corrida y confirmada por Andrés el 30-09**. Ver v2.17 más abajo.
 - **Deploy**: el push del 26-08 a `main` falló al desplegar por una interrupción real de GitHub Actions/Pages (confirmada en githubstatus.com, no un problema del repo) — falta reintentar el workflow ("Re-run all jobs") una vez que GitHub se recupere. Fuera de eso, `.github/workflows/deploy.yml` publica bien en cada push a `main`.
 
+## v2.23 — Hoja de logística: quita Técnicos asignados/SKU/Solicitado, firmas fijas en 4
+
+Andrés: "resulta redundante que haya una sección de técnicos asignados y firmas. Borra la sección de técnicos asignados. Borra la fila de sku, eso es interno. Quita solicitado. Deja 4 filas de firmas. Rellena el espacio vacío ganado de borrar técnicos asignado con más filas de materiales."
+
+- **`generarHojaLogistica.ts`**: borrada la sección "Técnicos asignados" completa (redundante con la tabla de Firmas, que ya lista los mismos nombres).
+- Tabla de Material sin columna SKU (es dato interno, no se imprime) ni Solicitado — el ancho liberado pasa a Descripción (124pt → 218pt). `HojaLogisticaMaterial` pierde los campos `sku`/`solicitado` (ya no se usan en ningún lado).
+- Tabla de Firmas pasa de "una fila por técnico asignado" a **siempre 4 filas fijas** (`FIRMA_FILAS=4`), con o sin nombres — ya no depende de `tecnicos.length`.
+- El espacio liberado (sección entera de Técnicos + firmas ahora más chicas cuando hay pocos técnicos) lo absorbe solo el cálculo dinámico de filas en blanco de Material que ya existía — sin tocar esa lógica.
+- Verificado en el navegador con el formato genérico y con la OTT real 72603683032 (2 técnicos): la tabla de Material creció notoriamente, Firmas muestra 2 nombres + 2 filas en blanco, todo sigue cabiendo en 1 página.
+
 ## v2.22 — Hoja de logística: línea "Registro en sitio" (entrega / instalación)
 
 Andrés: "Quiero agregar algo al formato de asignación de materiales: debe haber un ticket de 'registrado' en el sitio. uno de entrega y otro de finalizado el proyecto." Se le preguntó dónde ubicarlo (junto a Firmas / arriba junto a la fecha / sección aparte) — eligió: "mejor en la misma altura abajo de la caja de material, a la izquierda Registro entrega y derecha registro instalación". Primera versión fue una sección con 2 cajas grandes (Nombre/Fecha/Firma cada una) — feedback inmediato: "debe ser más pequeño, no una sección grande", formato sugerido "REGISTRO EN SITIO: Entrega [] Instalación []".

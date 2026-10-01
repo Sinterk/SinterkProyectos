@@ -109,9 +109,9 @@ function HojaLogisticaButton({ projectId, titulo, datosGenerales, fechas }: {
         fechas,
         tecnicos: members.map((m) => m.nombre?.trim() || m.email || ''),
         material: resumen.map((r) => ({
-          sku: r.materialSku, descripcion: apodoPorMaterial.get(r.materialId) || r.materialDescripcion, lote: r.lote,
+          descripcion: apodoPorMaterial.get(r.materialId) || r.materialDescripcion, lote: r.lote,
           origen: r.ubicacionBodegaId ? (nombreBodega.get(r.ubicacionBodegaId) ?? '') : '',
-          solicitado: r.cantSolicitada, entregado: r.cantEntregada, instalado: r.cantInstalada,
+          entregado: r.cantEntregada, instalado: r.cantInstalada,
           devuelto: r.cantDevuelta, merma: r.cantMerma,
         })),
         observaciones: observaciones.map((o) => `${o.texto} — ${o.usuarioNombre ?? 'Alguien'}, ${new Date(o.createdAt).toLocaleDateString('es-CL')}`),

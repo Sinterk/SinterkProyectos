@@ -10,12 +10,10 @@
 import type jsPDF from 'jspdf'
 
 export interface HojaLogisticaMaterial {
-  sku: string
   descripcion: string
   lote: string
   /** Bodega de la que salió (si ya se registró un Entregado) — vacío si no se sabe todavía, para completar a mano. */
   origen: string
-  solicitado: number
   entregado: number
   instalado: number
   devuelto: number
@@ -95,14 +93,13 @@ function stampFooter(doc: jsPDF, titulo: string) {
 // Anchos suman exactamente CW (504pt) — usan todo el ancho de la hoja, no
 // solo una fracción (pedido explícito: "agranda la tabla... para que se use
 // toda la hoja"). ROW_H también subió (16→20) para que haya espacio real
-// donde escribir a mano, no solo más ancho.
+// donde escribir a mano, no solo más ancho. Sin SKU (interno, no se imprime)
+// ni Solicitado (pedido explícito) — el ancho liberado pasa a Descripción.
 interface Col { label: string; w: number; align?: 'left' | 'center' | 'right' }
 const MATERIAL_COLS: Col[] = [
-  { label: 'SKU', w: 56 },
-  { label: 'Descripción', w: 124 },
+  { label: 'Descripción', w: 218 },
   { label: 'Lote', w: 66 },
   { label: 'Origen', w: 60 },
-  { label: 'Solicit.', w: 38, align: 'right' },
   { label: 'Entreg.', w: 38, align: 'right' },
   { label: 'Instal.', w: 38, align: 'right' },
   { label: 'Devuelto', w: 42, align: 'right' },
@@ -140,6 +137,10 @@ const FIRMA_COLS: Col[] = [
   { label: 'Fecha', w: 62, align: 'center' },
 ]
 const FIRMA_ROW_H = 26
+// Fijo en 4 filas, sin importar cuántos técnicos haya — ya no hay sección
+// aparte de "Técnicos asignados" (redundante con esta tabla, pedido
+// explícito de borrarla), así que esto es lo único que lista nombres.
+const FIRMA_FILAS = 4
 const LINEAS_VACIAS_OBS = 4
 
 // ── Registro en sitio: entrega / instalación ──────────────────────────────────
@@ -188,9 +189,8 @@ function alturaObservaciones(doc: jsPDF, observaciones: string[]): number {
 }
 
 /** Alto que va a ocupar la tabla de Firmas — mismo criterio que `firmaTabla`, sin dibujar. */
-function alturaFirmas(tecnicos: string[]): number {
-  const filas = tecnicos.length > 0 ? tecnicos.length : 1
-  return 22 + ROW_H + filas * FIRMA_ROW_H + 8
+function alturaFirmas(): number {
+  return 22 + ROW_H + FIRMA_FILAS * FIRMA_ROW_H + 8
 }
 
 function firmaTabla(doc: jsPDF, y: number, tecnicos: string[]): number {
@@ -198,10 +198,9 @@ function firmaTabla(doc: jsPDF, y: number, tecnicos: string[]): number {
   y = chk(doc, y, ROW_H)
   tableRowGeneric(doc, ML, y, ROW_H, FIRMA_COLS, FIRMA_COLS.map((c) => c.label), { header: true })
   y += ROW_H
-  const filas = tecnicos.length > 0 ? tecnicos : ['']
-  for (const nombre of filas) {
+  for (let i = 0; i < FIRMA_FILAS; i++) {
     y = chk(doc, y, FIRMA_ROW_H)
-    tableRowGeneric(doc, ML, y, FIRMA_ROW_H, FIRMA_COLS, [nombre])
+    tableRowGeneric(doc, ML, y, FIRMA_ROW_H, FIRMA_COLS, [tecnicos[i] ?? ''])
     y += FIRMA_ROW_H
   }
   return y + 8
@@ -263,20 +262,11 @@ export async function generarHojaLogistica(input: HojaLogisticaInput): Promise<v
   }
   y += 6
 
-  // ── Técnicos asignados (mínimo 3 filas, aunque haya menos asignados) ─────────
-  y = heading(doc, 'Técnicos asignados', y)
-  const slots = Math.max(3, input.tecnicos.length)
-  const tecRowH = 17
-  y = chk(doc, y, tecRowH * slots)
-  for (let i = 0; i < slots; i++) {
-    box(doc, ML, y, CW, tecRowH)
-    doc.setFont('helvetica', 'normal'); doc.setFontSize(9.5); setTxt(doc, BLACK)
-    doc.text(input.tecnicos[i] ?? '', ML + 8, y + tecRowH / 2 + 3)
-    y += tecRowH
-  }
-  y += 6
-
   // ── Material (filas reales + filas en blanco para agregar a mano) ───────────
+  // Sin sección "Técnicos asignados" aparte — pedido explícito: es redundante
+  // con la tabla de Firmas, que ya lista a los mismos técnicos por nombre.
+  // El espacio que esa sección ocupaba pasa directo a filas de Material, vía
+  // el cálculo dinámico de más abajo (no hace falta tocar nada ahí).
   y = heading(doc, 'Material', y)
   y = chk(doc, y, ROW_H)
   tableRowGeneric(doc, ML, y, ROW_H, MATERIAL_COLS, MATERIAL_COLS.map((c) => c.label), { header: true })
@@ -285,8 +275,8 @@ export async function generarHojaLogistica(input: HojaLogisticaInput): Promise<v
   for (const m of input.material) {
     y = chk(doc, y, ROW_H)
     tableRowGeneric(doc, ML, y, ROW_H, MATERIAL_COLS, [
-      m.sku, m.descripcion, m.lote, m.origen,
-      String(m.solicitado || ''), String(m.entregado || ''), String(m.instalado || ''),
+      m.descripcion, m.lote, m.origen,
+      String(m.entregado || ''), String(m.instalado || ''),
       String(m.devuelto || ''), String(m.merma || ''),
     ])
     y += ROW_H
@@ -303,7 +293,7 @@ export async function generarHojaLogistica(input: HojaLogisticaInput): Promise<v
   const MIN_FILAS_VACIAS = 4
   const restoDespuesDeMaterial = 6 /* gap a Registro en sitio */ + alturaRegistroSitio()
     + 6 /* gap a Observaciones */ + alturaObservaciones(doc, input.observaciones)
-    + 4 /* gap a Firmas */ + alturaFirmas(input.tecnicos)
+    + 4 /* gap a Firmas */ + alturaFirmas()
   const filasVacias = Math.max(MIN_FILAS_VACIAS, Math.floor((CONT_B - y - restoDespuesDeMaterial) / ROW_H))
   for (let i = 0; i < filasVacias; i++) {
     y = chk(doc, y, ROW_H)
@@ -345,10 +335,8 @@ export async function generarHojaLogistica(input: HojaLogisticaInput): Promise<v
  * Versión en blanco, sin ligar a ninguna OTT — para tener a mano e imprimir
  * de antemano, sin depender de generarla desde una OTT específica ya
  * guardada (pedido de Andrés: descargable desde la ventana de ATT, junto al
- * botón de Calendario). Mismo formato que la de una OTT real: 3 líneas para
- * escribir los técnicos a mano (`tecnicos: ['', '', '']` ya le basta a
- * `firmaTabla`/Técnicos asignados para reservar 3 filas en blanco, sin
- * necesidad de tocar esa lógica).
+ * botón de Calendario). Mismo formato que la de una OTT real: `firmaTabla`
+ * siempre reserva 4 filas, con o sin nombres (`FIRMA_FILAS`).
  */
 export async function generarHojaLogisticaGenerica(): Promise<void> {
   await generarHojaLogistica({
@@ -361,7 +349,7 @@ export async function generarHojaLogisticaGenerica(): Promise<void> {
       { label: 'Fecha de inicio', value: '' },
       { label: 'Fecha de término', value: '' },
     ],
-    tecnicos: ['', '', ''],
+    tecnicos: [],
     material: [],
     observaciones: [],
   })
