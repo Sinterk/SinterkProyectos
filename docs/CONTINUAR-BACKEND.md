@@ -30,6 +30,16 @@
   20. ~~Correr en el SQL Editor `supabase/migrations/0074_entrada_acredita_digital_siempre.sql`~~ — **corrida y confirmada por Andrés el 30-09**. Ver v2.17 más abajo.
 - **Deploy**: el push del 26-08 a `main` falló al desplegar por una interrupción real de GitHub Actions/Pages (confirmada en githubstatus.com, no un problema del repo) — falta reintentar el workflow ("Re-run all jobs") una vez que GitHub se recupere. Fuera de eso, `.github/workflows/deploy.yml` publica bien en cada push a `main`.
 
+## v2.25 — Documentación del sistema pasa a estar hosteada en el proyecto
+
+Andrés: "el html debe estar hosteado en el proyecto, no como artefacto de claude."
+
+- Se exportó el documento (formato HTML) y se guardó como `public/documentacion.html` — archivo estático que Vite copia tal cual a `dist/` y queda servido junto al resto del sitio en cada deploy a GitHub Pages.
+- Se envolvió el HTML exportado (que viene sin `<html>`/`<head>`/estilos) en una página completa con tipografía y colores a tono con el resto de la app.
+- El diagrama de flujo (un widget interactivo del documento Claude) no existe como archivo estático, así que se reemplazó por una descripción equivalente en texto, en vez de dejar un recuadro vacío/roto.
+- **`UserMenu.tsx`**: `DOCUMENTACION_URL` pasa de la URL del artefacto de Claude a la ruta relativa `documentacion.html` — HashRouter asegura que `index.html` (y por lo tanto esta ruta relativa) siempre resuelve desde la raíz del sitio, sea cual sea la pantalla abierta.
+- Nota: el archivo queda congelado al momento de exportar — si el documento fuente cambia, hay que repetir la exportación y el commit para que el sitio público se actualice.
+
 ## v2.24 — Enlace a la Documentación del sistema en el menú de usuario
 
 Andrés pidió una documentación formal de todo el sitio (todos los módulos, no solo Inventario) para presentar a su jefe como avance del proyecto — se armó como un documento (Word/HTML) con Resumen, cada módulo, Arquitectura, Seguridad, Despliegue, Soporte y mantención (con nota explícita de que el sistema se construye con asistencia de IA bajo dirección humana) y Glosario. Pedido final: "deja la documentación en html como enlace, accedible desde la visión que aparece al presionar el nombre de usuario, igual que el manual."

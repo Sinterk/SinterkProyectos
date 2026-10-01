@@ -8,7 +8,13 @@ const MANUAL_OFICINA_URL = 'https://docs.google.com/document/d/1_9UJbAGgGmtKcS-v
 const MANUAL_TERRENO_URL = 'https://docs.google.com/document/d/1lmsqncQX9OBi3ZjpFGdrAN6ya267k2fW/edit?usp=sharing'
 // Documentación formal del sistema (todos los módulos, reglas de negocio,
 // arquitectura) — mismo criterio de visibilidad que el Manual de Oficina.
-const DOCUMENTACION_URL = 'https://claude.ai/code/artifact/fe73f59d-3109-4d3e-ad38-5fd590cc5daa'
+// Hosteada como archivo estático del propio proyecto (public/documentacion.html,
+// exportada desde el documento fuente) en vez de un enlace a un artefacto de
+// Claude — pedido explícito: "el html debe estar hosteado en el proyecto, no
+// como artefacto de claude". Ruta relativa (sin "/" inicial): HashRouter deja
+// index.html siempre servido desde la raíz del sitio, sea cual sea la ruta
+// con hash activa.
+const DOCUMENTACION_URL = 'documentacion.html'
 
 export function UserMenu() {
   const { session, profile, isGuest, changePassword, signOut } = useAuth()

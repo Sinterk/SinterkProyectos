@@ -1,0 +1,102 @@
+<!doctype html>
+<html lang="es">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>SinterkProyectos — Documentación del Sistema</title>
+<style>
+  :root { color-scheme: light; }
+  body {
+    margin: 0; padding: 0;
+    background: #0f172a;
+    color: #e2e8f0;
+    font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Helvetica, Arial, sans-serif;
+    line-height: 1.6;
+  }
+  .page {
+    max-width: 820px;
+    margin: 0 auto;
+    padding: 48px 24px 96px;
+  }
+  h1 { font-size: 1.9rem; color: #fff; margin-bottom: 4px; }
+  h2 {
+    font-size: 1.25rem; color: #60a5fa; margin-top: 2.5rem;
+    padding-bottom: 6px; border-bottom: 2px solid #1e40af;
+  }
+  p { color: #cbd5e1; }
+  strong { color: #e2e8f0; }
+  a { color: #60a5fa; }
+  ul { padding-left: 1.3em; }
+  li { margin-bottom: 0.4em; color: #cbd5e1; }
+  table { width: 100%; border-collapse: collapse; margin: 1rem 0 1.5rem; font-size: 0.92rem; }
+  th, td { text-align: left; padding: 8px 12px; border: 1px solid #334155; vertical-align: top; }
+  th { background: #1e293b; color: #93c5fd; }
+  tr:nth-child(even) td { background: #1e293b55; }
+  code { background: #1e293b; color: #93c5fd; padding: 1px 6px; border-radius: 4px; font-size: 0.9em; }
+  time, span[data-atom="mention"] { color: #94a3b8; font-size: 0.9rem; }
+  p:has(> time) { margin-top: 2px; margin-bottom: 1.5rem; }
+  .diagrama-nota {
+    background: #1e293b; border: 1px solid #334155; border-radius: 8px;
+    padding: 12px 16px; font-size: 0.92rem;
+  }
+  .diagrama-nota code { background: #0f172a; }
+</style>
+</head>
+<body>
+<div class="page">
+<h1 id="sinterkproyectos-documentación-del-sistema">SinterkProyectos — Documentación del Sistema</h1>
+<p><time data-atom="date" datetime="2026-10-01">2026-10-01</time> · Equipo Sinterk</p>
+<p>Este documento describe, de forma formal y profesional, los módulos que componen SinterkProyectos — qué hace cada uno, sus reglas de negocio principales y la arquitectura técnica que los sostiene.</p>
+<h2 id="resumen-del-sistema">Resumen del sistema</h2>
+<p>SinterkProyectos es la plataforma donde el equipo de terreno y de oficina registra y controla los proyectos de telecomunicaciones de principio a fin, incluyendo el material que se usa en cada uno. Funciona como aplicación web con soporte para trabajar sin conexión en terreno y sincronizar al recuperar señal, y está en uso activo en producción.</p>
+<ul><li><p><strong>ATT</strong> — instalaciones puntuales, identificadas por número de OTT.</p></li><li><p><strong>Preventivos</strong> — rondas de mantención programada, agrupadas por cuadrante.</p></li><li><p><strong>Inventario</strong> — catálogo de materiales, bodegas, y todo el control de stock físico y digital.</p></li><li><p><strong>Administración</strong> — gestión de usuarios, equipos de proyecto y catálogos compartidos.</p></li><li><p><strong>KPI y Reportes</strong> — paneles de indicadores de gestión para roles de supervisión.</p></li><li><p><strong>Sugerencias</strong> — canal interno de retroalimentación sobre el sistema.</p></li><li><p><strong>Incidencias, Estados de Pago y LPU</strong> — módulos de apoyo, de desarrollo más reciente (detallados al final de este documento).</p></li></ul>
+<h2 id="alcance-del-sistema">Alcance del sistema</h2>
+<p>SinterkProyectos es una herramienta operativa de apoyo a la gestión de proyectos e inventario — no reemplaza ni se integra en tiempo real con los sistemas del cliente (como SAP): la Conciliación SAP compara los datos de ambos sistemas, no los sincroniza automáticamente. Tampoco incluye facturación ni cobro, y Estados de Pago todavía no contempla líneas generadas por Eventos/Hitos del proyecto, solo por material instalado y metros de cable tendidos. Es una aplicación web instalable (PWA), sin versión de aplicación nativa para tiendas de aplicaciones.</p>
+<h2 id="att">ATT</h2>
+<p>Gestiona los informes de instalación de proyectos técnicos para Entel, cada uno identificado por su número de OTT (Orden de Trabajo de Terreno), con una relación de uno a uno entre el proyecto y su informe. El informe reúne toda la documentación de la instalación —tipo de proyecto, datos generales, tramos de cable instalados, infraestructura usada (postes, ductos, fibra de terceros) y registro fotográfico—, además de la pestaña de Logística de materiales y el Estado de Pago. Desde la vista principal se puede generar el informe final en Word y PDF con un clic, y existe un calendario de OTT con feriados configurables.</p>
+<p>El ciclo de vida es activo → cerrado: cerrar un proyecto no lo borra, solo lo saca de la lista de &quot;Activos&quot; —solo un administrador puede eliminarlo definitivamente. El número de OTT es único en todo el sistema, y la fecha de término solo se puede registrar desde una acción explícita, nunca por guardado automático, para que un proyecto no se cierre por accidente.</p>
+<h2 id="preventivos">Preventivos</h2>
+<p>Gestiona las rondas de mantención preventiva (&quot;levantamientos&quot;) que un técnico realiza en terreno sobre un cuadrante. Cada levantamiento agrupa una lista de puntos de inspección, y cada punto puede tener un hallazgo (problema detectado), una corrección sugerida y una brigada responsable de repararlo. El técnico en terreno trabaja con fotos y datos que se importan a la plataforma mediante un archivo ZIP; desde ahí se puede reordenar los puntos arrastrándolos, y exportar el cuadrante a Excel, al informe oficial &quot;Acta Entel&quot; en Word, o nuevamente a ZIP.</p>
+<p>El catálogo de tipos de hallazgo es editable desde Administración, pero el informe oficial &quot;Acta Entel&quot; usa una plantilla fija que solo reconoce un set predefinido de hallazgos —uno nuevo aparece en Preventivos, pero no en ese informe hasta actualizar la plantilla. En el Excel exportado, cualquier hallazgo pendiente de reparar se resalta por color según la brigada responsable, para que se note a simple vista quién debe actuar.</p>
+<h2 id="inventario">Inventario</h2>
+<p>Catálogo de materiales, bodegas, stock físico y digital, y el control de cada movimiento (entregas, instalaciones, devoluciones, mermas) de los proyectos ATT, Preventivos e Incidencias. Incluye además las exportaciones a PDF (hoja de logística para firmar en papel) y Excel (reportes de stock).</p>
+<p>Así funcionan hoy los cálculos y validaciones clave que gobiernan el stock — pensados para que el número que ve la oficina siempre refleje lo que de verdad pasó en terreno.</p>
+<table><thead><tr><th>Regla</th><th>En qué consiste</th></tr></thead><tbody><tr><td>Físico vs. Digital</td><td>Cada material tiene dos cantidades independientes: lo que existe físicamente en la bodega o con el técnico, y su equivalente contable en SAP. No siempre se mueven juntas — existen por separado justamente para poder tener un físico correcto aunque SAP todavía no refleje la misma realidad.</td></tr><tr><td>Tránsito</td><td>Material que salió de bodega pero aún no quedó instalado, devuelto ni dado de baja — es decir, lo que en teoría está en manos de un técnico en terreno. Se calcula como Entregado menos Instalado menos Devuelto menos Merma.</td></tr><tr><td>Ferretería (tornillos, abrazaderas, etc.)</td><td>Estos materiales no tienen lote distinguible en la vida real, así que su físico se controla en un único lote fijo en vez de pedir un lote específico en cada movimiento — evita descuadres por elegir un lote al azar.</td></tr><tr><td>Entradas y crédito digital</td><td>Al recibir material en una bodega, se suma siempre tanto al físico como al digital (SAP) — salvo que se marque &quot;Compra propia&quot;. Antes esto no aplicaba parejo a todos los materiales; se unificó para que las bodegas cuadren siempre contra SAP.</td></tr><tr><td>Compra propia</td><td>Casillero para cuando Sinterk compra material por su cuenta para cubrir un faltante, fuera de una compra real en SAP. Marcarlo hace que esa entrada solo sume al físico, para no inflar el stock contable con algo que SAP no compró.</td></tr><tr><td>Conteo, Entrega y Devolución a técnico</td><td>Entrega resta de la bodega y asigna al técnico. Conteo asigna al técnico sin restar de bodega (para cuando la salida física ya ocurrió y solo faltaba registrarse). Devolución hace el camino inverso; si se devuelve más de lo que el sistema tenía asignado, primero se completa el registro para que el técnico quede exactamente en cero, nunca en negativo.</td></tr><tr><td>Instalado — de dónde sale el material</td><td>Se descuenta primero del propio stock del técnico que instala; si no alcanza, de otro técnico del mismo proyecto que sí tenga stock; si tampoco alcanza, se fuerza el registro y queda marcado para revisión manual — nunca se bloquea la instalación real por un descuadre del sistema.</td></tr><tr><td>Sugerir rebaja</td><td>Al sugerir qué dar de baja contablemente, el sistema solo busca stock en la bodega propia del área del proyecto. Si no alcanza ahí, avisa que falta stock en esa bodega en vez de proponer material de otra — evita sugerencias con la bodega equivocada.</td></tr><tr><td>Rebaja (SAP)</td><td>Es la baja contable que se reporta a la empresa cliente: resta solo del digital, nunca del físico — es independiente de que el material ya esté físicamente instalado o no.</td></tr></tbody></table>
+<h2 id="administración">Administración</h2>
+<p>Panel de configuración exclusivo para el rol Administrador, con tres secciones: Usuarios (crear trabajadores, editar nombre, rol, área, RUT y cargo, y activarlos o desactivarlos), Equipo por proyecto (asignar o quitar trabajadores de un proyecto activo) y Tipos de hallazgo de Preventivos (agregar uno nuevo, ocultarlo del selector sin borrarlo, y editar el texto de corrección y la brigada que se autocompletan). La gestión de feriados para el calendario de OTT vive dentro del módulo ATT, aunque también está restringida a administración/JP.</p>
+<p>Un administrador no puede cambiar su propio rol ni desactivarse a sí mismo, para evitar quedar sin acceso al sistema. Ocultar un hallazgo del catálogo no borra los puntos que ya lo tenían asignado, solo evita que se use en registros nuevos.</p>
+<h2 id="kpi-y-reportes">KPI y Reportes</h2>
+<p>Panel de indicadores para roles de supervisión (Administración, Jefe de Proyecto y Logística), que permite revisar la actividad de los proyectos y el consumo de materiales en un período elegido. Según el área filtrada (ATT, OyM, Inventario o Conciliación SAP) se muestran distintos paneles: cantidad de proyectos abiertos, pendientes y cerrados; consumo de materiales por SKU (solicitado, entregado, instalado, devuelto, rebajado, merma y en tránsito); y la comparación Físico vs. Digital por SKU.</p>
+<p>Toda la agregación de datos se calcula directamente en la base de datos, no en la aplicación, para que los números sean consistentes sin importar desde dónde se consulten. El saldo Físico/Digital solo se muestra si la fecha de hoy cae dentro del período filtrado, porque es un valor vivo del momento actual, no un histórico por fecha.</p>
+<h2 id="sugerencias">Sugerencias</h2>
+<p>Canal interno de retroalimentación: cualquier usuario puede reportar un problema o proponer una mejora sobre el sistema desde su menú de usuario, con un asunto y una descripción. Un usuario normal solo ve sus propias sugerencias; los roles de supervisión ven todas y pueden marcarles un estado de seguimiento (Pendiente, Revisado, Resuelto).</p>
+<p>Cada sugerencia queda asociada automáticamente a quien la envía, con fecha y hora, sin que el autor pueda editarla después ni cambiar su propio estado —eso es exclusivo de los roles de supervisión.</p>
+<h2 id="arquitectura-técnica">Arquitectura técnica</h2>
+<p>Aplicación web (React + TypeScript) con capacidad de trabajar sin conexión, sobre una base de datos en la nube (Supabase/Postgres) con control de permisos por rol de usuario.</p>
+<p><strong>Tablas principales:</strong></p>
+<table><thead><tr><th>Tabla</th><th>Para qué</th></tr></thead><tbody><tr><td>Movimientos</td><td>Historial de cada operación de stock (entrada, salida, instalado, merma, rebaja…) — es el registro del que se puede reconstruir todo lo demás.</td></tr><tr><td>Stock</td><td>La foto actual: cuánto hay de cada material, en cada bodega o técnico, físico y digital.</td></tr><tr><td>Materiales en proyecto</td><td>Lo acumulado por proyecto: cuánto se entregó, instaló, devolvió o rebajó de cada material.</td></tr><tr><td>Ubicaciones</td><td>Las bodegas (C088, C103, C132…) y la ubicación personal de cada técnico.</td></tr><tr><td>Catálogo de materiales</td><td>SKU, descripción, tipo y stock mínimo de cada material.</td></tr></tbody></table>
+<p>Toda operación de stock pasa por un único punto de control en la base de datos, en vez de que cada pantalla modifique el stock por su cuenta — esto es lo que garantiza que el número nunca se desincroniza entre bodega, técnico y proyecto.</p>
+<p class="diagrama-nota"><em>Diagrama — flujo de un movimiento de inventario · 4 pasos:</em> Acción en pantalla (ej. una Entrega) → Función central (<code>registrar_movimiento</code>) → Actualiza stock (bodega y/o técnico) → Resúmenes y KPI, al instante.</p>
+<p>Ninguna pantalla modifica el stock directamente: todo pasa por esta única función, lo que evita datos inconsistentes entre bodegas, técnicos y proyectos.</p>
+<h2 id="seguridad-y-permisos">Seguridad y permisos</h2>
+<p>El acceso requiere autenticación (correo y contraseña) y cada usuario tiene un rol —Administrador, Jefe de Proyecto, Logística o Técnico— que determina qué puede ver y modificar. El control de acceso no vive solo en la interfaz: se aplica también a nivel de base de datos (seguridad por fila, RLS), de modo que un usuario no puede acceder a datos fuera de su permiso aunque intente saltarse la aplicación. Las fotografías se almacenan con acceso controlado mediante enlaces firmados y con vencimiento, en vez de quedar públicamente accesibles.</p>
+<h2 id="despliegue-e-infraestructura">Despliegue e infraestructura</h2>
+<p>El frontend se publica automáticamente cada vez que se confirma un cambio a la versión de producción, sin pasos manuales. La base de datos y la lógica del servidor corren en Supabase, un proveedor de base de datos en la nube; las fotografías se almacenan por separado en Cloudflare. Supabase incluye respaldo automático de la base de datos como parte de su servicio administrado.</p>
+<h2 id="hitos-recientes">Hitos recientes</h2>
+<table><thead><tr><th>Cuándo</th><th>Qué se entregó</th></tr></thead><tbody><tr><td>01-10-2026</td><td>Hoja de logistica para técnicos: formato más simple y rápido de imprimir, sin datos duplicados.</td></tr><tr><td>30-09-2026</td><td>Entradas de bodega: ahora cuadran siempre contra SAP (antes solo algunos materiales lo hacían).</td></tr><tr><td>30-09-2026</td><td>Corrección: la sugerencia de rebaja contable ya no proponia material de la bodega equivocada.</td></tr><tr><td>22-09-2026</td><td>Nuevo panel de conciliación contra SAP, con datos reales del sistema.</td></tr><tr><td>21-09-2026</td><td>Migración completa de las fotos de terreno (2.521 fotos) a almacenamiento en la nube, sin pérdidas.</td></tr><tr><td>v2.14</td><td>Primera versión de la Hoja de logística en PDF, para que el técnico firme el retiro e instalación del material en papel.</td></tr><tr><td>v2.12</td><td>La lista de proyectos asignados en el celular del técnico pasa a mostrar la misma información que ve la oficina.</td></tr></tbody></table>
+<h2 id="incidencias">Incidencias</h2>
+<p>Registro de incidencias de campo — cada una identificada por un código, con el ingeniero responsable, la dirección y sus fotos asociadas. Comparte la misma pestaña de Materiales de Inventario que ATT y Preventivos, y agrega una galería de fotos y comentarios propios. El ciclo de vida es simple — activa o cerrada, con fecha de cierre — y cuenta con guardado automático en terreno, incluso sin conexión, que sincroniza al recuperar señal. El rol de técnico solo puede ver los datos generales de la incidencia; completarlos es tarea de Oficina o Administración.</p>
+<h2 id="estados-de-pago">Estados de Pago</h2>
+<p>Herramienta para armar mensualmente el Estado de Pago de un proyecto ATT ante el cliente: una tabla con código de tarifario, descripción, cantidad y precio unitario, cuyo total es lo que se factura por el avance del proyecto. El sistema sugiere automáticamente líneas a partir del material realmente instalado y los metros de cable tendidos, cruzándolos con el catálogo LPU; el Jefe de Proyecto revisa, ajusta y confirma antes de guardar — nada queda registrado hasta ese paso. Al guardar, el Estado de Pago reemplaza por completo la versión anterior del mismo mes.</p>
+<h2 id="lpu-lista-de-precios-unitarios">LPU (Lista de Precios Unitarios)</h2>
+<p>Catálogo oficial de alrededor de 305 códigos de tarifario, importado directamente del Excel que entrega el cliente, con su descripción, unidad y estado. Sirve como tabla maestra de precios y como base para automatizar los Estados de Pago, mediante tablas de equivalencia que conectan cada material de Inventario —y cada tipo de cable tendido— con su código LPU correspondiente. Los códigos dados de baja se ocultan del buscador pero se conservan en la base, para no afectar estados de pago antiguos que ya los referencian.</p>
+<h2 id="soporte-y-mantención">Soporte y mantención</h2>
+<p>Este sistema fue construido con asistencia de inteligencia artificial (Claude, de Anthropic) bajo dirección y revisión humana en cada cambio: cada funcionalidad nueva o corrección se verifica contra datos reales antes de desplegarse a producción, y cada decisión de negocio documentada en este informe fue definida explícitamente por el equipo de Sinterk, no inferida por la IA.</p>
+<p>Este modelo permite un ritmo de mantención poco común en el desarrollo tradicional: un error reportado puede diagnosticarse, corregirse, probarse y desplegarse el mismo día, sin depender de ciclos de planificación ni de la disponibilidad de un equipo de desarrollo externo. A cambio, la continuidad del sistema depende de mantener ese mismo modelo de trabajo —dirección humana más asistencia de IA— en vez de un equipo de desarrollo dedicado tradicional.</p>
+<p>La base de datos principal es PostgreSQL, gestionada a través de Supabase. Para permitir el trabajo sin conexión en terreno, la aplicación mantiene además una base de datos local en el dispositivo de cada usuario (IndexedDB), que sincroniza con el servidor al recuperar conexión.</p>
+<h2 id="glosario">Glosario</h2>
+<table><thead><tr><th>Término</th><th>Significado</th></tr></thead><tbody><tr><td>OTT</td><td>Orden de Trabajo de Terreno — identifica un proyecto de instalación ATT.</td></tr><tr><td>Cuadrante</td><td>Zona o sector de red asignado a una ronda de mantención preventiva.</td></tr><tr><td>Hallazgo</td><td>Problema detectado en un punto de inspección durante una ronda preventiva.</td></tr><tr><td>Brigada</td><td>Equipo responsable de reparar un hallazgo (Línea u OyM).</td></tr><tr><td>Bodega</td><td>Ubicación física donde se almacena material.</td></tr><tr><td>Lote</td><td>Identificador de un conjunto de material, usado para trazabilidad contable.</td></tr><tr><td>Stock físico</td><td>Lo que realmente existe en una bodega o con un técnico.</td></tr><tr><td>Stock digital</td><td>El equivalente contable del material en el sistema del cliente (SAP).</td></tr><tr><td>Tránsito</td><td>Material que salió de bodega pero aún no quedó instalado ni devuelto.</td></tr><tr><td>LPU</td><td>Lista de Precios Unitarios — catálogo de tarifario del cliente.</td></tr><tr><td>Estado de Pago</td><td>Reporte mensual de avance que se factura al cliente.</td></tr><tr><td>PWA</td><td>Aplicación web instalable, con soporte para trabajar sin conexión.</td></tr><tr><td>RLS</td><td>Row Level Security — control de acceso a nivel de fila en la base de datos.</td></tr></tbody></table>
+
+</div>
+</body>
+</html>
