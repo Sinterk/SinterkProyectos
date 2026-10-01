@@ -6,6 +6,9 @@ import { useAuth, guestPassword, ROL_LABELS } from '@/lib/auth'
 // es terreno; 'admin' ve ambos.
 const MANUAL_OFICINA_URL = 'https://docs.google.com/document/d/1_9UJbAGgGmtKcS-vTljhgq3buYEucTJw/edit?usp=sharing'
 const MANUAL_TERRENO_URL = 'https://docs.google.com/document/d/1lmsqncQX9OBi3ZjpFGdrAN6ya267k2fW/edit?usp=sharing'
+// Documentación formal del sistema (todos los módulos, reglas de negocio,
+// arquitectura) — mismo criterio de visibilidad que el Manual de Oficina.
+const DOCUMENTACION_URL = 'https://claude.ai/code/artifact/fe73f59d-3109-4d3e-ad38-5fd590cc5daa'
 
 export function UserMenu() {
   const { session, profile, isGuest, changePassword, signOut } = useAuth()
@@ -77,6 +80,13 @@ export function UserMenu() {
             <a href={MANUAL_TERRENO_URL} target="_blank" rel="noopener noreferrer" onClick={() => setOpen(false)}
               className="block px-4 py-3 text-sm text-brand-400 hover:bg-slate-700/60 border-b border-slate-700 transition-colors">
               📖 Manual de uso (Terreno)
+            </a>
+          )}
+
+          {(profile?.rol === 'admin' || profile?.rol === 'jp' || profile?.rol === 'log') && (
+            <a href={DOCUMENTACION_URL} target="_blank" rel="noopener noreferrer" onClick={() => setOpen(false)}
+              className="block px-4 py-3 text-sm text-brand-400 hover:bg-slate-700/60 border-b border-slate-700 transition-colors">
+              📄 Documentación del sistema
             </a>
           )}
 

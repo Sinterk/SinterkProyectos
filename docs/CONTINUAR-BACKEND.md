@@ -30,6 +30,13 @@
   20. ~~Correr en el SQL Editor `supabase/migrations/0074_entrada_acredita_digital_siempre.sql`~~ — **corrida y confirmada por Andrés el 30-09**. Ver v2.17 más abajo.
 - **Deploy**: el push del 26-08 a `main` falló al desplegar por una interrupción real de GitHub Actions/Pages (confirmada en githubstatus.com, no un problema del repo) — falta reintentar el workflow ("Re-run all jobs") una vez que GitHub se recupere. Fuera de eso, `.github/workflows/deploy.yml` publica bien en cada push a `main`.
 
+## v2.24 — Enlace a la Documentación del sistema en el menú de usuario
+
+Andrés pidió una documentación formal de todo el sitio (todos los módulos, no solo Inventario) para presentar a su jefe como avance del proyecto — se armó como un documento (Word/HTML) con Resumen, cada módulo, Arquitectura, Seguridad, Despliegue, Soporte y mantención (con nota explícita de que el sistema se construye con asistencia de IA bajo dirección humana) y Glosario. Pedido final: "deja la documentación en html como enlace, accedible desde la visión que aparece al presionar el nombre de usuario, igual que el manual."
+
+- **`UserMenu.tsx`**: nuevo enlace "📄 Documentación del sistema" (`DOCUMENTACION_URL`), mismo criterio de visibilidad que "Manual de uso (Oficina)" (admin/jp/log) — abre el documento en una pestaña nueva, igual que los manuales existentes.
+- El documento en sí vive fuera del repo (en el conector de Docs), no como archivo versionado — este commit solo agrega el enlace.
+
 ## v2.23 — Hoja de logística: quita Técnicos asignados/SKU/Solicitado, firmas fijas en 4
 
 Andrés: "resulta redundante que haya una sección de técnicos asignados y firmas. Borra la sección de técnicos asignados. Borra la fila de sku, eso es interno. Quita solicitado. Deja 4 filas de firmas. Rellena el espacio vacío ganado de borrar técnicos asignado con más filas de materiales."
