@@ -2,18 +2,17 @@ import { useEffect, useRef, useState } from 'react'
 import { Link } from 'react-router-dom'
 import { useAuth, guestPassword, ROL_LABELS } from '@/lib/auth'
 
-// Manuales de uso (Google Docs). 'jp' y 'log' son roles de oficina; 'tecnico'
-// es terreno; 'admin' ve ambos.
-const MANUAL_OFICINA_URL = 'https://docs.google.com/document/d/1_9UJbAGgGmtKcS-vTljhgq3buYEucTJw/edit?usp=sharing'
-const MANUAL_TERRENO_URL = 'https://docs.google.com/document/d/1lmsqncQX9OBi3ZjpFGdrAN6ya267k2fW/edit?usp=sharing'
+// Manuales de uso. 'jp' y 'log' son roles de oficina; 'tecnico' es terreno;
+// 'admin' ve ambos. Hosteados como archivos estáticos del propio proyecto
+// (public/manual-*.html, convertidos desde los .docx originales) en vez de
+// enlaces a Google Docs — mismo criterio que la Documentación del sistema:
+// "el html debe estar hosteado en el proyecto, no como artefacto de claude".
+// Rutas relativas (sin "/" inicial): HashRouter deja index.html siempre
+// servido desde la raíz del sitio, sea cual sea la ruta con hash activa.
+const MANUAL_OFICINA_URL = 'manual-oficina.html'
+const MANUAL_TERRENO_URL = 'manual-terreno.html'
 // Documentación formal del sistema (todos los módulos, reglas de negocio,
 // arquitectura) — mismo criterio de visibilidad que el Manual de Oficina.
-// Hosteada como archivo estático del propio proyecto (public/documentacion.html,
-// exportada desde el documento fuente) en vez de un enlace a un artefacto de
-// Claude — pedido explícito: "el html debe estar hosteado en el proyecto, no
-// como artefacto de claude". Ruta relativa (sin "/" inicial): HashRouter deja
-// index.html siempre servido desde la raíz del sitio, sea cual sea la ruta
-// con hash activa.
 const DOCUMENTACION_URL = 'documentacion.html'
 
 export function UserMenu() {

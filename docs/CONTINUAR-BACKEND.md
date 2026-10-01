@@ -30,6 +30,15 @@
   20. ~~Correr en el SQL Editor `supabase/migrations/0074_entrada_acredita_digital_siempre.sql`~~ — **corrida y confirmada por Andrés el 30-09**. Ver v2.17 más abajo.
 - **Deploy**: el push del 26-08 a `main` falló al desplegar por una interrupción real de GitHub Actions/Pages (confirmada en githubstatus.com, no un problema del repo) — falta reintentar el workflow ("Re-run all jobs") una vez que GitHub se recupere. Fuera de eso, `.github/workflows/deploy.yml` publica bien en cada push a `main`.
 
+## v2.26 — Manuales de uso pasan a estar hosteados en el proyecto
+
+Andrés subió los .docx de "Manual Terreno" y "Manual Oficina" y pidió: "deja en el mismo formato los manuales" — mismo criterio que la Documentación del sistema (v2.25).
+
+- Convertidos desde los `.docx` originales con `mammoth` (no había `pandoc` disponible) a HTML semántico, con las imágenes embebidas como `data:` URI (sin archivos sueltos que gestionar).
+- Envueltos en el mismo estilo que `documentacion.html` y guardados como `public/manual-terreno.html` (486 KB, 3 imágenes) y `public/manual-oficina.html` (2.09 MB, 46 imágenes) — ambos dentro del límite de precache de la PWA (3 MB por archivo).
+- **`UserMenu.tsx`**: `MANUAL_OFICINA_URL`/`MANUAL_TERRENO_URL` pasan de enlaces a Google Docs a las rutas relativas `manual-oficina.html`/`manual-terreno.html`.
+- Mismo congelamiento que la Documentación del sistema: si el contenido del manual cambia, hay que repetir la conversión y el commit.
+
 ## v2.25 — Documentación del sistema pasa a estar hosteada en el proyecto
 
 Andrés: "el html debe estar hosteado en el proyecto, no como artefacto de claude."
