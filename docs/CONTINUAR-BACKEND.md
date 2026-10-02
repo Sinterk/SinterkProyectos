@@ -1,23 +1,20 @@
 # Continuar — Migración a backend Supabase
 
 > Documento de retomada — LEER ESTO PRIMERO si se retoma en otra máquina o
-> sesión nueva. Última actualización: 14-09-2026.
+> sesión nueva. Última actualización: 02-10-2026.
 
-## ⚡ Estado ahora mismo (14-09-2026)
-- **`main` y `backend-supabase` están sincronizados** (merge y push del 14-09) — ambos en v1.90. Seguir mergeando `backend-supabase` a `main` cuando el trabajo esté listo para producción, en vez de dejarlo acumularse.
-- **Migraciones**: corridas y confirmadas hasta `0071`. **Pendiente `0072_brigada_hallazgo.sql`** — falta que Andrés la corra en el SQL Editor (ver v1.97 más abajo).
+## ⚡ Estado ahora mismo (02-10-2026)
+- **`main` y `backend-supabase` están sincronizados** (02-10) — ambos en v2.29. Seguir mergeando `backend-supabase` a `main` cuando el trabajo esté listo para producción, en vez de dejarlo acumularse.
+- **Migraciones**: corridas y confirmadas hasta `0074` (ver los pendientes tachados más abajo).
 - **Para retomar en otra máquina**: `git clone` (o `git fetch` + `git checkout backend-supabase`), `npm install`, recrear el `.env` a mano (los nombres de variable están en `src/lib/supabaseClient.ts` y `src/lib/auth.ts`; los valores NO están en el repo, es público — Andrés los tiene), `npm run dev`.
 - **Pendientes de Andrés** (no bloquean nada salvo lo marcado):
   1. ~~Desplegar la Edge Function de alta de usuarios~~ — **hecho y confirmado el 26-08** (probada sin sesión y con token inválido, responde el gate de auth de la función, no un 404 — está desplegada de verdad).
-  2. Completar en Administración el texto de Corrección de los 2 hallazgos que llegaron sin definir ("Falta Planimetria" y "CTO en condición insegura o no autorizada") — ya no es tarea de código, es editar el campo ahí mismo.
   3. Corregir los 2 "Asignado a técnico" que quedaron en la OTT de prueba — anulando el movimiento real y volviendo a registrarlo con la cantidad correcta (ya no existe "modo corrección"; ver v1.91 más abajo).
   4. Decidir si se automatiza la reversión de resoluciones al anular (bloqueo conocido: `resolver_evento_parcial` no llena `movimientos.evento_resolucion_id`).
-  5. Volver a guardar la contraseña en Firefox desde `about:logins` — las guardadas antes de v1.47 quedaron con campos anónimos y no se autocompletan.
-  6. **Recuperar el levantamiento del colega** (ver entrada v1.59 más abajo) — el ZIP le creó un informe vacío en el servidor (0 puntos). Con el fix de esa versión, borrar ese levantamiento local (o el registro server-side si ya no está en el store local de nadie) y volver a importar el mismo ZIP.
   7. ~~Decidir si vale la pena un reintento automático de subida de fotos~~ — **hecho, v1.94** más abajo: reintenta solo al abrir la app o recuperar conexión (ATT, Preventivos e Incidencias), sin depender de Background Sync (no soportado en Firefox, el navegador real de uso).
   8. ~~Correr en el SQL Editor `0071_importar_conteo_lineas_a_cero.sql`~~ — **corrida y confirmada por Andrés el 15-09**.
   9. ~~Correr en el SQL Editor `supabase/migrations/0072_brigada_hallazgo.sql`~~ — **hecho, confirmado el 22-09 vía REST contra la BD real**: `correcciones_hallazgo.brigada`/`puntos.brigada` existen. Andrés ya reasignó 11 de los 23 hallazgos a "Línea" en Administración (quedan 12 en "OyM", el default) — revisar si faltan más por reasignar o si ese es el reparto final.
-  10. **Borrar un proyecto de prueba real que quedó en la BD** (ver v2.00 más abajo): OTT `726036`, id `2e185b0a-27f8-4212-a15e-a7015c4b59f2`, área ATT — quedó "Cerrado" (con el rol invitado no se puede hard-delete). En el SQL Editor: `delete from projects where id = '2e185b0a-27f8-4212-a15e-a7015c4b59f2';`
+  10. **Borrar un proyecto de prueba real que quedó en la BD** (ver v2.00 más abajo): OTT `726036`, id `2e185b0a-27f8-4212-a15e-a7015c4b59f2`, área ATT — quedó "Cerrado" (con el rol invitado no se puede hard-delete). **02-10: Andrés intentó borrarlo y no pudo — sigue pendiente.** En el SQL Editor: `delete from projects where id = '2e185b0a-27f8-4212-a15e-a7015c4b59f2';`
   11. ~~Migración de fotos a Cloudflare R2~~ — **hecho y confirmado el 21-09** (ver v2.08 más abajo): Edge Function `r2-storage` desplegada, CORS configurado en el bucket `sinterk`, y las 2521 fotos que ya existían migradas con el script (0 fallidas). Probado en el navegador: sign-put + PUT, sign-get + GET, y delete, los 3 contra el bucket real — y las 134 miniaturas de un cuadrante grande cargando bien desde R2.
   12. ~~Volver a correr `scripts/migrate-fotos-to-r2.mjs`~~ — **hecho y confirmado el 21-09** (ver v2.09/fix del 21-09 más abajo): generó la versión "informe" en las fotos ya migradas. De paso encontró y se corrigió un bug real del script (re-descargaba de Supabase innecesariamente en cada re-corrida).
   13. ~~Construir el KPI de Físico vs Digital por SKU~~ — **hecho, v2.10** más abajo, ya probado contra datos reales (22-09) — pendiente de que Andrés siga afinando detalles en prueba y error.
@@ -28,6 +25,8 @@
   18. ~~Versión imprimible de materiales por OTT~~ — **hecho, v2.14** más abajo: "Hoja de logística" en PDF, con firma en papel (salida/instalado).
   19. ~~Materiales de OyM: asignar desde la incidencia + origen técnico/bodega al instalar~~ — **hecho, v2.13** más abajo.
   20. ~~Correr en el SQL Editor `supabase/migrations/0074_entrada_acredita_digital_siempre.sql`~~ — **corrida y confirmada por Andrés el 30-09**. Ver v2.17 más abajo.
+  21. **Enlace entre Preventivos e Incidencias** — pedido de Andrés (02-10), sin definir todavía qué se enlaza ni cómo; falta acordar el alcance antes de construir.
+  22. **Asignación de material en salidas preventivas (material poco específico)** — se propusieron 3 formas (02-10): usar las Asignaciones genéricas que ya existen, sumarles un "Kit preventivo" del catálogo de Paquetes, o un presupuesto estimado por ronda/cuadrante. Falta que Andrés elija.
 - **Deploy**: el push del 26-08 a `main` falló al desplegar por una interrupción real de GitHub Actions/Pages (confirmada en githubstatus.com, no un problema del repo) — falta reintentar el workflow ("Re-run all jobs") una vez que GitHub se recupere. Fuera de eso, `.github/workflows/deploy.yml` publica bien en cada push a `main`.
 
 ## v2.29 — Fix: la columna Descripción tapaba la barra de Guardar en Incidencias/Preventivos
