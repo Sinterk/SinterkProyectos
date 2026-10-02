@@ -27,7 +27,7 @@ import { useAuth } from '@/lib/auth'
 import { nanoid } from '@/core/utils/nanoid'
 import { reemplazarLineaPorVarias } from '@/core/utils/lineas'
 import { BODEGA_DEFECTO_POR_AREA } from '@/lib/inventario/defaults'
-import { esTipoCable } from '@/lib/inventario/esCable'
+import { calcularLineasRebaja, nuevoLibroStock } from '@/lib/inventario/calcularRebaja'
 import { esTipoFerreteria, LOTE_FISICO_FERRETERIA } from '@/lib/inventario/esFerreteria'
 import {
   getResumenProyecto, getStock, listMateriales, listUbicaciones,
@@ -492,78 +492,15 @@ export function ResumenProyectoTable({ projectId, area, puntos, refreshKey = 0, 
     setError(null)
     setSugiriendo(true)
     try {
-      const auto: LineaRebaja[] = []
-      const filasCable: typeof displayRows = []
-      const filasResto: typeof displayRows = []
-      for (const row of displayRows) {
-        const tipoNombre = materiales.find((m) => m.id === row.materialId)?.tipo?.nombre
-        ;(esTipoCable(tipoNombre) ? filasCable : filasResto).push(row)
-      }
-
-      for (const row of filasCable) {
-        const necesario = Math.round((row.cantInstalada - row.cantRebajada) * 100) / 100
-        if (necesario <= 0) continue
-
-        if (row.lote && row.lote !== 'SinDefinir') {
-          // Rebaja siempre contra la bodega del área y ESE MISMO lote real
-          // — sin buscar ni comparar disponible en otras bodegas.
-          auto.push({
-            localId: nanoid(8), materialId: row.materialId, materialSku: row.materialSku, materialDescripcion: row.materialDescripcion,
-            lote: row.lote, ubicacionBodegaId: defaultBodegaId, cantidad: String(necesario), origen: 'auto',
-          })
-          continue
-        }
-
-        // Sin lote físico todavía: un solo lote digital que cubra todo,
-        // nunca varios, y solo mirando la bodega del área — el más ajustado
-        // (menor sobrante) entre los que alcanzan.
-        const stockMaterial = await getStock({ materialId: row.materialId, ubicacionId: defaultBodegaId })
-        const candidato = stockMaterial
-          .filter((s) => s.cantidadDigital >= necesario)
-          .sort((a, b) => a.cantidadDigital - b.cantidadDigital)[0]
-        auto.push({
-          localId: nanoid(8), materialId: row.materialId, materialSku: row.materialSku, materialDescripcion: row.materialDescripcion,
-          lote: candidato?.lote ?? '', ubicacionBodegaId: defaultBodegaId,
-          cantidad: String(necesario), origen: 'auto',
-        })
-      }
-
-      const necesarioPorMaterial = new Map<string, { sku: string; descripcion: string; necesario: number }>()
-      for (const row of filasResto) {
-        const acc = necesarioPorMaterial.get(row.materialId) ?? { sku: row.materialSku, descripcion: row.materialDescripcion, necesario: 0 }
-        acc.necesario += row.cantInstalada - row.cantRebajada
-        necesarioPorMaterial.set(row.materialId, acc)
-      }
-      for (const [materialId, info] of necesarioPorMaterial) {
-        let restante = Math.round(info.necesario * 100) / 100
-        if (restante <= 0) continue
-
-        const stockMaterial = await getStock({ materialId, ubicacionId: defaultBodegaId })
-        const lotes = stockMaterial
-          .filter((s) => s.cantidadDigital > 0)
-          .map((s) => ({ ubicacionId: s.ubicacionId, lote: s.lote, disponible: s.cantidadDigital }))
-          .sort((a, b) => a.disponible - b.disponible)
-
-        for (const l of lotes) {
-          if (restante <= 0) break
-          const usar = Math.min(l.disponible, restante)
-          auto.push({
-            localId: nanoid(8), materialId, materialSku: info.sku, materialDescripcion: info.descripcion,
-            lote: l.lote, ubicacionBodegaId: l.ubicacionId, cantidad: String(usar), origen: 'auto',
-          })
-          restante -= usar
-        }
-        if (restante > 0) {
-          // Sin stock digital suficiente en la bodega del área — se deja
-          // explícito, SIN proponer un lote de otra bodega, para completar
-          // a mano (bug real reportado por Andrés: antes seguía buscando en
-          // el resto de las bodegas).
-          auto.push({
-            localId: nanoid(8), materialId, materialSku: info.sku, materialDescripcion: info.descripcion,
-            lote: '', ubicacionBodegaId: defaultBodegaId, cantidad: String(restante), origen: 'auto',
-          })
-        }
-      }
+      // El cálculo (reglas de lote/bodega/cable) vive en calcularRebaja.ts,
+      // compartido con la rebaja masiva de incidencias OyM.
+      const calculadas = await calcularLineasRebaja({
+        rows: displayRows, materiales, bodegaId: defaultBodegaId, libro: nuevoLibroStock(),
+      })
+      const auto: LineaRebaja[] = calculadas.map((c) => ({
+        localId: nanoid(8), materialId: c.materialId, materialSku: c.materialSku, materialDescripcion: c.materialDescripcion,
+        lote: c.lote, ubicacionBodegaId: c.ubicacionBodegaId, cantidad: String(c.cantidad), origen: 'auto',
+      }))
       setLineasRebaja((prev) => [...auto, ...prev.filter((l) => l.origen === 'manual')])
     } catch (err) {
       setError(err instanceof Error ? err.message : String(err))

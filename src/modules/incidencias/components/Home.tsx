@@ -6,6 +6,7 @@ import { useAuth } from '@/lib/auth'
 import type { Incidencia } from '../types'
 import { DescargarCerradosPanel } from './DescargarCerradosPanel'
 import { ZipArchiveViewer } from '@/ui/ZipArchiveViewer'
+import { RebajaMasivaPanel } from './RebajaMasivaPanel'
 
 type EstadoFilter = 'activo' | 'cerrado' | 'todos'
 
@@ -19,11 +20,17 @@ export function Home() {
   const navigate = useNavigate()
   const { records, createNew, remove, syncList } = useIncidenciaStore()
   const isAdmin = useAuth((s) => s.profile?.rol === 'admin')
+  // Mismos roles que pueden mover inventario (can_move_inventory en la BD).
+  const puedeRebajar = useAuth((s) => s.profile?.rol === 'admin' || s.profile?.rol === 'jp' || s.profile?.rol === 'log')
 
   const [estadoFilter, setEstadoFilter] = useState<EstadoFilter>('activo')
   const [search, setSearch] = useState('')
   const [extra, setExtra] = useState<Incidencia[]>([])
   const [showViewer, setShowViewer] = useState(false)
+  // Modo selección para la rebaja masiva (varias incidencias a la vez).
+  const [seleccionando, setSeleccionando] = useState(false)
+  const [seleccion, setSeleccion] = useState<Set<string>>(new Set())
+  const [showRebaja, setShowRebaja] = useState(false)
 
   useEffect(() => { syncList().catch(console.error) }, [syncList])
 
@@ -45,6 +52,19 @@ export function Home() {
     navigate(`/incidencias/${id}`)
   }
 
+  function toggleSeleccion(id: string) {
+    setSeleccion((prev) => {
+      const next = new Set(prev)
+      if (next.has(id)) next.delete(id); else next.add(id)
+      return next
+    })
+  }
+  function salirSeleccion() {
+    setSeleccionando(false)
+    setSeleccion(new Set())
+  }
+  const seleccionadas = list.filter((r) => seleccion.has(r.id))
+
   async function handleDelete(r: Incidencia) {
     const msg = isAdmin
       ? '¿Eliminar esta incidencia? Esta acción no se puede deshacer.'
@@ -63,6 +83,12 @@ export function Home() {
           <p className="text-xs text-slate-400">{list.length} incidencia(s)</p>
         </div>
         <div className="flex items-center gap-2">
+          {puedeRebajar && (
+            <button type="button" onClick={() => (seleccionando ? salirSeleccion() : setSeleccionando(true))}
+              className={`text-sm font-semibold px-3 py-2 rounded-xl text-white ${seleccionando ? 'bg-amber-600 hover:bg-amber-500' : 'bg-slate-700 hover:bg-slate-600'}`}>
+              {seleccionando ? 'Cancelar' : '📦 Rebajar varias'}
+            </button>
+          )}
           <button type="button" onClick={() => setShowViewer(true)}
             className="bg-slate-700 hover:bg-slate-600 text-white text-sm font-semibold px-3 py-2 rounded-xl">
             📂 Abrir descargado
@@ -105,10 +131,31 @@ export function Home() {
         <div className="space-y-3">
           {list.map((r) => (
             <IncidenciaCard key={r.id} record={r}
-              onSelect={() => navigate(`/incidencias/${r.id}`)}
-              onDelete={() => { handleDelete(r).catch(console.error) }} />
+              selectable={seleccionando} selected={seleccion.has(r.id)}
+              onSelect={() => (seleccionando ? toggleSeleccion(r.id) : navigate(`/incidencias/${r.id}`))}
+              onDelete={seleccionando ? undefined : () => { handleDelete(r).catch(console.error) }} />
           ))}
         </div>
+      )}
+
+      {seleccionando && (
+        <div className="sticky bottom-20 z-30 bg-slate-800 border border-slate-600 rounded-2xl p-3 flex items-center justify-between gap-3 shadow-xl">
+          <div className="text-xs text-slate-300">
+            <span className="font-semibold text-white">{seleccionadas.length}</span> seleccionada(s)
+            <button type="button" className="ml-3 text-brand-400 hover:text-brand-300 underline"
+              onClick={() => setSeleccion(seleccionadas.length === list.length ? new Set() : new Set(list.map((r) => r.id)))}>
+              {seleccionadas.length === list.length ? 'Ninguna' : 'Todas las visibles'}
+            </button>
+          </div>
+          <button type="button" disabled={seleccionadas.length === 0} onClick={() => setShowRebaja(true)}
+            className="bg-brand-600 hover:bg-brand-700 disabled:opacity-40 text-white text-sm font-semibold px-3 py-2 rounded-xl shrink-0">
+            Preparar rebaja
+          </button>
+        </div>
+      )}
+
+      {showRebaja && (
+        <RebajaMasivaPanel incidencias={seleccionadas} onClose={() => setShowRebaja(false)} />
       )}
     </div>
   )
@@ -167,14 +214,20 @@ function MigrationBanner({ pending }: { pending: Incidencia[] }) {
   )
 }
 
-export function IncidenciaCard({ record, onSelect, onDelete }: {
+export function IncidenciaCard({ record, onSelect, onDelete, selectable, selected }: {
   record: Incidencia; onSelect: () => void; onDelete?: () => void
+  /** Modo selección (rebaja masiva): muestra una casilla y marca la tarjeta elegida. */
+  selectable?: boolean; selected?: boolean
 }) {
   const fotoCount = record.fotos.length
 
   return (
-    <div className="bg-slate-800 rounded-2xl border border-slate-700 p-4 hover:border-brand-500 transition-colors">
+    <div className={`bg-slate-800 rounded-2xl border p-4 transition-colors ${selected ? 'border-brand-500 bg-brand-950/20' : 'border-slate-700 hover:border-brand-500'}`}>
       <div className="flex items-start gap-2">
+        {selectable && (
+          <input type="checkbox" checked={!!selected} onChange={onSelect}
+            className="mt-1 h-4 w-4 shrink-0 accent-brand-500" aria-label="Seleccionar incidencia" />
+        )}
         <button type="button" onClick={onSelect} className="flex-1 text-left min-w-0">
           {record.estado === 'cerrado' && (
             <span className="inline-block text-[10px] font-medium text-slate-400 bg-slate-700 rounded px-1.5 py-0.5 mb-1">

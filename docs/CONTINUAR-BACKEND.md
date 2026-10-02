@@ -30,6 +30,17 @@
   20. ~~Correr en el SQL Editor `supabase/migrations/0074_entrada_acredita_digital_siempre.sql`~~ — **corrida y confirmada por Andrés el 30-09**. Ver v2.17 más abajo.
 - **Deploy**: el push del 26-08 a `main` falló al desplegar por una interrupción real de GitHub Actions/Pages (confirmada en githubstatus.com, no un problema del repo) — falta reintentar el workflow ("Re-run all jobs") una vez que GitHub se recupere. Fuera de eso, `.github/workflows/deploy.yml` publica bien en cada push a `main`.
 
+## v2.28 — Rebaja masiva de incidencias OyM + correo a la Mesa de Ayuda
+
+Andrés (con un correo de ejemplo, `SOLICITUD DE ACTIVIDAD ERT - SINTERK 04.09.2026.eml`): las rebajas de OyM se hacen una vez al mes aprox., varias incidencias a la vez, y se piden con un correo de dos tablas — detalle (`INCIDENCIA | Nombre técnico // Nombre ingeniero | RUT | Material | Descripción | Lote | Cantidad`) y resumen (`SKU | DESCRIPCIÓN | LOTE | ALM | CECO | CANTIDAD | RETIRA`, con ALM=C132, CECO=70803, RETIRA=SINTERK fijos). Se le propusieron 3 ubicaciones en la interfaz; eligió **modo selección en Incidencias → Home**, correo como **borrador .eml + copiar tablas**, y **dos botones separados** (generar correo / registrar en el sistema).
+
+- **`calcularRebaja.ts`** (nuevo): la lógica de "Sugerir rebaja" (solo bodega del área, cable sin repartir entre lotes, resto de menor a mayor lote — ver REGLAS-DE-NEGOCIO §9) se extrajo de `ResumenProyectoTable.sugerirRebaja` a un módulo compartido. Con un `LibroStock` que se descuenta a medida que se asigna, para que dos incidencias no se lleven el mismo lote. `sugerirRebaja` ahora lo usa (mismo resultado para un proyecto).
+- **`rebajaMasiva.ts`** (nuevo): prepara las líneas por incidencia (técnicos asignados + RUT vía `listMembers`, ingeniero de la incidencia), agrupa el resumen por SKU+lote, arma el correo en HTML/texto, genera el `.eml` (con `X-Unsent: 1` para que Outlook lo abra como borrador editable, destinatarios y asunto precargados) y registra los `rebajado` línea por línea.
+- **`RebajaMasivaPanel.tsx`** (nuevo): panel con las incidencias elegidas, lote/cantidad/técnico/RUT/ingeniero editables, el resumen, destinatarios (se recuerdan en el navegador), y 3 botones: descargar borrador .eml, copiar tablas (HTML), registrar rebaja. Las líneas sin lote (no hay stock digital suficiente en C132) bloquean generar/registrar hasta completarlas o quitarlas.
+- **`Incidencias/Home.tsx`**: botón "📦 Rebajar varias" (solo admin/jp/log), casillas en las tarjetas, barra "N seleccionada(s) · Preparar rebaja".
+- **`adminRepo`**: `MemberProfile` ahora trae `rut`.
+- Verificado en el navegador con las 8 incidencias reales (solo lectura — no se registró nada): el resumen agrupa y ordena bien por SKU+lote; el `.eml` generado se decodificó y quedó bien formado (cabeceras, `To`/`Cc` normalizados, cuerpo HTML con ambas tablas, texto plano).
+
 ## v2.27 — Documentación del sistema: párrafo introductorio descriptivo
 
 Andrés: la primera línea ("Este documento describe, de forma formal y profesional…") "está muy basada en el prompt" — pidió un párrafo introductorio que describa los contenidos reales del documento.

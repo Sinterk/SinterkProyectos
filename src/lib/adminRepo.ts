@@ -42,6 +42,7 @@ export interface MemberProfile {
   id: string
   nombre: string | null
   email: string | null
+  rut: string | null
 }
 
 interface MemberRow {
@@ -51,7 +52,7 @@ interface MemberRow {
   // embed "hacia atrás" (ej. projects.informes(...), donde la tabla hija
   // referencia a la consultada). Confirmado empíricamente contra la BD real;
   // el tipo generado por el cliente sin esquema no es de fiar para esto.
-  profiles: { id: string; nombre: string | null; email: string | null } | null
+  profiles: { id: string; nombre: string | null; email: string | null; rut: string | null } | null
 }
 
 export const adminRepo = {
@@ -146,7 +147,7 @@ export const adminRepo = {
   async listMembers(projectId: string): Promise<MemberProfile[]> {
     const { data, error } = await supabase
       .from('project_members')
-      .select('user_id, profiles(id, nombre, email)')
+      .select('user_id, profiles(id, nombre, email, rut)')
       .eq('project_id', projectId)
     if (error) throw new Error(`project_members.list: ${error.message}`)
     return (data as unknown as MemberRow[] ?? [])
