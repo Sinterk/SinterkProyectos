@@ -30,6 +30,12 @@
   20. ~~Correr en el SQL Editor `supabase/migrations/0074_entrada_acredita_digital_siempre.sql`~~ — **corrida y confirmada por Andrés el 30-09**. Ver v2.17 más abajo.
 - **Deploy**: el push del 26-08 a `main` falló al desplegar por una interrupción real de GitHub Actions/Pages (confirmada en githubstatus.com, no un problema del repo) — falta reintentar el workflow ("Re-run all jobs") una vez que GitHub se recupere. Fuera de eso, `.github/workflows/deploy.yml` publica bien en cada push a `main`.
 
+## v2.27 — Documentación del sistema: párrafo introductorio descriptivo
+
+Andrés: la primera línea ("Este documento describe, de forma formal y profesional…") "está muy basada en el prompt" — pidió un párrafo introductorio que describa los contenidos reales del documento.
+
+- `public/documentacion.html` (y el documento fuente, para que una re-exportación no reintroduzca la frase vieja): el párrafo inicial ahora presenta qué es SinterkProyectos y enumera lo que cubre el documento — alcance, los 9 módulos, reglas de negocio de inventario, arquitectura, seguridad, despliegue, hitos, soporte/mantención y glosario.
+
 ## v2.26 — Manuales de uso pasan a estar hosteados en el proyecto
 
 Andrés subió los .docx de "Manual Terreno" y "Manual Oficina" y pidió: "deja en el mismo formato los manuales" — mismo criterio que la Documentación del sistema (v2.25).
