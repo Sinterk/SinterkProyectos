@@ -99,7 +99,7 @@ export function Editor() {
 
       {/* Barra inferior fija — mismo patrón del PASO 25 (Preventivos): un
           botón explícito de guardar, no solo un indicador pasivo. */}
-      <div className="fixed bottom-0 left-0 right-0 bg-slate-900/95 backdrop-blur border-t border-slate-700 px-4 py-3 flex items-center gap-2">
+      <div className="fixed bottom-0 left-0 right-0 bg-slate-900/95 backdrop-blur border-t border-slate-700 px-4 py-3 flex items-center gap-2 z-40">
         <button type="button" onClick={() => navigate('/incidencias')}
           className="py-2.5 px-4 rounded-xl bg-slate-700 text-white text-sm font-medium hover:bg-slate-600 transition-colors shrink-0">
           ← Volver

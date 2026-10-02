@@ -30,6 +30,13 @@
   20. ~~Correr en el SQL Editor `supabase/migrations/0074_entrada_acredita_digital_siempre.sql`~~ — **corrida y confirmada por Andrés el 30-09**. Ver v2.17 más abajo.
 - **Deploy**: el push del 26-08 a `main` falló al desplegar por una interrupción real de GitHub Actions/Pages (confirmada en githubstatus.com, no un problema del repo) — falta reintentar el workflow ("Re-run all jobs") una vez que GitHub se recupere. Fuera de eso, `.github/workflows/deploy.yml` publica bien en cada push a `main`.
 
+## v2.29 — Fix: la columna Descripción tapaba la barra de Guardar en Incidencias/Preventivos
+
+Andrés (con captura): en Incidencias, la columna fija "Descripción" de la tabla de Material se pintaba por encima de la barra inferior con "Guardar cambios".
+
+- Causa: la columna sticky usa `z-10` y la barra inferior fija (`fixed bottom-0`) de los Editores de **Incidencias** y **Preventivos** no tenía z-index (ATT ya tenía `z-40`). Se les agregó `z-40`, igual que ATT.
+- Verificado en el navegador: con una celda sticky solapada con la barra, el elemento superior en ese punto es la barra.
+
 ## v2.28 — Rebaja masiva de incidencias OyM + correo a la Mesa de Ayuda
 
 Andrés (con un correo de ejemplo, `SOLICITUD DE ACTIVIDAD ERT - SINTERK 04.09.2026.eml`): las rebajas de OyM se hacen una vez al mes aprox., varias incidencias a la vez, y se piden con un correo de dos tablas — detalle (`INCIDENCIA | Nombre técnico // Nombre ingeniero | RUT | Material | Descripción | Lote | Cantidad`) y resumen (`SKU | DESCRIPCIÓN | LOTE | ALM | CECO | CANTIDAD | RETIRA`, con ALM=C132, CECO=70803, RETIRA=SINTERK fijos). Se le propusieron 3 ubicaciones en la interfaz; eligió **modo selección en Incidencias → Home**, correo como **borrador .eml + copiar tablas**, y **dos botones separados** (generar correo / registrar en el sistema).

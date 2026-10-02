@@ -207,7 +207,7 @@ export function Editor() {
       )}
 
       {/* Barra inferior fija */}
-      <div className="fixed bottom-0 left-0 right-0 bg-slate-900/95 backdrop-blur border-t border-slate-700 px-4 py-3 flex items-center gap-2 overflow-x-auto">
+      <div className="fixed bottom-0 left-0 right-0 bg-slate-900/95 backdrop-blur border-t border-slate-700 px-4 py-3 flex items-center gap-2 overflow-x-auto z-40">
         <button type="button" onClick={() => navigate('/preventivos')}
           className="py-2.5 px-4 rounded-xl bg-slate-700 text-white text-sm font-medium hover:bg-slate-600 transition-colors shrink-0">
           ← Volver
