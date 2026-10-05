@@ -10,7 +10,7 @@
 - **Pendientes de Andrés** (no bloquean nada salvo lo marcado):
   1. ~~Desplegar la Edge Function de alta de usuarios~~ — **hecho y confirmado el 26-08** (probada sin sesión y con token inválido, responde el gate de auth de la función, no un 404 — está desplegada de verdad).
   3. ~~Corregir los 2 "Asignado a técnico" de la OTT de prueba~~ — **corrido por Andrés el 05-10**: la fila de CMIC (OTT `72603660784`, SKU `51024`, lote `972478`) tenía Entregado −1 y Asignado a técnico 1 (Tránsito −2, por el modo "corregir errores de tipeo" ya descartado y la anulación de la salida incoherente); se dejó en 0/0 con un `update` de `proyecto_materiales` (no toca stock).
-  4. ~~Diferencias de Conteo/eventos~~ — **hecho en v2.36** (ver más abajo): las diferencias solo se reconocen y se deja la causa en una nota. Queda opcional: decidir qué hacer con los ~190 eventos abiertos que ya existen (58 de conteos de bodega, ~130 de técnicos por instalación forzada) — ver v2.36.
+  4. ~~Diferencias de Conteo/eventos~~ — **hecho en v2.36** (ver más abajo): las diferencias solo se reconocen y se deja la causa en una nota. Los 136 eventos abiertos que ya existían (58 de conteos de bodega, 78 de técnicos por instalación forzada, al 05-10) se pueden cerrar con el filtro + cierre masivo de v2.37.
   7. ~~Decidir si vale la pena un reintento automático de subida de fotos~~ — **hecho, v1.94** más abajo: reintenta solo al abrir la app o recuperar conexión (ATT, Preventivos e Incidencias), sin depender de Background Sync (no soportado en Firefox, el navegador real de uso).
   8. ~~Correr en el SQL Editor `0071_importar_conteo_lineas_a_cero.sql`~~ — **corrida y confirmada por Andrés el 15-09**.
   9. ~~Correr en el SQL Editor `supabase/migrations/0072_brigada_hallazgo.sql`~~ — **hecho, confirmado el 22-09 vía REST contra la BD real**: `correcciones_hallazgo.brigada`/`puntos.brigada` existen. Andrés ya reasignó 11 de los 23 hallazgos a "Línea" en Administración (quedan 12 en "OyM", el default) — revisar si faltan más por reasignar o si ese es el reparto final.
@@ -33,6 +33,16 @@
   26. **Asignar códigos LPU en el Catálogo** (opcional) — Andrés (05-10): se resuelve **al hacer el conteo de los vehículos**, no antes. Incluye el cable (código + "Tipo de tendido"); mientras falte, el EP lo avisa como "sin código LPU".
 - **Deploy**: el push del 26-08 a `main` falló al desplegar por una interrupción real de GitHub Actions/Pages (confirmada en githubstatus.com, no un problema del repo) — falta reintentar el workflow ("Re-run all jobs") una vez que GitHub se recupere. Fuera de eso, `.github/workflows/deploy.yml` publica bien en cada push a `main`.
 
+## v2.37 — Diferencias: filtros por ubicación / signo / stock negativo + cierre masivo
+
+Andrés (05-10, "sugerencia 2"): al elegir una bodega, técnico o cualquier tipo de almacenamiento con conteos y diferencias, poder filtrar los eventos por diferencia y por stock negativo, y cerrarlos todos manteniendo el registro de que existió el evento.
+
+- **`FiltroYCierreEventos`** (`inventario/components/Home.tsx`), usado en las dos listas de diferencias abiertas (pestaña Conteo: bodegas; pestaña Stock → Técnico: instalaciones forzadas) y dentro del detalle de un conteo (solo sobre los eventos abiertos; los resueltos se muestran aparte). Filtros: **ubicación** (select agrupado Bodegas / Técnicos, con la cantidad de eventos de cada una — sirve para cualquier `ubicaciones.tipo`), **diferencia** (todas / solo faltantes − / solo sobrantes +) y **"solo con stock negativo ahora"** (cruza cada evento con `stock` por ubicación+material+lote: algún saldo físico o digital < 0). Muestra "Mostrando X de N" y "Quitar filtros".
+- **Cierre masivo**: "Reconocer los X filtrados…" (o "todos" sin filtro) → una causa obligatoria → confirmación → `reconocerEventos` (`inventarioRepo.ts`): por cada evento llama a `resolver_evento_parcial` con `ignorar` por todo lo que falta, en tandas de 5. **Cada evento conserva su registro** (resolución + causa) y el stock no cambia. Si alguno falla, se avisa cuántos y el primer error. Sin migración.
+- `listClavesStockNegativo()` trae solo las filas de `stock` con saldo negativo (no la tabla entera).
+- **Verificado en el navegador (cuenta jp)**: Conteo → 58 abiertos; ubicación C132 (44) / STK (14); faltantes 44, sobrantes 14; "solo stock negativo" 2; pestaña Técnico → 78 abiertos, 8 técnicos en el select. Cierre masivo sobre STK (14) con el RPC interceptado: 14 llamadas `ignorar`, cantidad = |diferencia|, misma causa, causa obligatoria validada. **No se escribió en la BD**.
+- Pendiente de uso (Andrés): decidir con qué causa(s) cerrar los 136 eventos abiertos; los negativos de técnico quedan negativos hasta el conteo de la camioneta.
+
 ## v2.36 — Diferencias de Conteo: solo se reconocen y se anota la causa (punto #4)
 
 Andrés (05-10): en los eventos / diferencias de conteo debe aparecer solo la diferencia y dejarse una nota con la causa; los demás métodos de resolución (consumo, devolución, traspaso, reasignar, agregar) solo confunden.
@@ -42,7 +52,7 @@ Andrés (05-10): en los eventos / diferencias de conteo debe aparecer solo la di
 - **Efecto**: el stock queda como lo dejó el conteo (o la instalación forzada). En los eventos de técnico (instalación forzada) el stock negativo del técnico **no se corrige** al reconocer — se corrige con el conteo de la camioneta.
 - **Anular un movimiento**: los eventos nuevos solo tendrán resoluciones `ignorar` (sin movimientos), así que el bloqueo "resolver_evento_parcial no llena `movimientos.evento_resolucion_id`" deja de importar para lo nuevo.
 - **Verificado en el navegador (cuenta jp)**: aviso "58 diferencia(s) por reconocer" y 58 botones en la pestaña Conteo; sin causa muestra "Escribe la causa de la diferencia"; con causa el RPC recibe `p_tipo=ignorar`, `p_cantidad` = lo que falta y la nota (RPC interceptado, **no se escribió en la BD**).
-- **Pendiente opcional**: hoy hay ~190 eventos abiertos (58 de conteos de bodega y ~130 de técnicos). Una acción masiva "reconocer todos con la misma causa" (por conteo, o por técnico) los cerraría de una vez; no se hizo porque no se pidió.
+- La acción masiva que quedó propuesta aquí se hizo en v2.37.
 
 ## v2.35 — Enlaces directos: no mostrar otra OTT ni proyectos del tipo equivocado
 

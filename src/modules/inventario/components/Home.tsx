@@ -21,7 +21,7 @@ import {
   listProveedores, crearProveedor, updateMaterialProveedores,
   listPaquetes, crearPaquete, eliminarPaquete, updatePaqueteMateriales,
   listConteos, getConteoLineas, abrirConteo, agregarLineaConteo, actualizarLineaConteo, cerrarConteo, descartarConteo,
-  listEventosInventario, listEventosPorConteo, resolverEvento, importarFilasSapAConteo,
+  listEventosInventario, listEventosPorConteo, resolverEvento, importarFilasSapAConteo, listClavesStockNegativo, reconocerEventos,
 } from '@/lib/inventario/inventarioRepo'
 import type { ListMovimientosFilters, ImportarSapResultado } from '@/lib/inventario/inventarioRepo'
 import type {
@@ -1081,11 +1081,15 @@ function EventosAbiertosSection({ eventos, onVerConteo, onResolved }: {
   return (
     <div className="bg-amber-950/40 border border-amber-700/50 rounded-2xl p-4 space-y-2">
       <p className="text-sm font-semibold text-amber-300">⚠️ {eventos.length} diferencia(s) por reconocer</p>
-      <div className="space-y-1.5">
-        {eventos.map((e) => (
-          <EventoCard key={e.id} evento={e} onResolved={onResolved} onVerConteo={onVerConteo} mostrarUbicacion />
-        ))}
-      </div>
+      <FiltroYCierreEventos eventos={eventos} onResolved={onResolved}>
+        {(filtrados) => (
+          <div className="space-y-1.5">
+            {filtrados.map((e) => (
+              <EventoCard key={e.id} evento={e} onResolved={onResolved} onVerConteo={onVerConteo} mostrarUbicacion />
+            ))}
+          </div>
+        )}
+      </FiltroYCierreEventos>
     </div>
   )
 }
@@ -1204,10 +1208,172 @@ function ConteoDetail({ conteoId, onBack }: { conteoId: string; onBack: () => vo
 // ---------------------------------------------------------------------------
 
 function EventosDelConteoSection({ eventos, onResolved }: { eventos: EventoInventario[]; onResolved: () => void }) {
+  const abiertos = eventos.filter((e) => e.estado === 'abierto')
+  const resueltos = eventos.filter((e) => e.estado !== 'abierto')
   return (
     <div className="space-y-2">
       <p className="text-sm font-semibold text-white">Eventos de este conteo</p>
-      {eventos.map((e) => <EventoCard key={e.id} evento={e} onResolved={onResolved} />)}
+      {abiertos.length > 0 && (
+        <FiltroYCierreEventos eventos={abiertos} onResolved={onResolved}>
+          {(filtrados) => <div className="space-y-2">{filtrados.map((e) => <EventoCard key={e.id} evento={e} onResolved={onResolved} />)}</div>}
+        </FiltroYCierreEventos>
+      )}
+      {resueltos.map((e) => <EventoCard key={e.id} evento={e} onResolved={onResolved} />)}
+    </div>
+  )
+}
+
+type SignoFiltro = 'todas' | 'faltantes' | 'sobrantes'
+
+/**
+ * Filtros de las diferencias abiertas (por ubicación —bodega o técnico—, por
+ * signo de la diferencia y por stock negativo) y cierre masivo de las que
+ * quedan a la vista: se reconocen todas con la misma causa. Cada una conserva
+ * su registro (resolución + causa) y el stock no cambia — ver
+ * `reconocerEventos` en inventarioRepo.
+ */
+function FiltroYCierreEventos({ eventos, onResolved, children }: {
+  eventos: EventoInventario[]
+  onResolved: () => void
+  children: (filtrados: EventoInventario[]) => ReactNode
+}) {
+  const [ubicacionId, setUbicacionId] = useState('')
+  const [signo, setSigno] = useState<SignoFiltro>('todas')
+  const [soloNegativo, setSoloNegativo] = useState(false)
+  const [negativos, setNegativos] = useState<Set<string> | null>(null)
+  const [panelAbierto, setPanelAbierto] = useState(false)
+  const [causa, setCausa] = useState('')
+  const [progreso, setProgreso] = useState<{ hechos: number; total: number } | null>(null)
+  const [error, setError] = useState<string | null>(null)
+
+  useEffect(() => {
+    if (!soloNegativo || negativos !== null) return
+    listClavesStockNegativo().then(setNegativos).catch((err) => {
+      setError(err instanceof Error ? err.message : String(err))
+      setSoloNegativo(false)
+    })
+  }, [soloNegativo, negativos])
+
+  const ubicaciones = useMemo(() => {
+    const porId = new Map<string, { id: string; nombre: string; tipo: 'bodega' | 'tecnico'; n: number }>()
+    for (const e of eventos) {
+      const u = porId.get(e.ubicacionId)
+      if (u) u.n += 1
+      else porId.set(e.ubicacionId, { id: e.ubicacionId, nombre: e.ubicacionNombre, tipo: e.ubicacionTipo, n: 1 })
+    }
+    return [...porId.values()].sort((a, b) => a.nombre.localeCompare(b.nombre))
+  }, [eventos])
+
+  // Si tras cerrar ya no quedan eventos de la ubicación elegida, vuelve a "Todas".
+  const ubicacionActiva = ubicaciones.some((u) => u.id === ubicacionId) ? ubicacionId : ''
+
+  const filtrados = useMemo(() => eventos.filter((e) => {
+    if (ubicacionActiva && e.ubicacionId !== ubicacionActiva) return false
+    if (signo === 'faltantes' && !(e.diferencia < 0)) return false
+    if (signo === 'sobrantes' && !(e.diferencia > 0)) return false
+    if (soloNegativo && !(negativos?.has(`${e.ubicacionId}|${e.materialId}|${e.lote}`))) return false
+    return true
+  }), [eventos, ubicacionActiva, signo, soloNegativo, negativos])
+
+  const hayFiltro = ubicacionActiva !== '' || signo !== 'todas' || soloNegativo
+  const cargandoNegativos = soloNegativo && negativos === null
+  const selectCls = 'bg-slate-700 text-white text-xs rounded-lg px-2 py-1.5 border border-slate-600 focus:border-brand-500 focus:outline-none'
+  const busy = progreso !== null
+
+  async function cerrarTodos() {
+    const lista = filtrados
+      .map((e) => ({ id: e.id, restante: Math.abs(e.diferencia) - e.cantidadResuelta }))
+      .filter((e) => e.restante > 0)
+    if (lista.length === 0) return
+    if (!causa.trim()) { setError('Escribe la causa de la diferencia'); return }
+    if (!confirm(`¿Reconocer ${lista.length} diferencia(s) con esta causa?\n\n"${causa.trim()}"\n\nCada una queda registrada con su causa (no se borra) y el stock no cambia.`)) return
+    setError(null)
+    setProgreso({ hechos: 0, total: lista.length })
+    try {
+      const r = await reconocerEventos(lista, causa.trim(), (hechos) => setProgreso({ hechos, total: lista.length }))
+      setProgreso(null)
+      setCausa('')
+      setPanelAbierto(false)
+      setNegativos(null)
+      if (r.fallidos.length > 0) {
+        alert(`Se reconocieron ${r.ok} y fallaron ${r.fallidos.length}. Primer error: ${r.fallidos[0].error}`)
+      }
+      onResolved()
+    } catch (err) {
+      setProgreso(null)
+      setError(err instanceof Error ? err.message : String(err))
+    }
+  }
+
+  return (
+    <div className="space-y-2">
+      {eventos.length > 1 && (
+        <div className="bg-slate-800/60 border border-slate-700 rounded-xl p-2.5 space-y-2">
+          <div className="flex flex-wrap items-center gap-2">
+            <select value={ubicacionActiva} onChange={(e) => setUbicacionId(e.target.value)} className={selectCls} aria-label="Ubicación">
+              <option value="">Todas las ubicaciones</option>
+              {(['bodega', 'tecnico'] as const).map((tipo) => {
+                const lista = ubicaciones.filter((u) => u.tipo === tipo)
+                return lista.length === 0 ? null : (
+                  <optgroup key={tipo} label={tipo === 'bodega' ? 'Bodegas' : 'Técnicos'}>
+                    {lista.map((u) => <option key={u.id} value={u.id}>{u.nombre} ({u.n})</option>)}
+                  </optgroup>
+                )
+              })}
+            </select>
+            <select value={signo} onChange={(e) => setSigno(e.target.value as SignoFiltro)} className={selectCls} aria-label="Diferencia">
+              <option value="todas">Faltantes y sobrantes</option>
+              <option value="faltantes">Solo faltantes (−)</option>
+              <option value="sobrantes">Solo sobrantes (+)</option>
+            </select>
+            <label className="flex items-center gap-1.5 text-xs text-slate-300 cursor-pointer">
+              <input type="checkbox" checked={soloNegativo} onChange={(e) => setSoloNegativo(e.target.checked)} />
+              Solo con stock negativo ahora
+            </label>
+            {hayFiltro && (
+              <button type="button" onClick={() => { setUbicacionId(''); setSigno('todas'); setSoloNegativo(false) }}
+                className="text-xs text-slate-400 hover:text-white">Quitar filtros</button>
+            )}
+          </div>
+
+          <div className="flex flex-wrap items-center justify-between gap-2">
+            <p className="text-[11px] text-slate-400">
+              {cargandoNegativos ? 'Buscando stock negativo…' : `Mostrando ${filtrados.length} de ${eventos.length}`}
+            </p>
+            {!panelAbierto && (
+              <button type="button" disabled={filtrados.length === 0 || cargandoNegativos}
+                onClick={() => { setError(null); setPanelAbierto(true) }}
+                className="text-xs font-semibold px-3 py-1.5 rounded-lg bg-amber-700 hover:bg-amber-600 disabled:opacity-40 text-white">
+                {hayFiltro ? `Reconocer los ${filtrados.length} filtrados…` : `Reconocer todos (${filtrados.length})…`}
+              </button>
+            )}
+          </div>
+
+          {panelAbierto && (
+            <div className="bg-slate-700/50 rounded-xl p-3 space-y-2">
+              <p className="text-[11px] text-slate-400 italic">
+                Se reconocen las {filtrados.length} diferencia(s) a la vista con la misma causa. Cada una queda registrada
+                (no se borra) y el stock no cambia.
+              </p>
+              <input value={causa} onChange={(e) => setCausa(e.target.value)} disabled={busy}
+                onKeyDown={(e) => { if (e.key === 'Enter') cerrarTodos() }}
+                placeholder="Causa de las diferencias (obligatoria)"
+                className="w-full bg-slate-700 text-white text-sm rounded-lg px-2 py-1.5 border border-slate-600 focus:border-brand-500 focus:outline-none" />
+              {error && <p className="text-xs text-red-400">{error}</p>}
+              <div className="flex gap-2 items-center">
+                <button type="button" onClick={cerrarTodos} disabled={busy}
+                  className="flex-1 text-xs font-semibold py-1.5 rounded-lg bg-brand-600 hover:bg-brand-700 disabled:opacity-40 text-white">
+                  {busy ? `Reconociendo ${progreso!.hechos}/${progreso!.total}…` : `Reconocer ${filtrados.length}`}
+                </button>
+                <button type="button" onClick={() => setPanelAbierto(false)} disabled={busy} className="text-xs text-slate-400 px-2">Cancelar</button>
+              </div>
+            </div>
+          )}
+          {!panelAbierto && error && <p className="text-xs text-red-400">{error}</p>}
+        </div>
+      )}
+
+      {children(filtrados)}
     </div>
   )
 }

@@ -1143,6 +1143,51 @@ export async function resolverEvento(eventoId: string, input: ResolverEventoInpu
   if (error) throw new Error(`resolver_evento_parcial: ${error.message}`)
 }
 
+/**
+ * Claves "ubicación|material|lote" de las filas de stock que HOY tienen algún
+ * saldo negativo (físico o digital) — para filtrar eventos por "stock negativo".
+ */
+export async function listClavesStockNegativo(): Promise<Set<string>> {
+  const { data, error } = await supabase
+    .from('stock')
+    .select('ubicacion_id, material_id, lote')
+    .or('cantidad_fisico.lt.0,cantidad_digital.lt.0')
+    .limit(5000)
+  if (error) throw new Error(`stock.negativos: ${error.message}`)
+  return new Set((data as { ubicacion_id: string; material_id: string; lote: string }[])
+    .map((r) => `${r.ubicacion_id}|${r.material_id}|${r.lote}`))
+}
+
+/**
+ * Reconoce de una vez varias diferencias con la misma causa: por cada evento
+ * llama a `resolver_evento_parcial` con 'ignorar' por todo lo que falta, así
+ * que cada uno conserva su registro (resolución + nota) y el stock no cambia.
+ * Va en tandas chicas: 'ignorar' no toca stock, no hay riesgo de carrera.
+ */
+export async function reconocerEventos(
+  eventos: { id: string; restante: number }[],
+  nota: string,
+  onProgreso?: (hechos: number) => void,
+): Promise<{ ok: number; fallidos: { id: string; error: string }[] }> {
+  const TANDA = 5
+  let ok = 0
+  let hechos = 0
+  const fallidos: { id: string; error: string }[] = []
+  for (let i = 0; i < eventos.length; i += TANDA) {
+    await Promise.all(eventos.slice(i, i + TANDA).map(async (e) => {
+      try {
+        await resolverEvento(e.id, { tipo: 'ignorar', cantidad: e.restante, nota })
+        ok += 1
+      } catch (err) {
+        fallidos.push({ id: e.id, error: err instanceof Error ? err.message : String(err) })
+      }
+      hechos += 1
+      onProgreso?.(hechos)
+    }))
+  }
+  return { ok, fallidos }
+}
+
 // ---------------------------------------------------------------------------
 // Observaciones (pestaña "Observaciones" de Logística) — entradas libres,
 // solo agregar/borrar. Sirven, entre otras cosas, para que un técnico avise
