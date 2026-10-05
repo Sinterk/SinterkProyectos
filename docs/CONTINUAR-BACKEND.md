@@ -33,6 +33,10 @@
   26. **Asignar códigos LPU en el Catálogo** (opcional) — Andrés (05-10): se resuelve **al hacer el conteo de los vehículos**, no antes. Incluye el cable (código + "Tipo de tendido"); mientras falte, el EP lo avisa como "sin código LPU".
 - **Deploy**: el push del 26-08 a `main` falló al desplegar por una interrupción real de GitHub Actions/Pages (confirmada en githubstatus.com, no un problema del repo) — falta reintentar el workflow ("Re-run all jobs") una vez que GitHub se recupere. Fuera de eso, `.github/workflows/deploy.yml` publica bien en cada push a `main`.
 
+## v2.39 — Formato genérico de OyM: "Código" en vez de "Proyecto"
+
+Andrés (05-10): en Datos generales del formato en blanco de OyM la etiqueta pasa de "Proyecto" a **"Código"** (`generarHojaLogisticaGenericaOyM`). El botón 📄 Asignación ya estaba en las listas de Preventivos e Incidencias desde v2.38 (una pestaña abierta antes del cambio no lo mostraba hasta recargar).
+
 ## v2.38 — Formato genérico de Asignación de materiales para OyM + sin pie en los genéricos
 
 Andrés (05-10): crear un formato de asignación de materiales como el de ATT, pero para OyM; y quitar de los genéricos el texto "genérico" y "Página 1 de 1" del fondo.

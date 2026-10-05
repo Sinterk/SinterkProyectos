@@ -360,7 +360,7 @@ export async function generarHojaLogisticaGenerica(): Promise<void> {
 
 /**
  * Versión en blanco para OyM (Preventivos / Incidencias), mismo formato que la
- * de ATT salvo: solo "Fecha de inicio" y "Proyecto" en vez de "OTT" en Datos
+ * de ATT salvo: solo "Fecha de inicio" y "Código" en vez de "OTT" en Datos
  * generales. La tabla de Material es la misma aunque no se instale nada — sirve
  * también para devoluciones (pedido de Andrés, 05-10).
  */
@@ -368,7 +368,7 @@ export async function generarHojaLogisticaGenericaOyM(): Promise<void> {
   await generarHojaLogistica({
     titulo: 'genérico OyM',
     datosGenerales: [
-      { label: 'Proyecto', value: '' },
+      { label: 'Código', value: '' },
       { label: 'Dirección', value: '' },
     ],
     fechas: [
