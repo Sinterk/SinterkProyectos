@@ -20,7 +20,7 @@
 // como cualquier otra fila — reemplaza al formulario aparte de "Registrar
 // movimiento" que vivía en LogisticaTab (ver ese archivo).
 
-import { useEffect, useState } from 'react'
+import { useEffect, useRef, useState } from 'react'
 import { adminRepo } from '@/lib/adminRepo'
 import type { MemberProfile } from '@/lib/adminRepo'
 import { useAuth } from '@/lib/auth'
@@ -46,7 +46,10 @@ interface Props {
   puntos?: Punto[]
   /** Ver LogisticaTab: agrupa por material sin necesitar la lista de puntos. */
   agregarPuntos?: boolean
+  /** Al subir, recarga la tabla (sin vaciarla ni perder lo tecleado) — ej. tras anular un movimiento en la sección de abajo. */
   refreshKey?: number
+  /** Se llama tras guardar cambios (ya recargada la tabla) — para que otras secciones, como la lista de movimientos, se refresquen. */
+  onChanged?: () => void
   /** Sube cuando `EquipoSection` (en LogisticaTab) agrega/quita un técnico — sin esto, esta tabla seguía mostrando la lista de técnicos vieja hasta salir y volver a entrar a la OTT. */
   membersVersion?: number
   /** Solo ATT las pasa — para el formato "Material digital" copiable al control de rebajas de Entel (ver TablaDigital). */
@@ -205,7 +208,7 @@ interface LineaRebaja {
   origen: 'auto' | 'manual'
 }
 
-export function ResumenProyectoTable({ projectId, area, puntos, agregarPuntos, refreshKey = 0, membersVersion = 0, ott, direccion, fechaInicio }: Props) {
+export function ResumenProyectoTable({ projectId, area, puntos, agregarPuntos, refreshKey = 0, onChanged, membersVersion = 0, ott, direccion, fechaInicio }: Props) {
   const rol = useAuth((s) => s.profile?.rol)
   // registrar_movimiento exige técnico para tipoUI='rebajado' (0005) — no
   // afecta stock de nadie ahí, es solo quién queda como usuario_id del
@@ -284,7 +287,13 @@ export function ResumenProyectoTable({ projectId, area, puntos, agregarPuntos, r
   async function reload() {
     try { setRows(await getResumenProyecto(projectId)) } catch (err) { setError(err instanceof Error ? err.message : String(err)) }
   }
-  useEffect(() => { setRows(null); reload() }, [projectId, refreshKey])
+  useEffect(() => { setRows(null); reload() }, [projectId])
+  // refreshKey recarga en sitio: vaciar `rows` aquí haría parpadear la tabla y desmontaría lo que el usuario esté tecleando.
+  const primerRefresh = useRef(true)
+  useEffect(() => {
+    if (primerRefresh.current) { primerRefresh.current = false; return }
+    reload()
+  }, [refreshKey]) // eslint-disable-line react-hooks/exhaustive-deps
   useEffect(() => { adminRepo.listMembers(projectId).then(setMembers).catch(() => {}) }, [projectId, membersVersion])
   useEffect(() => { listUbicaciones({ tipo: 'bodega' }).then(setBodegas).catch(() => {}) }, [])
   useEffect(() => { listMateriales().then(setMateriales).catch(() => {}) }, [])
@@ -727,6 +736,7 @@ export function ResumenProyectoTable({ projectId, area, puntos, agregarPuntos, r
     })
     setSaving(false)
     await reload()
+    onChanged?.()
   }
 
   function descartarCambios() {

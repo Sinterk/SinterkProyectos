@@ -799,7 +799,13 @@ export async function getResumenProyecto(projectId: string): Promise<ResumenMate
     row.cantTransito = row.cantEntregada - row.cantInstalada - row.cantDevuelta - row.cantRezagada - row.cantMerma
   }
 
-  return [...map.values()].sort((a, b) => a.materialSku.localeCompare(b.materialSku))
+  // Una fila con todo en 0 es lo que deja `proyecto_materiales` tras anular el
+  // único movimiento de un material: no representa nada entregado/instalado y
+  // confunde con los materiales reales, así que no se muestra.
+  return [...map.values()]
+    .filter((r) => r.cantSolicitada !== 0 || r.cantEntregada !== 0 || r.cantInstalada !== 0 || r.cantDevuelta !== 0
+      || r.cantRezagada !== 0 || r.cantRebajada !== 0 || r.cantMerma !== 0)
+    .sort((a, b) => a.materialSku.localeCompare(b.materialSku))
 }
 
 /**

@@ -33,6 +33,14 @@
   26. **Asignar códigos LPU en el Catálogo** (Inventario → Catálogo → columna "LPU", filtro "Solo sin LPU"): hoy solo el SKU 51024 tiene LPU (1 de 113). Incluye el **cable**: asignarle su código de tendido y su "Tipo de tendido" (ver v2.33); mientras no lo tenga aparece en el aviso "sin código LPU" del EP.
 - **Deploy**: el push del 26-08 a `main` falló al desplegar por una interrupción real de GitHub Actions/Pages (confirmada en githubstatus.com, no un problema del repo) — falta reintentar el workflow ("Re-run all jobs") una vez que GitHub se recupere. Fuera de eso, `.github/workflows/deploy.yml` publica bien en cada push a `main`.
 
+## v2.34 — Logística: sin filas en 0 tras anular + refresco automático
+
+Andrés (05-10): (1) al agregar un material y anular el movimiento quedaba la fila con 0, que confunde con lo realmente entregado; (2) anular un movimiento solo se reflejaba en la tabla al refrescar la página.
+
+- **Fila en 0**: `proyecto_materiales` conserva la fila con todo en 0 tras anular (el RPC solo la ajusta). `getResumenProyecto` (`inventarioRepo.ts`) ahora **no devuelve** filas con solicitada/entregada/instalada/devuelta/rezagada/rebajada/merma todas en 0. Es solo de cliente, sin migración: también oculta las 29 filas en 0 que ya existían en la BD (y de paso la Hoja de logística, que usa la misma función). La fila queda en la BD, inofensiva; se vuelve a mostrar sola si el material recibe un movimiento nuevo.
+- **Refresco**: `LogisticaTab` conecta las dos secciones. Anular en "Movimientos de esta OTT" recarga la tabla de resumen (`refreshKey`), y guardar en la tabla (`onChanged`) recarga la lista de movimientos si ya estaba cargada. `ResumenProyectoTable` recarga en sitio con `refreshKey` (sin vaciar `rows`, así no parpadea ni se pierde lo tecleado).
+- **Verificado en el navegador (OTT 72603670130, sin escribir en la BD)**: la fila en 0 del SKU 15338 dejó de aparecer; al anular (RPC interceptado) se re-consultan solos `movimientos` y `proyecto_materiales`. **No se probó** el sentido inverso (guardar en la tabla → movimientos) con datos reales; está tipado y usa el mismo mecanismo.
+
 ## v2.33 — Estado de Pago: tendido como material, 4 columnas copiables, avisos y LPU en el Catálogo
 
 Andrés (05-10): zanjar el EP antes de cerrar el proyecto. Alcance acordado: el EP adelanta **el costo de los materiales** (el tendido es "un material más": metros de cable); el Excel de Entel es protegido, así que se copian a mano **4 columnas** (código, cantidad informada, observaciones, tipo de tendido); el costo se ve **solo en la pestaña EP** (no en la tabla de Logística del proyecto).

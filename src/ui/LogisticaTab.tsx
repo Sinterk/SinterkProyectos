@@ -55,6 +55,11 @@ export function LogisticaTab({
   // asignar un técnico acá no se reflejaba en el selector de "+ Nuevo
   // material" hasta salir y volver a entrar a la OTT.
   const [membersVersion, setMembersVersion] = useState(0)
+  // La tabla de resumen y la lista de movimientos cargan por separado: cada
+  // una avisa a la otra cuando cambia algo (anular un movimiento actualiza la
+  // tabla; guardar en la tabla actualiza los movimientos).
+  const [resumenKey, setResumenKey] = useState(0)
+  const [movimientosKey, setMovimientosKey] = useState(0)
   return (
     <div className="space-y-4">
       {!isTecnico && (
@@ -65,9 +70,10 @@ export function LogisticaTab({
           datosGenerales={datosGeneralesHoja ?? []} fechas={fechasHoja ?? []} />
       )}
       <ResumenProyectoTable projectId={projectId} area={area} puntos={puntos} agregarPuntos={agregarPuntos} membersVersion={membersVersion}
+        refreshKey={resumenKey} onChanged={() => setMovimientosKey((k) => k + 1)}
         ott={ott} direccion={direccion} fechaInicio={fechaInicio} />
       {!isTecnico && area === 'OyM' && <AsignacionMaterialSection />}
-      {!isTecnico && <MovimientosProyectoSection projectId={projectId} puntos={puntos} />}
+      {!isTecnico && <MovimientosProyectoSection projectId={projectId} puntos={puntos} refreshKey={movimientosKey} onAnulado={() => setResumenKey((k) => k + 1)} />}
       {incluirComentarios && <ObservacionesSection projectId={projectId} />}
     </div>
   )
@@ -278,7 +284,14 @@ function EquipoSection({ projectId, onMembersChanged }: { projectId: string; onM
  * (MovimientosTab). Colapsado por defecto: es una herramienta de auditoría,
  * no algo que se consulte en cada entrada a la OTT.
  */
-function MovimientosProyectoSection({ projectId, puntos }: { projectId: string; puntos?: Punto[] }) {
+function MovimientosProyectoSection({ projectId, puntos, refreshKey, onAnulado }: {
+  projectId: string
+  puntos?: Punto[]
+  /** Sube cuando la tabla de resumen guardó movimientos nuevos — recarga la lista si ya estaba cargada. */
+  refreshKey: number
+  /** Tras anular un movimiento, para que la tabla de resumen se actualice sola. */
+  onAnulado: () => void
+}) {
   const rol = useAuth((s) => s.profile?.rol)
   const puedeAnular = rol === 'admin' || rol === 'jp' || rol === 'log'
   const [abierto, setAbierto] = useState(false)
@@ -302,6 +315,8 @@ function MovimientosProyectoSection({ projectId, puntos }: { projectId: string; 
     catch (err) { setError(err instanceof Error ? err.message : String(err)) }
   }
   useEffect(() => { if (abierto && rows === null) reload() /* eslint-disable-next-line react-hooks/exhaustive-deps */ }, [abierto])
+  // Si la lista ya se había cargado, se refresca; si no, se carga al abrirla.
+  useEffect(() => { if (refreshKey > 0) { if (abierto) reload(); else setRows(null) } /* eslint-disable-next-line react-hooks/exhaustive-deps */ }, [refreshKey])
 
   async function handleAnular(m: Movimiento) {
     const detalle = `${TIPO_LABELS_MOV[m.tipo] ?? m.tipo} — ${m.materialSku} (${m.cantidad}) — ${m.fecha.slice(0, 10)}`
@@ -314,6 +329,7 @@ function MovimientosProyectoSection({ projectId, puntos }: { projectId: string; 
     try {
       await anularMovimiento(m.id)
       await reload()
+      onAnulado()
     } catch (err) {
       setError(err instanceof Error ? err.message : String(err))
     } finally {
