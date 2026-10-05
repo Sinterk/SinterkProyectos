@@ -32,13 +32,24 @@ export function Editor() {
 
   // Mismo fix del PASO 11 (ATT/Preventivos): solo redirigir si el record
   // NUNCA existió para este id, no cuando ya existió y se promovió (rekey).
-  const hadRecord = useRef(false)
-  useEffect(() => { if (record) hadRecord.current = true }, [record])
+  // Por id: que haya existido un record para OTRO id (editor ya abierto y se
+  // pega otro enlace) no cuenta. Y no se rebota a la lista hasta que `syncOne`
+  // haya consultado al servidor: al abrir un enlace directo la caché local
+  // todavía no tiene el record (o ni siquiera terminó de cargar) y antes
+  // rebotaba a la lista de inmediato, sin darle tiempo a traerlo.
+  const idConRecord = useRef<string | null>(null)
+  useEffect(() => { if (record && id) idConRecord.current = id }, [record, id])
+  const [syncedId, setSyncedId] = useState<string | null>(null)
+  const syncChecked = syncedId === (id ?? '')
   useEffect(() => {
-    if (!record && id && !hadRecord.current) navigate('/incidencias', { replace: true })
-  }, [record, id, navigate])
-
-  useEffect(() => { if (id) syncOne(id) }, [id, syncOne])
+    if (!id) { setSyncedId(''); return }
+    let cancelled = false
+    Promise.resolve(syncOne(id)).catch(() => {}).finally(() => { if (!cancelled) setSyncedId(id) })
+    return () => { cancelled = true }
+  }, [id, syncOne])
+  useEffect(() => {
+    if (syncChecked && !record && id && idConRecord.current !== id) navigate('/incidencias', { replace: true })
+  }, [syncChecked, record, id, navigate])
 
   if (!record) {
     return <div className="text-slate-400 text-center py-16">Incidencia no encontrada.</div>

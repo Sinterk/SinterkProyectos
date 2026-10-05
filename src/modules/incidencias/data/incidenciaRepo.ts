@@ -207,7 +207,7 @@ export const incidenciaRepo = {
   async load(id: string): Promise<Incidencia | null> {
     if (!isUuid(id)) return null
     const { data, error } = await conFallback((select) =>
-      supabase.from('projects').select(select).eq('id', id).maybeSingle())
+      supabase.from('projects').select(select).eq('id', id).eq('area', 'OyM').eq('subarea', 'incidencia').maybeSingle())
     if (error) throw new Error(`projects.load: ${error.message}`)
     return data ? rowToRecord(data as ProjectRow) : null
   },

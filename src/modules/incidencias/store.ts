@@ -191,7 +191,24 @@ export const useIncidenciaStore = create<IncidenciaState>()(
       async syncOne(id) {
         if (!isUuid(id)) return
         const rec = await incidenciaRepo.load(id)
-        if (!rec) return
+        if (!rec) {
+          // El servidor no tiene este id como registro de este módulo (se
+          // borró, o es de otro tipo de proyecto — ej. un enlace de otro
+          // módulo): si la caché local aún lo conserva y no tiene nada sin
+          // subir, se saca — si no, quedaba de fantasma para siempre.
+          set((s) => {
+            const local = s.records[id]
+            if (!local || hasPendingSync(local)) return s
+            const marcado = s.syncedAt[id]
+            if (marcado !== undefined && local.updatedAt !== marcado) return s
+            const records = { ...s.records }
+            const syncedAt = { ...s.syncedAt }
+            delete records[id]
+            delete syncedAt[id]
+            return { records, syncedAt }
+          })
+          return
+        }
         set((s) => {
           const before = s.records[id]
           const merged = mergeFromServer(before, rec, s.syncedAt[id])

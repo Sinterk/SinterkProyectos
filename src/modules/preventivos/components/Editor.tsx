@@ -84,15 +84,27 @@ export function Editor() {
   // URL, en carrera con la navegación al id nuevo. Solo se redirige si el
   // record NUNCA existió para este id, no cuando ya existió y se promovió
   // (ver el mismo fix en modules/att/components/Editor.tsx).
-  const hadRecord = useRef(false)
-  useEffect(() => { if (record) hadRecord.current = true }, [record])
+  // Por id: que haya existido un record para OTRO id (editor ya abierto y se
+  // pega otro enlace) no cuenta. Y no se rebota a la lista hasta que `syncOne`
+  // haya consultado al servidor: al abrir un enlace directo la caché local
+  // todavía no tiene el record (o ni siquiera terminó de cargar) y antes
+  // rebotaba a la lista de inmediato, sin darle tiempo a traerlo.
+  const idConRecord = useRef<string | null>(null)
+  useEffect(() => { if (record && id) idConRecord.current = id }, [record, id])
+  const [syncedId, setSyncedId] = useState<string | null>(null)
+  const syncChecked = syncedId === (id ?? '')
   useEffect(() => {
-    if (!record && id && !hadRecord.current) navigate('/preventivos', { replace: true })
-  }, [record, id, navigate])
+    if (!id) { setSyncedId(''); return }
+    let cancelled = false
+    Promise.resolve(syncOne(id)).catch(() => {}).finally(() => { if (!cancelled) setSyncedId(id) })
+    return () => { cancelled = true }
+  }, [id, syncOne])
+  useEffect(() => {
+    if (syncChecked && !record && id && idConRecord.current !== id) navigate('/preventivos', { replace: true })
+  }, [syncChecked, record, id, navigate])
 
-  // Trae la versión del servidor al abrir (deep-link / recarga); no pisa
-  // ediciones locales más nuevas (ver `mergeFromServer` en el store).
-  useEffect(() => { if (id) syncOne(id) }, [id, syncOne])
+  // (La versión del servidor se trae en el efecto de arriba — no pisa ediciones
+  // locales más nuevas, ver `mergeFromServer` en el store.)
 
   if (!record) {
     return <div className="text-slate-400 text-center py-16">Levantamiento no encontrado.</div>

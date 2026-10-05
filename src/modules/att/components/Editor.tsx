@@ -68,12 +68,18 @@ export function Editor() {
   // segundos después de dejar de tipear — justo cuando resuelve el primer
   // guardado). Se puentea con el último record válido conocido mientras la
   // URL se pone al día, en vez de desmontar todo el árbol.
-  const hadRecord = useRef(false)
+  //
+  // El puente vale SOLO para el id de URL con el que se capturó ese record: si
+  // el id de la URL cambia a otro (ej. se pega el enlace de otra OTT con el
+  // editor ya abierto), el record anterior no se puede seguir mostrando — antes
+  // aparecía la OTT que estaba abierta en vez de la pedida, y para un id que no
+  // existe en ATT (o de otra área) se quedaba así para siempre.
   const lastRecord = useRef<AttRecord | null>(null)
+  const lastRecordUrlId = useRef<string | null>(null)
   useEffect(() => {
-    if (liveRecord) { hadRecord.current = true; lastRecord.current = liveRecord }
-  }, [liveRecord])
-  const record = liveRecord ?? (hadRecord.current ? lastRecord.current : null)
+    if (liveRecord) { lastRecord.current = liveRecord; lastRecordUrlId.current = id ?? null }
+  }, [liveRecord, id])
+  const record = liveRecord ?? (lastRecordUrlId.current === (id ?? null) ? lastRecord.current : null)
   // Por la misma carrera: las secciones de abajo reciben `record.id`, no el
   // `id` crudo de la URL — cada una hace su propia búsqueda en el store
   // (`records[recordId]`) y tiene su propio `if (!record) return null`; con
@@ -102,16 +108,19 @@ export function Editor() {
   // termine antes de decidir "no existe": bug real encontrado al abrir un
   // cerrado desde el Calendario — redirigía a la lista antes de que
   // syncOne alcanzara a traerlo del servidor.
-  const [syncChecked, setSyncChecked] = useState(false)
+  // Se guarda el id ya consultado (no un booleano): al cambiar el id de la URL
+  // el chequeo anterior no vale para el nuevo.
+  const [syncedId, setSyncedId] = useState<string | null>(null)
+  const syncChecked = syncedId === (id ?? '')
   useEffect(() => {
-    if (!id) { setSyncChecked(true); return }
+    if (!id) { setSyncedId(''); return }
     let cancelled = false
-    syncOne(id).finally(() => { if (!cancelled) setSyncChecked(true) })
+    syncOne(id).finally(() => { if (!cancelled) setSyncedId(id) })
     return () => { cancelled = true }
   }, [id, syncOne])
 
   useEffect(() => {
-    if (syncChecked && !record && id && !hadRecord.current) navigate(volverA, { replace: true })
+    if (syncChecked && !record && id) navigate(volverA, { replace: true })
   }, [syncChecked, record, id, navigate, volverA])
 
   // La OTT es el identificador principal de un informe ATT — que se vea en

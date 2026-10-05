@@ -287,10 +287,14 @@ export const preventivoRepo = {
   /** Carga un levantamiento por id de project. `null` si no existe o la RLS lo oculta. */
   async load(id: string): Promise<Preventivo | null> {
     if (!isUuid(id)) return null
+    // Solo del tipo de este módulo: un enlace con el id de otro tipo de proyecto
+    // (ej. un preventivo en /att/…) no debe abrirse como si fuera de este.
     const { data, error } = await supabase
       .from('projects')
       .select(SELECT_NESTED)
       .eq('id', id)
+      .eq('area', 'OyM')
+      .eq('subarea', 'preventivo')
       .maybeSingle()
     if (error) throw new Error(`projects.load: ${error.message}`)
     return data ? rowToRecord(data as ProjectRow) : null
