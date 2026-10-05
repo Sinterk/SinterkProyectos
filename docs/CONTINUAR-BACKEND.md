@@ -28,10 +28,10 @@
   21. ~~Enlace entre Preventivos e Incidencias~~ — **hecho, v2.30/v2.31** más abajo: `0075` corrida y tablas sincronizadas (confirmado por Andrés el 05-10). **Falta correr `0076_incidencia_preventivo_datos.sql`** (ingeniero fijo + dirección = nombre del cuadrante).
   22. **Asignación de material en salidas preventivas (material poco específico)** — se propusieron 3 formas (02-10): usar las Asignaciones genéricas que ya existen, sumarles un "Kit preventivo" del catálogo de Paquetes, o un presupuesto estimado por ronda/cuadrante. Falta que Andrés elija.
   23. **Borrar 2 filas de prueba que dejó una verificación (05-10)**: un preventivo `ba01cf97-8e4c-4882-8082-852f7dfddea4` y una incidencia `22092956-e86a-4d34-b830-73525cc22781` (ambas con código vacío, quedaron "Cerradas" — el rol invitado no puede borrar). En el SQL Editor: `delete from projects where id in ('ba01cf97-8e4c-4882-8082-852f7dfddea4', '22092956-e86a-4d34-b830-73525cc22781');` (junto con la del pendiente #10).
-  24. **Correr `supabase/migrations/0077_ferreteria_normalizar_lote_fisico.sql`** (normaliza el físico de Ferretería a lote `Físico`) — ver la entrada 0077 más abajo. Al terminar, la consulta final debe dar 0/0/0.
+  24. ~~Correr `supabase/migrations/0077_ferreteria_normalizar_lote_fisico.sql`~~ — **corrida y confirmada por Andrés el 05-10: la consulta final dio 0/0/0.** Ver la entrada 0077 más abajo.
 - **Deploy**: el push del 26-08 a `main` falló al desplegar por una interrupción real de GitHub Actions/Pages (confirmada en githubstatus.com, no un problema del repo) — falta reintentar el workflow ("Re-run all jobs") una vez que GitHub se recupere. Fuera de eso, `.github/workflows/deploy.yml` publica bien en cada push a `main`.
 
-## 0077 — Normalizar el lote físico de Ferretería (SQL pendiente de correr)
+## 0077 — Normalizar el lote físico de Ferretería (corrida, 0/0/0)
 
 Andrés pidió el SQL para normalizar los lotes de Ferretería tras el problema de v2.32.
 
