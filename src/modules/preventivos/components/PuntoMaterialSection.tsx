@@ -9,6 +9,7 @@ import type { MemberProfile } from '@/lib/adminRepo'
 import { useAuth } from '@/lib/auth'
 import { nanoid } from '@/core/utils/nanoid'
 import { reemplazarLineaPorVarias } from '@/core/utils/lineas'
+import { esTipoFerreteria, LOTE_FISICO_FERRETERIA } from '@/lib/inventario/esFerreteria'
 import { getResumenProyecto, listMateriales, registrarMovimiento } from '@/lib/inventario/inventarioRepo'
 import type { Material, ResumenMaterialProyecto } from '@/lib/inventario/types'
 import { MaterialSelect } from '@/ui/MaterialSelect'
@@ -90,8 +91,13 @@ export function PuntoMaterialSection({ projectId, puntoId }: Props) {
     try {
       let algunaRequiereRevision = false
       for (const l of lineasValidas) {
+        // Ferretería no distingue lote físico: va siempre en el lote fijo
+        // 'Físico', igual que al cargarla desde Logística. Sin esto quedaba en
+        // 'SinDefinir' y se veía como una fila aparte del mismo material.
+        const esFerreteria = esTipoFerreteria(materiales.find((m) => m.id === l.materialId)?.tipo?.nombre)
         const r = await registrarMovimiento({
           tipoUI: 'instalado', materialId: l.materialId, cantidad: Number(l.cantidad), projectId, puntoId, tecnicoUserId,
+          lote: esFerreteria ? LOTE_FISICO_FERRETERIA : undefined,
         })
         if (r.requiereRevision) algunaRequiereRevision = true
       }

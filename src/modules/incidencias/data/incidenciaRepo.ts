@@ -98,11 +98,13 @@ interface FotoRow {
   orden: number
 }
 
-// `preventivo`: cuadrante del que nació la incidencia (0075). El hint
-// `!preventivo_id` desambigua el self-join (projects también tiene
-// `copied_from_id` hacia sí misma).
+// `preventivo`: cuadrante del que nació la incidencia (0075). Hint por la
+// COLUMNA (`preventivo_id`, sin `projects!`): así PostgREST la lee como
+// many-to-one (un objeto). Con `projects!preventivo_id` lo leía al revés
+// (las incidencias que apuntan a esta fila) y devolvía [] — por eso comuna,
+// cuadrante y semana no aparecían.
 const SELECT_BASE = '*, incidencia_fotos(*)'
-const SELECT_NESTED = `${SELECT_BASE}, preventivo:projects!preventivo_id(ott, comuna, informes_preventivo(semana, fecha))`
+const SELECT_NESTED = `${SELECT_BASE}, preventivo:preventivo_id(ott, comuna, informes_preventivo(semana, fecha))`
 
 // Las migraciones las corre Andrés a mano y pueden ir un paso detrás del
 // deploy: si 0075 (preventivo_id) todavía no está en la BD, la consulta con el

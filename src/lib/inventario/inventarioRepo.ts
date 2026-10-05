@@ -1253,3 +1253,11 @@ export async function importarFilasSapAConteo(
   }
   return resultado
 }
+
+/** Nombre de cada punto (de un cuadrante de Preventivos) por id — para rotular movimientos cuando la pantalla no recibió la lista de puntos (ej. una incidencia enlazada a un cuadrante). */
+export async function listNombresPuntos(ids: string[]): Promise<Record<string, string>> {
+  if (ids.length === 0) return {}
+  const { data, error } = await supabase.from('puntos').select('id, nombre').in('id', ids)
+  if (error) throw new Error(`puntos.nombres: ${error.message}`)
+  return Object.fromEntries((data as { id: string; nombre: string | null }[]).map((p) => [p.id, p.nombre?.trim() || 'Punto sin nombre']))
+}

@@ -11,7 +11,7 @@ import { adminRepo } from '@/lib/adminRepo'
 import type { MemberProfile } from '@/lib/adminRepo'
 import type { Profile } from '@/lib/auth'
 import { useAuth, ROL_LABELS } from '@/lib/auth'
-import { anularMovimiento, getResumenProyecto, listMateriales, listMovimientos, listObservaciones, listUbicaciones, TIPO_LABELS_MOV } from '@/lib/inventario/inventarioRepo'
+import { anularMovimiento, getResumenProyecto, listMateriales, listMovimientos, listNombresPuntos, listObservaciones, listUbicaciones, TIPO_LABELS_MOV } from '@/lib/inventario/inventarioRepo'
 import type { Movimiento } from '@/lib/inventario/types'
 import { AsignacionesForm } from '@/modules/inventario/components/AsignacionesForm'
 import { generarHojaLogistica } from './generarHojaLogistica'
@@ -67,7 +67,7 @@ export function LogisticaTab({
       <ResumenProyectoTable projectId={projectId} area={area} puntos={puntos} agregarPuntos={agregarPuntos} membersVersion={membersVersion}
         ott={ott} direccion={direccion} fechaInicio={fechaInicio} />
       {!isTecnico && area === 'OyM' && <AsignacionMaterialSection />}
-      {!isTecnico && <MovimientosProyectoSection projectId={projectId} />}
+      {!isTecnico && <MovimientosProyectoSection projectId={projectId} puntos={puntos} />}
       {incluirComentarios && <ObservacionesSection projectId={projectId} />}
     </div>
   )
@@ -278,7 +278,7 @@ function EquipoSection({ projectId, onMembersChanged }: { projectId: string; onM
  * (MovimientosTab). Colapsado por defecto: es una herramienta de auditoría,
  * no algo que se consulte en cada entrada a la OTT.
  */
-function MovimientosProyectoSection({ projectId }: { projectId: string }) {
+function MovimientosProyectoSection({ projectId, puntos }: { projectId: string; puntos?: Punto[] }) {
   const rol = useAuth((s) => s.profile?.rol)
   const puedeAnular = rol === 'admin' || rol === 'jp' || rol === 'log'
   const [abierto, setAbierto] = useState(false)
@@ -286,8 +286,19 @@ function MovimientosProyectoSection({ projectId }: { projectId: string }) {
   const [error, setError] = useState<string | null>(null)
   const [anulando, setAnulando] = useState<string | null>(null)
 
+  // Nombre de cada punto para rotular el movimiento: de la lista que ya trae
+  // la pantalla (Preventivos) o, si no la hay (incidencia enlazada a un
+  // cuadrante), consultándolos por id.
+  const [nombresPunto, setNombresPunto] = useState<Record<string, string>>({})
+
   async function reload() {
-    try { setRows(await listMovimientos({ projectId })) }
+    try {
+      const movs = await listMovimientos({ projectId })
+      setRows(movs)
+      const conocidos = new Set((puntos ?? []).map((p) => p.id))
+      const faltan = [...new Set(movs.map((m) => m.puntoId).filter((id): id is string => !!id && !conocidos.has(id)))]
+      if (faltan.length > 0) setNombresPunto(await listNombresPuntos(faltan).catch(() => ({})))
+    }
     catch (err) { setError(err instanceof Error ? err.message : String(err)) }
   }
   useEffect(() => { if (abierto && rows === null) reload() /* eslint-disable-next-line react-hooks/exhaustive-deps */ }, [abierto])
@@ -309,6 +320,10 @@ function MovimientosProyectoSection({ projectId }: { projectId: string }) {
       setAnulando(null)
     }
   }
+
+  // La columna Punto solo aparece si el proyecto maneja puntos (Preventivos) o
+  // algún movimiento ya trae uno (incidencia enlazada a un cuadrante).
+  const mostrarPunto = !!puntos || (rows ?? []).some((m) => !!m.puntoId)
 
   return (
     <div className="bg-slate-800 rounded-2xl border border-slate-700 p-4 space-y-3">
@@ -332,6 +347,7 @@ function MovimientosProyectoSection({ projectId }: { projectId: string }) {
                     <th className="px-2 py-1.5 font-medium">Tipo</th>
                     <th className="px-2 py-1.5 font-medium">SKU</th>
                     <th className="px-2 py-1.5 font-medium">Lote</th>
+                    {mostrarPunto && <th className="px-2 py-1.5 font-medium">Punto</th>}
                     <th className="px-2 py-1.5 font-medium text-right">Cantidad</th>
                     <th className="px-2 py-1.5 font-medium">Bodega</th>
                     <th className="px-2 py-1.5 font-medium">Usuario</th>
@@ -349,6 +365,11 @@ function MovimientosProyectoSection({ projectId }: { projectId: string }) {
                         {m.lote}
                         {m.soloFisico && <span title="Compra propia — no toca el stock digital de SAP" className="ml-1 text-amber-400">🏷️</span>}
                       </td>
+                      {mostrarPunto && (
+                        <td className="px-2 py-2 text-slate-300 whitespace-nowrap">
+                          {m.puntoId ? (puntos?.find((p) => p.id === m.puntoId)?.nombre || nombresPunto[m.puntoId] || 'Punto') : <span className="text-slate-500">General</span>}
+                        </td>
+                      )}
                       <td className="px-2 py-2 text-right font-semibold text-white whitespace-nowrap">{m.cantidad}</td>
                       <td className="px-2 py-2 text-slate-300 whitespace-nowrap">
                         {m.ubicacionDestinoNombre ? `${m.ubicacionNombre} → ${m.ubicacionDestinoNombre}` : m.ubicacionNombre}

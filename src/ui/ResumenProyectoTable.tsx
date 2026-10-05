@@ -126,20 +126,26 @@ const TODOS_LOS_PUNTOS = ''
  * sumando todo — incluido Instalado, que ahora se registra por punto (ver
  * PuntoMaterialSection) pero se ve como total acá por defecto. `puntoId`
  * queda null en el resultado: ya no representa un punto único.
+ *
+ * Ferretería (sin lote físico distinguible, ver esFerreteria.ts) va siempre
+ * en UNA sola fila por material: antes, lo cargado "en general" quedaba en
+ * el lote 'Físico' y lo cargado desde un punto en 'SinDefinir', y la vista
+ * "todos los puntos" lo mostraba como dos filas (pedido de Andrés).
  */
-function agregarPorMaterial(rows: ResumenMaterialProyecto[]): ResumenMaterialProyecto[] {
+function agregarPorMaterial(rows: ResumenMaterialProyecto[], esFerreteria: (materialId: string) => boolean): ResumenMaterialProyecto[] {
   const map = new Map<string, ResumenMaterialProyecto>()
   // Al colapsar varios puntos en una fila, la bodega "real" ya no es una
   // sola — se toma la del punto con más Entregado como más representativa
   // (mismo criterio que dentro de un punto: la de mayor cantidad).
   const mejorEntregada = new Map<string, number>()
   for (const r of rows) {
-    const k = `${r.materialId}|${r.lote}`
+    const lote = esFerreteria(r.materialId) ? LOTE_FISICO_FERRETERIA : r.lote
+    const k = `${r.materialId}|${lote}`
     let acc = map.get(k)
     if (!acc) {
       acc = {
         materialId: r.materialId, materialSku: r.materialSku, materialDescripcion: r.materialDescripcion,
-        lote: r.lote, puntoId: null,
+        lote, puntoId: null,
         cantSolicitada: 0, cantEntregada: 0, cantInstalada: 0, cantDevuelta: 0, cantRezagada: 0, cantRebajada: 0,
         cantMerma: 0, cantTransito: 0, ubicacionBodegaId: null,
       }
@@ -227,13 +233,13 @@ export function ResumenProyectoTable({ projectId, area, puntos, agregarPuntos, r
   // Incidencias) es igual a `rows`. guardarCambios debe iterar ESTO, no
   // `rows` crudo, porque una fila agregada (puntoId null) puede no existir
   // tal cual en `rows` si todo lo entregado ya tiene punto.
+  const [materiales, setMateriales] = useState<Material[]>([])
   const displayRows = rows === null ? [] : (
-    mostrandoTodosLosPuntos ? agregarPorMaterial(rows)
+    mostrandoTodosLosPuntos ? agregarPorMaterial(rows, (id) => esTipoFerreteria(materiales.find((m) => m.id === id)?.tipo?.nombre))
       : puntos ? rows.filter((r) => r.puntoId === puntoFiltro)
       : rows
   )
   const editableCamposVista: Campo[] = mostrandoTodosLosPuntos ? editableCampos.filter((c) => c !== 'cantInstalada') : editableCampos
-  const [materiales, setMateriales] = useState<Material[]>([])
   const [members, setMembers] = useState<MemberProfile[]>([])
   const [bodegas, setBodegas] = useState<Ubicacion[]>([])
   // Solo OyM: stock propio de cada técnico asignado, para mostrar "(cantidad)"
@@ -352,8 +358,15 @@ export function ResumenProyectoTable({ projectId, area, puntos, agregarPuntos, r
     })
   }
 
+  // Con un punto elegido en el selector "Punto: …", el material nuevo nace en
+  // ESE punto (antes quedaba "Sin punto" = general, aunque se estuviera
+  // viendo un punto). En la vista "Todos" sigue sin punto.
+  const puntoActual = puntos && puntoFiltro !== TODOS_LOS_PUNTOS ? puntoFiltro : null
   function agregarFilaNueva() {
-    setNuevasFilas((prev) => [...prev, filaVacia(members[0]?.id ?? '', area === 'OyM' ? origenTecnicoValue(members[0]?.id ?? '') : defaultBodegaId)])
+    setNuevasFilas((prev) => [...prev, {
+      ...filaVacia(members[0]?.id ?? '', area === 'OyM' ? origenTecnicoValue(members[0]?.id ?? '') : defaultBodegaId),
+      puntoId: puntoActual,
+    }])
   }
   function actualizarFilaNueva(localId: string, patch: Partial<Pick<NuevaFila, 'materialId' | 'lote' | 'puntoId' | 'tecnicoUserId' | 'ubicacionBodegaId' | 'nota'>>) {
     setNuevasFilas((prev) => prev.map((f) => (f.localId === localId ? { ...f, ...patch } : f)))
@@ -420,7 +433,7 @@ export function ResumenProyectoTable({ projectId, area, puntos, agregarPuntos, r
    */
   async function handlePaqueteSeleccionado(fila: NuevaFila, materialIds: string[]) {
     if (materialIds.length === 0) return
-    const nuevas = materialIds.map((_, i) => (i === 0 ? fila : filaVacia(fila.tecnicoUserId, fila.ubicacionBodegaId)))
+    const nuevas = materialIds.map((_, i) => (i === 0 ? fila : { ...filaVacia(fila.tecnicoUserId, fila.ubicacionBodegaId), puntoId: fila.puntoId }))
     setNuevasFilas((prev) => reemplazarLineaPorVarias(prev, fila.localId, nuevas))
     for (let i = 0; i < materialIds.length; i++) {
       await handleMaterialSeleccionado(nuevas[i], materialIds[i])
