@@ -28,7 +28,16 @@
   21. ~~Enlace entre Preventivos e Incidencias~~ — **hecho, v2.30/v2.31** más abajo: `0075` corrida y tablas sincronizadas (confirmado por Andrés el 05-10). **Falta correr `0076_incidencia_preventivo_datos.sql`** (ingeniero fijo + dirección = nombre del cuadrante).
   22. **Asignación de material en salidas preventivas (material poco específico)** — se propusieron 3 formas (02-10): usar las Asignaciones genéricas que ya existen, sumarles un "Kit preventivo" del catálogo de Paquetes, o un presupuesto estimado por ronda/cuadrante. Falta que Andrés elija.
   23. **Borrar 2 filas de prueba que dejó una verificación (05-10)**: un preventivo `ba01cf97-8e4c-4882-8082-852f7dfddea4` y una incidencia `22092956-e86a-4d34-b830-73525cc22781` (ambas con código vacío, quedaron "Cerradas" — el rol invitado no puede borrar). En el SQL Editor: `delete from projects where id in ('ba01cf97-8e4c-4882-8082-852f7dfddea4', '22092956-e86a-4d34-b830-73525cc22781');` (junto con la del pendiente #10).
+  24. **Correr `supabase/migrations/0077_ferreteria_normalizar_lote_fisico.sql`** (normaliza el físico de Ferretería a lote `Físico`) — ver la entrada 0077 más abajo. Al terminar, la consulta final debe dar 0/0/0.
 - **Deploy**: el push del 26-08 a `main` falló al desplegar por una interrupción real de GitHub Actions/Pages (confirmada en githubstatus.com, no un problema del repo) — falta reintentar el workflow ("Re-run all jobs") una vez que GitHub se recupere. Fuera de eso, `.github/workflows/deploy.yml` publica bien en cada push a `main`.
+
+## 0077 — Normalizar el lote físico de Ferretería (SQL pendiente de correr)
+
+Andrés pidió el SQL para normalizar los lotes de Ferretería tras el problema de v2.32.
+
+- **Problema específico**: `PuntoMaterialSection` (tarjeta de un punto en Preventivos) registraba el Instalado de Ferretería sin lote → la base lo guardaba en `SinDefinir` en vez del lote físico fijo `Físico`. Efecto: stock del técnico en el lote equivocado (negativo en `SinDefinir`, su `Físico` intacto) y la vista del proyecto mostraba el mismo material en dos filas. El cliente ya se corrigió (v2.32); la migración limpia lo ya guardado.
+- **Lectura previa a la base (solo lectura, 05-10)**: 9 filas de `stock` con físico fuera de `Físico` (7 en STK, 1 en C088, 1 técnico con −1); 0 filas de `proyecto_materiales`; 3 movimientos `instalado` huérfanos (de las pruebas del 05-10, su proyecto ya no existe). Las 8 filas de bodega no vienen de ningún movimiento (probablemente Conteos/cargas masivas) — si reaparecen, mirar el flujo de Conteo para Ferretería.
+- **`0077`**: mueve SOLO el físico a `Físico` (stock y proyecto_materiales; el digital y `cant_rebajada` no se tocan) y normaliza el lote de los movimientos físicos de tipo salida/instalado/merma/traslado/ajuste/solicitud. **No** reutiliza `traspasar_fisico_ferreteria_a_lote_unico` (0065) a propósito: esa función reescribe también las Entradas, y desde 0066 la Entrada de Ferretería guarda en el movimiento el lote REAL de SAP (18 hoy) que anular/corregir usan para revertir el digital — reescribirlo los rompería. Idempotente, sin tablas temporales.
 
 ## v2.32 — Fix: datos del cuadrante en la incidencia + puntos en Logística de Preventivos
 
