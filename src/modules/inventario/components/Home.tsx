@@ -1065,7 +1065,7 @@ const AREA_LABELS: Record<ConsumoArea, string> = {
 }
 const TIPO_RESOLUCION_LABELS: Record<ResolucionTipo, string> = {
   consumo: 'Consumo', devolucion: 'Devolución', traspaso: 'Traspaso', reasignacion: 'Reasignar a técnico',
-  agregar: 'Agregar', ignorar: 'Ignorar',
+  agregar: 'Agregar', ignorar: 'Reconocida',
 }
 
 /**
@@ -1080,7 +1080,7 @@ function EventosAbiertosSection({ eventos, onVerConteo, onResolved }: {
 }) {
   return (
     <div className="bg-amber-950/40 border border-amber-700/50 rounded-2xl p-4 space-y-2">
-      <p className="text-sm font-semibold text-amber-300">⚠️ {eventos.length} diferencia(s) por resolver</p>
+      <p className="text-sm font-semibold text-amber-300">⚠️ {eventos.length} diferencia(s) por reconocer</p>
       <div className="space-y-1.5">
         {eventos.map((e) => (
           <EventoCard key={e.id} evento={e} onResolved={onResolved} onVerConteo={onVerConteo} mostrarUbicacion />
@@ -1282,11 +1282,11 @@ function EventoCard({ evento, onResolved, onVerConteo, mostrarUbicacion }: {
 
       {!resuelto && (
         showForm ? (
-          <ResolverEventoForm evento={evento} restante={restante}
+          <ReconocerEventoForm evento={evento} restante={restante}
             onDone={() => { setShowForm(false); onResolved() }} onCancel={() => setShowForm(false)} />
         ) : (
           <button type="button" onClick={() => setShowForm(true)} className="text-xs text-amber-400 font-semibold">
-            Resolver{evento.cantidadResuelta > 0 ? ` (quedan ${restante})` : ''} →
+            Reconocer y dejar la causa →
           </button>
         )
       )}
@@ -1295,12 +1295,20 @@ function EventoCard({ evento, onResolved, onVerConteo, mostrarUbicacion }: {
 }
 
 function ResolucionRow({ r }: { r: EventoResolucion }) {
+  // Las diferencias nuevas solo se reconocen ('ignorar' por dentro): se muestra la causa.
+  // Las resoluciones antiguas (consumo, devolución, etc.) siguen mostrándose como estaban.
+  if (r.tipo === 'ignorar') {
+    return (
+      <p className="text-[11px] text-slate-400">
+        <span className="text-slate-300 font-medium">Reconocida</span> · {r.cantidad}
+        {' · '}<span className="italic">{r.nota ? `Causa: ${r.nota}` : 'Sin causa anotada'}</span>
+      </p>
+    )
+  }
   const detalle = r.tipo === 'consumo'
     ? (r.area === 'perdida' ? 'Pérdida' : `${AREA_LABELS[r.area ?? 'perdida']} · ${r.projectOtt ?? '—'}${r.tecnicoNombre ? ` · ${r.tecnicoNombre}` : ''}`)
     : r.tipo === 'agregar'
     ? 'Sumado directo (sin origen) — ya lo tenía sin contabilizar'
-    : r.tipo === 'ignorar'
-    ? 'Sin efecto sobre el stock'
     : (r.tecnicoNombre ? `Técnico: ${r.tecnicoNombre}` : `Bodega: ${r.ubicacionNombre}`)
   return (
     <p className="text-[11px] text-slate-400">
@@ -1310,87 +1318,26 @@ function ResolucionRow({ r }: { r: EventoResolucion }) {
   )
 }
 
-function ResolverEventoForm({ evento, restante, onDone, onCancel }: {
+/**
+ * Una diferencia de Conteo (o una instalación forzada de técnico) ya no se
+ * "resuelve" de varias formas: solo se RECONOCE y se deja la causa en una
+ * nota (decisión de Andrés, 05-10). No mueve stock — el número que dejó el
+ * conteo queda como el stock actual. Por dentro es la resolución 'ignorar'
+ * (0061) por todo lo que falta, con nota obligatoria; no hace falta migración.
+ */
+function ReconocerEventoForm({ evento, restante, onDone, onCancel }: {
   evento: EventoInventario; restante: number; onDone: () => void; onCancel: () => void
 }) {
-  // De técnico (instalación forzada): Consumo/Devolución/Reasignación/Agregar,
-  // nunca Traspaso (el material ya se instaló, no está "por encontrar" en
-  // otro lado). De bodega (conteo): igual que siempre, según el signo de la
-  // diferencia (Agregar no aplica ahí — ver 0042_agregar_stock_tecnico.sql).
-  // Ignorar va al final de las dos listas a propósito: no cambia cuál tipo
-  // queda seleccionado por defecto (tiposDisponibles[0]), que sigue siendo
-  // el más común para cada caso.
-  const tiposDisponibles: ResolucionTipo[] = evento.ubicacionTipo === 'tecnico'
-    ? ['consumo', 'devolucion', 'reasignacion', 'agregar', 'ignorar']
-    : (evento.diferencia < 0 ? ['consumo', 'traspaso', 'ignorar'] : ['devolucion', 'ignorar'])
-  const [tipo, setTipo] = useState<ResolucionTipo>(tiposDisponibles[0])
-  const [cantidad, setCantidad] = useState(String(restante))
   const [nota, setNota] = useState('')
   const [busy, setBusy] = useState(false)
   const [error, setError] = useState<string | null>(null)
 
-  // Consumo — si el evento ya tiene un movimiento real asociado (instalación
-  // forzada), ese proyecto ya quedó acreditado: solo cabe "Pérdida" acá, para
-  // no duplicar el instalado en Logística/KPI.
-  const soloPerdida = evento.movimientoId !== null
-  const [area, setArea] = useState<ConsumoArea>('perdida')
-  const [projectId, setProjectId] = useState('')
-  const [proyectos, setProyectos] = useState<ProjectSummary[]>([])
-  // Devolución/Traspaso: origen o destino. Consumo: técnico opcional (quién lo usó, si se sabe).
-  const [modo, setModo] = useState<'tecnico' | 'bodega'>('tecnico')
-  const [tecnicoId, setTecnicoId] = useState('')
-  const [ubicacionId, setUbicacionId] = useState('')
-  const [tecnicos, setTecnicos] = useState<Profile[]>([])
-  const [bodegas, setBodegas] = useState<Ubicacion[]>([])
-  // Reasignación: solo técnicos del mismo proyecto que causó la instalación.
-  const [miembrosProyecto, setMiembrosProyecto] = useState<MemberProfile[]>([])
-  const [tecnicoReasignarId, setTecnicoReasignarId] = useState('')
-
-  useEffect(() => {
-    adminRepo.listActiveProjects().then(setProyectos).catch(() => {})
-    adminRepo.listProfiles().then((all) => setTecnicos(all.filter((p) => p.activo && (p.rol === 'tecnico' || p.rol === 'log')))).catch(() => {})
-    listUbicaciones({ tipo: 'bodega' }).then(setBodegas).catch(() => {})
-    if (evento.origenMovimiento?.projectId) {
-      adminRepo.listMembers(evento.origenMovimiento.projectId).then(setMiembrosProyecto).catch(() => {})
-    }
-  }, [evento.origenMovimiento?.projectId])
-
-  const proyectosFiltrados = useMemo(() => {
-    if (area === 'ott') return proyectos.filter((p) => p.area === 'ATT')
-    if (area === 'inc') return proyectos.filter((p) => p.area === 'OyM' && p.subarea === 'incidencia')
-    if (area === 'preventivos') return proyectos.filter((p) => p.area === 'OyM' && p.subarea === 'preventivo')
-    return []
-  }, [area, proyectos])
-
-  const bodegasFiltradas = useMemo(() => bodegas.filter((b) => b.id !== evento.ubicacionId), [bodegas, evento.ubicacionId])
-  // Nunca ofrecer al mismo técnico que ya tiene el evento como origen/destino/reasignación.
-  const tecnicosFiltrados = useMemo(() => tecnicos.filter((t) => t.id !== evento.origenMovimiento?.tecnicoUserId), [tecnicos, evento.origenMovimiento])
-  const miembrosFiltrados = useMemo(() => miembrosProyecto.filter((m) => m.id !== evento.origenMovimiento?.tecnicoUserId), [miembrosProyecto, evento.origenMovimiento])
-
   async function submit() {
-    const n = Number(cantidad)
-    if (!cantidad || !(n > 0) || n > restante) { setError(`Cantidad inválida (máximo ${restante})`); return }
-    if (tipo === 'consumo' && !soloPerdida && area !== 'perdida' && !projectId) { setError('Falta elegir el proyecto'); return }
-    if ((tipo === 'devolucion' || tipo === 'traspaso') && modo === 'tecnico' && !tecnicoId) { setError('Falta elegir el técnico'); return }
-    if ((tipo === 'devolucion' || tipo === 'traspaso') && modo === 'bodega' && !ubicacionId) { setError('Falta elegir la bodega'); return }
-    if (tipo === 'reasignacion' && !tecnicoReasignarId) { setError('Falta elegir el técnico correcto'); return }
-    // A diferencia de las demás, acá la nota es toda la documentación que
-    // queda — sin campos de proyecto/técnico/bodega que expliquen qué pasó.
-    if (tipo === 'ignorar' && !nota.trim()) { setError('Ignorar requiere una nota explicando por qué'); return }
-
+    if (!nota.trim()) { setError('Escribe la causa de la diferencia'); return }
     setBusy(true)
     setError(null)
     try {
-      await resolverEvento(evento.id, {
-        tipo, cantidad: n, nota: nota.trim() || undefined,
-        area: tipo === 'consumo' ? (soloPerdida ? 'perdida' : area) : undefined,
-        projectId: tipo === 'consumo' && !soloPerdida && area !== 'perdida' ? projectId : undefined,
-        tecnicoUserId: tipo === 'consumo' ? (tecnicoId || undefined)
-          : tipo === 'reasignacion' ? tecnicoReasignarId
-          : tipo === 'agregar' || tipo === 'ignorar' ? undefined
-          : modo === 'tecnico' ? tecnicoId : undefined,
-        ubicacionId: (tipo === 'devolucion' || tipo === 'traspaso') && modo === 'bodega' ? ubicacionId : undefined,
-      })
+      await resolverEvento(evento.id, { tipo: 'ignorar', cantidad: restante, nota: nota.trim() })
       onDone()
     } catch (err) {
       setError(err instanceof Error ? err.message : String(err))
@@ -1399,127 +1346,21 @@ function ResolverEventoForm({ evento, restante, onDone, onCancel }: {
     }
   }
 
-  const selectCls = 'w-full bg-slate-700 text-white text-sm rounded-lg px-2 py-1.5 border border-slate-600 focus:border-brand-500 focus:outline-none'
-
   return (
     <div className="bg-slate-700/50 rounded-xl p-3 space-y-2">
-      <div className="flex gap-1.5">
-        {tiposDisponibles.map((t) => (
-          <button key={t} type="button" onClick={() => setTipo(t)}
-            className={`flex-1 text-xs font-semibold py-1.5 rounded-lg ${tipo === t ? 'bg-brand-600 text-white' : 'bg-slate-700 text-slate-300'}`}>
-            {TIPO_RESOLUCION_LABELS[t]}
-          </button>
-        ))}
-      </div>
-
-      <label className="block space-y-1">
-        <span className="text-[11px] text-slate-400">Cantidad (máx. {restante})</span>
-        <input type="number" min="0" max={restante} step="any" value={cantidad} onChange={(e) => setCantidad(e.target.value)}
-          className={selectCls} />
-      </label>
-
-      {tipo === 'consumo' && (
-        soloPerdida ? (
-          <p className="text-[11px] text-slate-400 italic">
-            Solo Pérdida — el proyecto de esta instalación ya quedó acreditado como instalado, no se puede elegir otro sin duplicarlo.
-          </p>
-        ) : (
-          <>
-            <label className="block space-y-1">
-              <span className="text-[11px] text-slate-400">Área</span>
-              <select value={area} onChange={(e) => { setArea(e.target.value as ConsumoArea); setProjectId('') }} className={selectCls}>
-                <option value="perdida">Pérdida</option>
-                <option value="ott">ATT (OTT)</option>
-                <option value="inc">Incidencia</option>
-                <option value="preventivos">Preventivo</option>
-              </select>
-            </label>
-            {area !== 'perdida' && (
-              <>
-                <label className="block space-y-1">
-                  <span className="text-[11px] text-slate-400">Proyecto</span>
-                  <select value={projectId} onChange={(e) => setProjectId(e.target.value)} className={selectCls}>
-                    <option value="">Elegir proyecto…</option>
-                    {proyectosFiltrados.map((p) => (
-                      <option key={p.id} value={p.id}>{p.ott || 'Sin código'}{p.nombreProyecto ? ` — ${p.nombreProyecto}` : ''}</option>
-                    ))}
-                  </select>
-                </label>
-                <label className="block space-y-1">
-                  <span className="text-[11px] text-slate-400">Técnico (opcional)</span>
-                  <select value={tecnicoId} onChange={(e) => setTecnicoId(e.target.value)} className={selectCls}>
-                    <option value="">Sin especificar…</option>
-                    {tecnicosFiltrados.map((t) => <option key={t.id} value={t.id}>{t.nombre?.trim() || t.email}</option>)}
-                  </select>
-                </label>
-              </>
-            )}
-          </>
-        )
-      )}
-
-      {(tipo === 'devolucion' || tipo === 'traspaso') && (
-        <>
-          <div className="flex gap-2">
-            <button type="button" onClick={() => setModo('tecnico')}
-              className={`flex-1 text-xs font-semibold py-1.5 rounded-lg ${modo === 'tecnico' ? 'bg-brand-600 text-white' : 'bg-slate-700 text-slate-300'}`}>
-              Técnico
-            </button>
-            <button type="button" onClick={() => setModo('bodega')}
-              className={`flex-1 text-xs font-semibold py-1.5 rounded-lg ${modo === 'bodega' ? 'bg-brand-600 text-white' : 'bg-slate-700 text-slate-300'}`}>
-              Bodega
-            </button>
-          </div>
-          {modo === 'tecnico' ? (
-            <select value={tecnicoId} onChange={(e) => setTecnicoId(e.target.value)} className={selectCls}>
-              <option value="">Elegir técnico…</option>
-              {tecnicosFiltrados.map((t) => <option key={t.id} value={t.id}>{t.nombre?.trim() || t.email}</option>)}
-            </select>
-          ) : (
-            <select value={ubicacionId} onChange={(e) => setUbicacionId(e.target.value)} className={selectCls}>
-              <option value="">Elegir bodega…</option>
-              {bodegasFiltradas.map((b) => <option key={b.id} value={b.id}>{b.nombre}</option>)}
-            </select>
-          )}
-        </>
-      )}
-
-      {tipo === 'reasignacion' && (
-        <label className="block space-y-1">
-          <span className="text-[11px] text-slate-400">Técnico correcto (debe ser parte del proyecto y tener stock suficiente)</span>
-          <select value={tecnicoReasignarId} onChange={(e) => setTecnicoReasignarId(e.target.value)} className={selectCls}>
-            <option value="">Elegir técnico…</option>
-            {miembrosFiltrados.map((m) => <option key={m.id} value={m.id}>{m.nombre?.trim() || m.email}</option>)}
-          </select>
-          {miembrosFiltrados.length === 0 && (
-            <p className="text-[11px] text-amber-400">
-              No hay otro técnico asignado a este proyecto — si falta agregar al correcto, hazlo primero en Logística → Técnicos asignados.
-            </p>
-          )}
-        </label>
-      )}
-
-      {tipo === 'agregar' && (
-        <p className="text-[11px] text-slate-400 italic">
-          Se le suma directo al técnico — no se resta de ninguna bodega ni de otro técnico. Usar solo si ya tenía este material físicamente antes, sin contabilizar.
-        </p>
-      )}
-
-      {tipo === 'ignorar' && (
-        <p className="text-[11px] text-slate-400 italic">
-          No mueve stock — el número que dejó el conteo (o la instalación forzada) se queda tal cual. Usar cuando no vale la pena perseguir esta diferencia; la nota es la única constancia que queda.
-        </p>
-      )}
-
-      <input value={nota} onChange={(e) => setNota(e.target.value)}
-        placeholder={tipo === 'ignorar' ? 'Nota (obligatoria) — por qué se ignora' : 'Nota (opcional)'}
-        className={selectCls} />
-
+      <p className="text-[11px] text-slate-400 italic">
+        No mueve stock: el número que dejó {evento.conteoId ? 'el conteo' : 'la instalación'} queda como el stock actual.
+        Solo se deja constancia de la causa de la diferencia ({evento.diferencia > 0 ? '+' : ''}{evento.diferencia}).
+      </p>
+      <input value={nota} onChange={(e) => setNota(e.target.value)} autoFocus
+        onKeyDown={(e) => { if (e.key === 'Enter') submit() }}
+        placeholder="Causa de la diferencia (obligatoria)"
+        className="w-full bg-slate-700 text-white text-sm rounded-lg px-2 py-1.5 border border-slate-600 focus:border-brand-500 focus:outline-none" />
       {error && <p className="text-xs text-red-400">{error}</p>}
       <div className="flex gap-2">
         <button type="button" onClick={submit} disabled={busy}
           className="flex-1 text-xs font-semibold py-1.5 rounded-lg bg-brand-600 hover:bg-brand-700 disabled:opacity-40 text-white">
-          {busy ? 'Guardando…' : 'Confirmar'}
+          {busy ? 'Guardando…' : 'Reconocer'}
         </button>
         <button type="button" onClick={onCancel} className="text-xs text-slate-400 px-2">Cancelar</button>
       </div>
