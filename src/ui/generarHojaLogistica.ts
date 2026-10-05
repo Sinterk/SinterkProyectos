@@ -35,6 +35,8 @@ export interface HojaLogisticaInput {
   material: HojaLogisticaMaterial[]
   /** Observaciones ya registradas en el sitio, como texto ya formateado (autor/fecha incluidos). */
   observaciones: string[]
+  /** Sin el pie de página ("Asignación de materiales — …" y "Página X de Y") — lo usan los formatos en blanco. */
+  sinPie?: boolean
 }
 
 // ── Layout (pt, 72pt = 1 inch, letter 612×792) ────────────────────────────────
@@ -325,7 +327,7 @@ export async function generarHojaLogistica(input: HojaLogisticaInput): Promise<v
   // ── Firmas ────────────────────────────────────────────────────────────────────
   y = firmaTabla(doc, y, input.tecnicos)
 
-  stampFooter(doc, input.titulo)
+  if (!input.sinPie) stampFooter(doc, input.titulo)
 
   const fileName = `Asignacion de materiales - ${input.titulo}.pdf`.replace(/[\\/:*?"<>|]/g, '')
   doc.save(fileName)
@@ -352,5 +354,29 @@ export async function generarHojaLogisticaGenerica(): Promise<void> {
     tecnicos: [],
     material: [],
     observaciones: [],
+    sinPie: true,
+  })
+}
+
+/**
+ * Versión en blanco para OyM (Preventivos / Incidencias), mismo formato que la
+ * de ATT salvo: solo "Fecha de inicio" y "Proyecto" en vez de "OTT" en Datos
+ * generales. La tabla de Material es la misma aunque no se instale nada — sirve
+ * también para devoluciones (pedido de Andrés, 05-10).
+ */
+export async function generarHojaLogisticaGenericaOyM(): Promise<void> {
+  await generarHojaLogistica({
+    titulo: 'genérico OyM',
+    datosGenerales: [
+      { label: 'Proyecto', value: '' },
+      { label: 'Dirección', value: '' },
+    ],
+    fechas: [
+      { label: 'Fecha de inicio', value: '' },
+    ],
+    tecnicos: [],
+    material: [],
+    observaciones: [],
+    sinPie: true,
   })
 }

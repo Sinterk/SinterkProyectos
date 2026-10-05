@@ -6,6 +6,7 @@ import { useAuth } from '@/lib/auth'
 import { ImportZip } from './ImportZip'
 import { DescargarCerradosPanel } from './DescargarCerradosPanel'
 import { ZipArchiveViewer } from '@/ui/ZipArchiveViewer'
+import { generarHojaLogisticaGenericaOyM } from '@/ui/generarHojaLogistica'
 import type { Preventivo } from '../types'
 
 type EstadoFilter = 'activo' | 'cerrado' | 'todos'
@@ -69,6 +70,11 @@ export function Home() {
           <p className="text-xs text-slate-400">{list.length} levantamiento(s)</p>
         </div>
         <div className="flex items-center gap-2">
+          <button type="button" onClick={() => { generarHojaLogisticaGenericaOyM().catch(console.error) }}
+            title="PDF en blanco de Asignación de materiales para OyM, para llenar a mano — sin ligar a ningún proyecto"
+            className="bg-slate-700 hover:bg-slate-600 text-white text-sm font-semibold px-3 py-2 rounded-xl">
+            📄 Asignación
+          </button>
           <button type="button" onClick={() => setShowViewer(true)}
             className="bg-slate-700 hover:bg-slate-600 text-white text-sm font-semibold px-3 py-2 rounded-xl">
             📂 Abrir descargado

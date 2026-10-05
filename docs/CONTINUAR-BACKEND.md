@@ -26,12 +26,20 @@
   19. ~~Materiales de OyM: asignar desde la incidencia + origen técnico/bodega al instalar~~ — **hecho, v2.13** más abajo.
   20. ~~Correr en el SQL Editor `supabase/migrations/0074_entrada_acredita_digital_siempre.sql`~~ — **corrida y confirmada por Andrés el 30-09**. Ver v2.17 más abajo.
   21. ~~Enlace entre Preventivos e Incidencias~~ — **hecho, v2.30/v2.31** más abajo: `0075` corrida y tablas sincronizadas (confirmado por Andrés el 05-10). `0076` (ingeniero fijo + dirección = nombre del cuadrante) corrida y confirmada el 05-10.
-  22. **Asignación de material en salidas preventivas — decisión de Andrés (05-10), sin implementar todavía**: crear un **formulario genérico de materiales, como el de ATT pero sin los datos específicos del proyecto** (no las Asignaciones genéricas ni el Kit ni el presupuesto por ronda). Más allá de eso, lo que hay que mejorar es **llevar mejor el conteo de las camionetas y lo instalado**.
+  22. **Asignación de material en salidas preventivas — decisión de Andrés (05-10), sin implementar todavía**: crear un **formulario genérico de materiales, como el de ATT pero sin los datos específicos del proyecto** (no las Asignaciones genéricas ni el Kit ni el presupuesto por ronda). Más allá de eso, lo que hay que mejorar es **llevar mejor el conteo de las camionetas y lo instalado**. **Avance (v2.38): el formato imprimible "Asignación de materiales" para OyM ya existe** (botón 📄 Asignación en Preventivos e Incidencias). Falta lo demás: llevar mejor el conteo de camionetas y lo instalado.
   23. ~~Borrar 2 filas de prueba que dejó una verificación (05-10)~~ — **corrido por Andrés el 05-10** (preventivo `ba01cf97…` e incidencia `22092956…`).
   24. ~~Correr `supabase/migrations/0077_ferreteria_normalizar_lote_fisico.sql`~~ — **corrida y confirmada por Andrés el 05-10: la consulta final dio 0/0/0.** Ver la entrada 0077 más abajo.
   25. ~~Correr `supabase/migrations/0078_ep_lineas_tipo_tendido.sql`~~ — **corrida por Andrés el 05-10.** Ver v2.33.
   26. **Asignar códigos LPU en el Catálogo** (opcional) — Andrés (05-10): se resuelve **al hacer el conteo de los vehículos**, no antes. Incluye el cable (código + "Tipo de tendido"); mientras falte, el EP lo avisa como "sin código LPU".
 - **Deploy**: el push del 26-08 a `main` falló al desplegar por una interrupción real de GitHub Actions/Pages (confirmada en githubstatus.com, no un problema del repo) — falta reintentar el workflow ("Re-run all jobs") una vez que GitHub se recupere. Fuera de eso, `.github/workflows/deploy.yml` publica bien en cada push a `main`.
+
+## v2.38 — Formato genérico de Asignación de materiales para OyM + sin pie en los genéricos
+
+Andrés (05-10): crear un formato de asignación de materiales como el de ATT, pero para OyM; y quitar de los genéricos el texto "genérico" y "Página 1 de 1" del fondo.
+
+- **`generarHojaLogisticaGenericaOyM()`** (`ui/generarHojaLogistica.ts`): mismo PDF en blanco que el de ATT salvo (a) solo **"Fecha de inicio"** (sin término) y (b) Datos generales con **"Proyecto"** en vez de "OTT" (más Dirección). Material (misma tabla, también sirve para devoluciones aunque no se instale nada), Registro en sitio, Observaciones y Firmas, iguales. Botón **📄 Asignación** en las listas de Preventivos y de Incidencias (ATT ya lo tenía).
+- **Sin pie en los genéricos**: nuevo `sinPie` en `HojaLogisticaInput`; los dos formatos en blanco (ATT y OyM) lo activan y ya no llevan "Asignación de materiales — genérico" ni "Página X de Y". La hoja de un proyecto concreto (desde Logística) **conserva** su pie. Nombres de archivo: "Asignacion de materiales - genérico.pdf" (ATT) y "… - genérico OyM.pdf".
+- **Verificado en el navegador** leyendo el PDF generado: ATT → OTT + inicio + término, sin pie ni "Página", 1 página; OyM → Proyecto + solo inicio, sin pie, 1 página; hoja de proyecto → con pie y "Página 1 de 1". Secciones y 7 columnas de Material presentes en los tres.
 
 ## v2.37 — Diferencias: filtros por ubicación / signo / stock negativo + cierre masivo
 
