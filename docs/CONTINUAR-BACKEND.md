@@ -25,9 +25,22 @@
   18. ~~Versión imprimible de materiales por OTT~~ — **hecho, v2.14** más abajo: "Hoja de logística" en PDF, con firma en papel (salida/instalado).
   19. ~~Materiales de OyM: asignar desde la incidencia + origen técnico/bodega al instalar~~ — **hecho, v2.13** más abajo.
   20. ~~Correr en el SQL Editor `supabase/migrations/0074_entrada_acredita_digital_siempre.sql`~~ — **corrida y confirmada por Andrés el 30-09**. Ver v2.17 más abajo.
-  21. **Enlace entre Preventivos e Incidencias** — pedido de Andrés (02-10), sin definir todavía qué se enlaza ni cómo; falta acordar el alcance antes de construir.
+  21. **Enlace entre Preventivos e Incidencias** — construido en v2.30 (ver más abajo). **Falta correr en el SQL Editor `supabase/migrations/0075_incidencia_de_preventivo.sql`** y probarlo cerrando un cuadrante real; recién ahí subir a `main`.
   22. **Asignación de material en salidas preventivas (material poco específico)** — se propusieron 3 formas (02-10): usar las Asignaciones genéricas que ya existen, sumarles un "Kit preventivo" del catálogo de Paquetes, o un presupuesto estimado por ronda/cuadrante. Falta que Andrés elija.
+  23. **Borrar 2 filas de prueba que dejó una verificación (05-10)**: un preventivo `ba01cf97-8e4c-4882-8082-852f7dfddea4` y una incidencia `22092956-e86a-4d34-b830-73525cc22781` (ambas con código vacío, quedaron "Cerradas" — el rol invitado no puede borrar). En el SQL Editor: `delete from projects where id in ('ba01cf97-8e4c-4882-8082-852f7dfddea4', '22092956-e86a-4d34-b830-73525cc22781');` (junto con la del pendiente #10).
 - **Deploy**: el push del 26-08 a `main` falló al desplegar por una interrupción real de GitHub Actions/Pages (confirmada en githubstatus.com, no un problema del repo) — falta reintentar el workflow ("Re-run all jobs") una vez que GitHub se recupere. Fuera de eso, `.github/workflows/deploy.yml` publica bien en cada push a `main`.
+
+## v2.30 — Enlace Preventivos → Incidencias (una incidencia por cuadrante, material sincronizado)
+
+Andrés: el objetivo es facilitar la rebaja. Al cerrar un cuadrante se crea su incidencia; el número lo asigna Entel y se escribe después en la ventana de incidencia (el informe no lo lleva). Una incidencia por cuadrante. En el menú de incidencias debe verse comuna, cuadrante, semana y año. Para el material eligió **sincronizar la tabla** entre cuadrante e incidencia (también útil si se reabre el cuadrante). Aviso si hay observaciones al cerrar. Responsable por defecto "Guillermo Figueroa", editable.
+
+- **`0075_incidencia_de_preventivo.sql`** (nueva, hay que correrla): `projects.preventivo_id` + índice único parcial (una incidencia por cuadrante) + trigger que, al pasar un preventivo a `cerrado`, crea la incidencia (sin número, `ott=''`) copiando ingeniero (responsable) y dirección del informe. Idempotente; sin backfill.
+- **Material, no se copia**: sigue en el cuadrante. `proyectoMaterialId(incidencia)` devuelve el cuadrante de origen; el Editor de la incidencia muestra esa misma tabla (`LogisticaTab` con `agregarPuntos`, que agrupa por material como el modo "todos los puntos" de Preventivos — Instalado por punto se edita en Preventivos) y la **rebaja masiva** calcula y registra contra el cuadrante (técnicos asignados del cuadrante incluidos).
+- **Incidencias**: la lista y el editor muestran "Comuna · Cuadrante X · Semana N · año" mientras no haya número ("Pendiente de número de incidencia"); la búsqueda también las encuentra. El correo de rebaja se bloquea hasta que todas las incidencias con material tengan número.
+- **Tolerancia al orden de deploy**: si 0075 aún no está en la BD, `incidenciaRepo` reintenta sin el embed del cuadrante (el módulo no se cae).
+- **Preventivos**: un cuadrante nuevo (y un ZIP sin responsable) nace con Responsable "Guillermo Figueroa", editable. Elegir Zona ya NO pisa un responsable existente — solo propone el equipo de la zona si el campo está vacío (antes lo reemplazaba siempre). Al cerrar un cuadrante con observaciones se pide confirmación (avisa si además no hay material en Logística).
+- **Sin verificar de punta a punta**: la migración no se había corrido al probar, así que no se vio una incidencia real creada por el trigger. Verificado: tipos y build, la lista de Incidencias sigue cargando sin la migración, el responsable por defecto y el comportamiento de Zona.
+- **Incidente de la verificación**: al probar con registros simulados, el autoguardado subió 2 filas de prueba a la BD real (un preventivo y una incidencia vacíos). Se cerraron para sacarlas de las listas activas; borrarlas queda en el pendiente #23.
 
 ## v2.29 — Fix: la columna Descripción tapaba la barra de Guardar en Incidencias/Preventivos
 

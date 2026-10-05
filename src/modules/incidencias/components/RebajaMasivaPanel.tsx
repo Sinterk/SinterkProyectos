@@ -14,7 +14,7 @@ import {
   copiarCorreoHtml, descargarEml, prepararRebajaMasiva, REBAJA_OYM, registrarRebajaMasiva, resumenPorSkuLote,
   type CorreoRebaja, type IncidenciaRebaja,
 } from '@/lib/inventario/rebajaMasiva'
-import type { Incidencia } from '../types'
+import { etiquetaPreventivo, proyectoMaterialId, type Incidencia } from '../types'
 
 const STORAGE_KEY = 'rebajaOymCorreo'
 const DEFAULTS = {
@@ -52,7 +52,9 @@ export function RebajaMasivaPanel({ incidencias, onClose }: { incidencias: Incid
 
   useEffect(() => {
     let cancelado = false
-    prepararRebajaMasiva(incidencias.map((i) => ({ id: i.id, codigo: i.codigo, ingeniero: i.ingeniero })))
+    // Una incidencia nacida de un cuadrante rebaja el material del cuadrante
+    // (proyectoMaterialId): ahí viven sus movimientos, no en la incidencia.
+    prepararRebajaMasiva(incidencias.map((i) => ({ id: proyectoMaterialId(i), codigo: i.codigo, ingeniero: i.ingeniero })))
       .then((r) => { if (!cancelado) setItems(r) })
       .catch((e) => { if (!cancelado) setError(e instanceof Error ? e.message : String(e)) })
     return () => { cancelado = true }
@@ -89,7 +91,15 @@ export function RebajaMasivaPanel({ incidencias, onClose }: { incidencias: Incid
     firmaNombre: profile?.nombre?.trim() || '', firmaCargo: profile?.cargo?.trim() || '',
     items: items ?? [],
   }
+  // El correo pide el número de incidencia: si alguna con material todavía no
+  // lo tiene (Entel no lo ha asignado), no se genera.
+  const etiquetaDe = useMemo(
+    () => new Map(incidencias.map((i) => [proyectoMaterialId(i), i.preventivo ? etiquetaPreventivo(i.preventivo) : ''])),
+    [incidencias],
+  )
+  const sinNumero = (items ?? []).filter((it) => !it.codigo.trim() && it.lineas.some((l) => Number(l.cantidad) > 0))
   const puedeGenerar = lineasActivas.length > 0 && sinLote === 0
+  const puedeCorreo = puedeGenerar && sinNumero.length === 0
 
   async function copiar() {
     setMsg(null)
@@ -144,7 +154,10 @@ export function RebajaMasivaPanel({ incidencias, onClose }: { incidencias: Incid
               {items.map((it) => (
                 <div key={it.projectId} className="bg-slate-800 rounded-xl border border-slate-700 p-3 space-y-2">
                   <p className="text-sm font-semibold text-white">
-                    INC <span className="font-mono">{it.codigo || '(sin código)'}</span>
+                    {it.codigo
+                      ? <>INC <span className="font-mono">{it.codigo}</span></>
+                      : <span className="text-amber-400">Sin número de incidencia</span>}
+                    {etiquetaDe.get(it.projectId) && <span className="ml-2 text-[11px] font-normal text-slate-400">🔗 {etiquetaDe.get(it.projectId)}</span>}
                   </p>
                   <div className="grid grid-cols-1 sm:grid-cols-3 gap-2">
                     <label className="space-y-0.5"><span className={labelCls}>Nombre técnico</span>
@@ -246,15 +259,20 @@ export function RebajaMasivaPanel({ incidencias, onClose }: { incidencias: Incid
                 {sinLote} línea(s) sin lote (no hay stock digital suficiente en {REBAJA_OYM.alm}) — complétalas o quítalas para generar el correo o registrar.
               </p>
             )}
+            {sinNumero.length > 0 && (
+              <p className="text-xs text-amber-400">
+                {sinNumero.length} incidencia(s) con material todavía sin número de incidencia (Entel no la ha asignado) — el correo se genera cuando todas tengan número.
+              </p>
+            )}
             {msg && <p className={`text-xs ${msg.ok ? 'text-green-400' : 'text-red-400'}`}>{msg.texto}</p>}
 
             <div className="flex flex-wrap gap-2">
-              <button type="button" disabled={!puedeGenerar}
+              <button type="button" disabled={!puedeCorreo}
                 onClick={() => descargarEml(correo, `Rebaja OyM - ${fechaPunto()}.eml`)}
                 className="bg-brand-600 hover:bg-brand-700 disabled:opacity-40 text-white text-xs font-semibold px-3 py-2 rounded-xl">
                 📧 Descargar borrador (.eml)
               </button>
-              <button type="button" disabled={!puedeGenerar} onClick={() => { copiar().catch(console.error) }}
+              <button type="button" disabled={!puedeCorreo} onClick={() => { copiar().catch(console.error) }}
                 className="bg-slate-700 hover:bg-slate-600 disabled:opacity-40 text-white text-xs font-semibold px-3 py-2 rounded-xl">
                 📋 Copiar tablas
               </button>

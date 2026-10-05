@@ -24,6 +24,8 @@ interface Props {
   projectId: string
   area: 'ATT' | 'OyM'
   puntos?: Punto[]
+  /** Sin `puntos`, igual junta las filas de todos los puntos por material (vista de incidencia enlazada a un cuadrante: el detalle por punto se edita en Preventivos). */
+  agregarPuntos?: boolean
   /** Incidencias tiene su propia pestaña "Comentarios" separada — evita duplicar ObservacionesSection acá. Default true (ATT/Preventivos sin cambios). */
   incluirComentarios?: boolean
   /**
@@ -45,7 +47,7 @@ interface Props {
 }
 
 export function LogisticaTab({
-  projectId, area, puntos, incluirComentarios = true, ott, direccion, fechaInicio, tituloHoja, datosGeneralesHoja, fechasHoja,
+  projectId, area, puntos, agregarPuntos, incluirComentarios = true, ott, direccion, fechaInicio, tituloHoja, datosGeneralesHoja, fechasHoja,
 }: Props) {
   const isTecnico = useAuth((s) => s.profile?.rol === 'tecnico')
   // EquipoSection y ResumenProyectoTable leen `project_members` cada uno por
@@ -62,7 +64,7 @@ export function LogisticaTab({
         <HojaLogisticaButton projectId={projectId} titulo={tituloHoja}
           datosGenerales={datosGeneralesHoja ?? []} fechas={fechasHoja ?? []} />
       )}
-      <ResumenProyectoTable projectId={projectId} area={area} puntos={puntos} membersVersion={membersVersion}
+      <ResumenProyectoTable projectId={projectId} area={area} puntos={puntos} agregarPuntos={agregarPuntos} membersVersion={membersVersion}
         ott={ott} direccion={direccion} fechaInicio={fechaInicio} />
       {!isTecnico && area === 'OyM' && <AsignacionMaterialSection />}
       {!isTecnico && <MovimientosProyectoSection projectId={projectId} />}

@@ -44,6 +44,8 @@ interface Props {
   area: 'ATT' | 'OyM'
   /** Solo se pasa para Preventivos: habilita el desglose "· <nombre del punto>" por fila. */
   puntos?: Punto[]
+  /** Ver LogisticaTab: agrupa por material sin necesitar la lista de puntos. */
+  agregarPuntos?: boolean
   refreshKey?: number
   /** Sube cuando `EquipoSection` (en LogisticaTab) agrega/quita un técnico — sin esto, esta tabla seguía mostrando la lista de técnicos vieja hasta salir y volver a entrar a la OTT. */
   membersVersion?: number
@@ -197,7 +199,7 @@ interface LineaRebaja {
   origen: 'auto' | 'manual'
 }
 
-export function ResumenProyectoTable({ projectId, area, puntos, refreshKey = 0, membersVersion = 0, ott, direccion, fechaInicio }: Props) {
+export function ResumenProyectoTable({ projectId, area, puntos, agregarPuntos, refreshKey = 0, membersVersion = 0, ott, direccion, fechaInicio }: Props) {
   const rol = useAuth((s) => s.profile?.rol)
   // registrar_movimiento exige técnico para tipoUI='rebajado' (0005) — no
   // afecta stock de nadie ahí, es solo quién queda como usuario_id del
@@ -218,7 +220,7 @@ export function ResumenProyectoTable({ projectId, area, puntos, refreshKey = 0, 
   // solo sus filas, y ahí Instalado vuelve a ser editable (mismo resultado
   // que agregar material desde la tarjeta del punto).
   const [puntoFiltro, setPuntoFiltro] = useState(TODOS_LOS_PUNTOS)
-  const mostrandoTodosLosPuntos = !!puntos && puntoFiltro === TODOS_LOS_PUNTOS
+  const mostrandoTodosLosPuntos = (!!puntos && puntoFiltro === TODOS_LOS_PUNTOS) || (!puntos && !!agregarPuntos)
   const [rows, setRows] = useState<ResumenMaterialProyecto[] | null>(null)
   // Lo que la tabla realmente muestra/edita — agregado por defecto en
   // Preventivos, filtrado a un punto si se eligió uno; sin `puntos` (ATT/

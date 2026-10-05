@@ -21,6 +21,7 @@ export function SeccionInformacion({ record }: Props) {
     return (
       <div className="bg-slate-800 rounded-2xl border border-slate-700 p-4 space-y-3">
         <h2 className="text-xs font-semibold text-brand-400 uppercase tracking-wide">Información</h2>
+        <OrigenPreventivo record={record} />
         <InfoRow label="Código incidencia" value={record.codigo} />
         <InfoRow label="Ingeniero" value={record.ingeniero} />
         <InfoRow label="Dirección" value={record.direccion} />
@@ -31,9 +32,11 @@ export function SeccionInformacion({ record }: Props) {
   return (
     <div className="bg-slate-800 rounded-2xl border border-slate-700 p-4 space-y-3">
       <h2 className="text-xs font-semibold text-brand-400 uppercase tracking-wide">Información</h2>
+      <OrigenPreventivo record={record} />
       <label className="space-y-1 block">
         <span className={labelCls}>Código incidencia *</span>
-        <input value={record.codigo} onChange={(e) => update(record.id, { codigo: e.target.value })} className={inputCls} />
+        <input value={record.codigo} onChange={(e) => update(record.id, { codigo: e.target.value })} className={inputCls}
+          placeholder={record.preventivo ? 'Se asigna cuando Entel entregue el número' : undefined} />
       </label>
       <label className="space-y-1 block">
         <span className={labelCls}>Ingeniero</span>
@@ -43,6 +46,21 @@ export function SeccionInformacion({ record }: Props) {
         <span className={labelCls}>Dirección</span>
         <input value={record.direccion} onChange={(e) => update(record.id, { direccion: e.target.value })} className={inputCls} />
       </label>
+    </div>
+  )
+}
+
+/** Comuna, cuadrante, semana y año del cuadrante del que nació la incidencia (solo lectura — se editan en Preventivos). */
+function OrigenPreventivo({ record }: Props) {
+  const p = record.preventivo
+  if (!p) return null
+  return (
+    <div className="grid grid-cols-2 gap-3 bg-slate-900/50 rounded-xl border border-slate-700 p-3">
+      <p className="col-span-2 text-[11px] text-slate-400">🔗 Incidencia del preventivo — datos del cuadrante (se editan en Preventivos)</p>
+      <InfoRow label="Comuna" value={p.comuna} />
+      <InfoRow label="Cuadrante" value={p.cuadrante} />
+      <InfoRow label="Semana" value={p.semana} />
+      <InfoRow label="Año" value={p.anio} />
     </div>
   )
 }

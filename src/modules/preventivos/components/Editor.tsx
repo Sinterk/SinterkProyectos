@@ -10,6 +10,7 @@ import { usePreventivo } from '../hooks/usePreventivo'
 import { isUuid } from '../data/preventivoRepo'
 import { LogisticaTab } from '@/ui/LogisticaTab'
 import { EstadoProyectoBadge } from '@/ui/EstadoProyectoBadge'
+import { getResumenProyecto, listObservaciones } from '@/lib/inventario/inventarioRepo'
 import { useRestorePhotoPreviews } from '../hooks/useRestorePhotoPreviews'
 import { useResolvePhotoUrls } from '../hooks/useResolvePhotoUrls'
 import { usePreventivoAutosave } from '../hooks/usePreventivoAutosave'
@@ -98,6 +99,26 @@ export function Editor() {
   }
 
   const { puntos } = record
+
+  // Al cerrar el cuadrante se crea sola su incidencia, con la tabla de
+  // material tal como esté (0075). Si hay observaciones, se avisa antes: ahí
+  // el técnico puede haber dejado material sin pasarlo a Logística.
+  async function cambiarEstado(next: 'activo' | 'cerrado') {
+    if (next === 'cerrado' && isUuid(record.id)) {
+      try {
+        const [obs, material] = await Promise.all([listObservaciones(record.id, null), getResumenProyecto(record.id)])
+        const sinMaterial = material.length === 0 ? ' y no hay material registrado en Logística' : ''
+        if (obs.length > 0 && !confirm(
+          `Este cuadrante tiene ${obs.length} observación(es)${sinMaterial}.
+
+Si ahí se menciona material usado, pásalo antes a la tabla de Logística: al cerrar se crea la incidencia con esa tabla tal como está.
+
+¿Cerrar de todas formas?`,
+        )) return { ok: true }
+      } catch { /* si no se pudo consultar, no se bloquea el cierre */ }
+    }
+    return setEstado(record.id, next)
+  }
   const conFoto = puntos.filter((p) => p.fotoLevantamiento || p.fotoAntes || p.fotoDespues).length
   const total = puntos.length
   const cerrados = puntos.filter(isPuntoCerrado).length
@@ -115,7 +136,7 @@ export function Editor() {
           className="text-slate-400 hover:text-brand-400 text-xs px-2 py-1 rounded-lg border border-slate-700 hover:border-brand-500 transition-colors shrink-0">
           📐 Plano
         </button>
-        <EstadoProyectoBadge estado={record.estado} onChange={(next) => setEstado(record.id, next)} />
+        <EstadoProyectoBadge estado={record.estado} onChange={cambiarEstado} />
       </div>
 
       <div className="flex gap-2">

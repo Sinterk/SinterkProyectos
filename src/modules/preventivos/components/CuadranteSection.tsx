@@ -44,7 +44,10 @@ export function CuadranteSection({ preventivoId, cuadrante, onSave, soloFotos = 
   }
 
   function handleZonaChange(zona: string) {
-    updateCuadrante(preventivoId, { zona, responsable: RESPONSABLES_POR_ZONA[zona] ?? '' })
+    // Elegir zona ya no pisa un responsable existente (por defecto nace con
+    // RESPONSABLE_POR_DEFECTO y es editable): el equipo de la zona solo se
+    // propone si el campo está vacío.
+    updateCuadrante(preventivoId, { zona, responsable: cuadrante.responsable.trim() ? cuadrante.responsable : (RESPONSABLES_POR_ZONA[zona] ?? '') })
     onSave?.()
   }
 

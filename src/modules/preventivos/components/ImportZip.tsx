@@ -4,7 +4,7 @@ import { usePreventivoStore } from '../store'
 import { savePhotoBlob } from '@/core/offline/photoStore'
 import { nanoid } from '@/core/utils/nanoid'
 import { isUuid } from '../data/preventivoRepo'
-import type { Preventivo, FotoEntry } from '../types'
+import { RESPONSABLE_POR_DEFECTO, type Preventivo, type FotoEntry } from '../types'
 import { useFileDrop } from '@/ui/useFileDrop'
 
 interface Props { onImported: (id: string) => void }
@@ -34,7 +34,7 @@ export function ImportZip({ onImported }: Props) {
       const now = Date.now()
       const p: Preventivo = {
         id: lev.id||nanoid(), createdAt:lev.createdAt||now, updatedAt:now, estado: 'activo',
-        cuadrante: { cuadrante:lev.cuadrante.cuadrante||'', comuna:lev.cuadrante.comuna||'', grupo:lev.cuadrante.grupo||'', fecha:lev.cuadrante.fecha||'', semana:lev.cuadrante.semana||'', semestre:lev.cuadrante.semestre||'', nombreCuadrante:lev.cuadrante.nombreCuadrante||'', direccion:lev.cuadrante.direccion||'', zona:lev.cuadrante.zona||'', responsable:lev.cuadrante.responsable||'', fotoPlano:await loadFoto(lev.cuadrante.fotoPlano) },
+        cuadrante: { cuadrante:lev.cuadrante.cuadrante||'', comuna:lev.cuadrante.comuna||'', grupo:lev.cuadrante.grupo||'', fecha:lev.cuadrante.fecha||'', semana:lev.cuadrante.semana||'', semestre:lev.cuadrante.semestre||'', nombreCuadrante:lev.cuadrante.nombreCuadrante||'', direccion:lev.cuadrante.direccion||'', zona:lev.cuadrante.zona||'', responsable:lev.cuadrante.responsable||RESPONSABLE_POR_DEFECTO, fotoPlano:await loadFoto(lev.cuadrante.fotoPlano) },
         // `puntos.id` es uuid en la BD (sin rekey posterior como el informe:
         // `replacePuntos` sube el id del cliente tal cual). Un ZIP de una
         // versión vieja del sitio (o de un punto que en su día se creó con

@@ -3,6 +3,7 @@ import { useNavigate, useParams } from 'react-router-dom'
 import { useIncidenciaStore } from '../store'
 import { useIncidencia } from '../hooks/useIncidencia'
 import { isUuid } from '../data/incidenciaRepo'
+import { etiquetaPreventivo, proyectoMaterialId } from '../types'
 import { LogisticaTab } from '@/ui/LogisticaTab'
 import { EstadoProyectoBadge } from '@/ui/EstadoProyectoBadge'
 import { ObservacionesSection } from '@/ui/ObservacionesSection'
@@ -56,7 +57,7 @@ export function Editor() {
         <button type="button" onClick={() => navigate('/incidencias')}
           className="text-slate-400 hover:text-white text-sm">← Volver</button>
         <span className="flex-1 text-sm font-semibold text-white truncate">
-          {record.codigo || 'Nueva incidencia'}
+          {record.codigo || (record.preventivo ? etiquetaPreventivo(record.preventivo) : 'Nueva incidencia')}
         </span>
         <EstadoProyectoBadge estado={record.estado} onChange={(next) => setEstado(record.id, next)} />
       </div>
@@ -74,14 +75,23 @@ export function Editor() {
 
       {tab === 'materiales' && (
         isUuid(record.id) ? (
-          <LogisticaTab projectId={record.id} area="OyM" incluirComentarios={false}
-            tituloHoja={`Incidencia ${record.codigo || 'sin código'}`}
+          <>
+            {record.preventivo && (
+              <p className="text-[11px] text-slate-400 bg-slate-800/60 border border-slate-700 rounded-xl px-3 py-2 mb-4">
+                🔗 Material del cuadrante {etiquetaPreventivo(record.preventivo)}: es la misma tabla que en Preventivos,
+                los cambios se reflejan en ambos lados. El detalle por punto (Instalado) se edita desde Preventivos.
+              </p>
+            )}
+          <LogisticaTab projectId={proyectoMaterialId(record)} area="OyM" incluirComentarios={false}
+            agregarPuntos={!!record.preventivo}
+            tituloHoja={`Incidencia ${record.codigo || (record.preventivo ? etiquetaPreventivo(record.preventivo) : 'sin código')}`}
             datosGeneralesHoja={[
               { label: 'Código', value: record.codigo || '' },
               { label: 'Dirección', value: record.direccion || '' },
               { label: 'Ingeniero', value: record.ingeniero || '' },
             ]}
             fechasHoja={[{ label: 'Fecha', value: new Date(record.createdAt).toLocaleDateString('es-CL') }]} />
+          </>
         ) : (
           <p className="text-xs text-slate-500 text-center py-8">Guarda la incidencia primero (agrega el código) para gestionar materiales.</p>
         )

@@ -3,7 +3,7 @@ import { useNavigate } from 'react-router-dom'
 import { useIncidenciaStore, hasPendingSync } from '../store'
 import { incidenciaRepo } from '../data/incidenciaRepo'
 import { useAuth } from '@/lib/auth'
-import type { Incidencia } from '../types'
+import { etiquetaPreventivo, type Incidencia } from '../types'
 import { DescargarCerradosPanel } from './DescargarCerradosPanel'
 import { ZipArchiveViewer } from '@/ui/ZipArchiveViewer'
 import { RebajaMasivaPanel } from './RebajaMasivaPanel'
@@ -14,6 +14,7 @@ function matchesSearch(r: Incidencia, query: string): boolean {
   const q = query.trim().toLowerCase()
   if (!q) return true
   return r.codigo.toLowerCase().includes(q) || r.direccion.toLowerCase().includes(q) || r.ingeniero.toLowerCase().includes(q)
+    || (!!r.preventivo && etiquetaPreventivo(r.preventivo).toLowerCase().includes(q))
 }
 
 export function Home() {
@@ -104,7 +105,7 @@ export function Home() {
 
       <div className="flex gap-2">
         <input value={search} onChange={(e) => setSearch(e.target.value)}
-          placeholder="Buscar por código, dirección o ingeniero…"
+          placeholder="Buscar por código, cuadrante, dirección o ingeniero…"
           className="flex-1 min-w-0 bg-slate-800 text-white text-sm rounded-xl px-3 py-2 border border-slate-700 placeholder-slate-500 focus:border-brand-500 focus:outline-none" />
         <select value={estadoFilter} onChange={(e) => setEstadoFilter(e.target.value as EstadoFilter)}
           className="bg-slate-800 text-white text-sm rounded-xl px-2 py-2 border border-slate-700 focus:border-brand-500 focus:outline-none shrink-0">
@@ -237,8 +238,13 @@ export function IncidenciaCard({ record, onSelect, onDelete, selectable, selecte
           <div className="text-sm font-semibold text-white">
             {record.codigo
               ? <>Código <span className="font-mono">{record.codigo}</span></>
-              : <span className="text-slate-500 font-normal">Sin código</span>}
+              : record.preventivo
+                ? <span className="text-amber-400 font-normal">Pendiente de número de incidencia</span>
+                : <span className="text-slate-500 font-normal">Sin código</span>}
           </div>
+          {record.preventivo && (
+            <div className="text-xs text-slate-300 mt-0.5 truncate">🔗 {etiquetaPreventivo(record.preventivo)}</div>
+          )}
           {record.direccion && (
             <div className="text-xs text-slate-300 mt-0.5 truncate">📍 {record.direccion}</div>
           )}

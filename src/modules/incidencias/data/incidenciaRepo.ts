@@ -81,6 +81,13 @@ interface ProjectRow {
   created_at: string
   updated_at: string
   incidencia_fotos?: FotoRow[]
+  preventivo_id: string | null
+  /** Embed del cuadrante enlazado (null si no hay enlace o la RLS lo oculta). */
+  preventivo?: {
+    ott: string | null
+    comuna: string | null
+    informes_preventivo: { semana: string | null; fecha: string | null }[] | null
+  } | null
 }
 
 interface FotoRow {
@@ -91,7 +98,26 @@ interface FotoRow {
   orden: number
 }
 
-const SELECT_NESTED = '*, incidencia_fotos(*)'
+// `preventivo`: cuadrante del que nació la incidencia (0075). El hint
+// `!preventivo_id` desambigua el self-join (projects también tiene
+// `copied_from_id` hacia sí misma).
+const SELECT_BASE = '*, incidencia_fotos(*)'
+const SELECT_NESTED = `${SELECT_BASE}, preventivo:projects!preventivo_id(ott, comuna, informes_preventivo(semana, fecha))`
+
+// Las migraciones las corre Andrés a mano y pueden ir un paso detrás del
+// deploy: si 0075 (preventivo_id) todavía no está en la BD, la consulta con el
+// embed falla — se reintenta sin él para no dejar el módulo caído.
+let soportaPreventivo = true
+async function conFallback(
+  consulta: (select: string) => PromiseLike<{ data: unknown; error: { message: string } | null }>,
+): Promise<{ data: unknown; error: { message: string } | null }> {
+  if (soportaPreventivo) {
+    const r = await consulta(SELECT_NESTED)
+    if (!r.error || !/preventivo|relationship/i.test(r.error.message)) return r
+    soportaPreventivo = false
+  }
+  return consulta(SELECT_BASE)
+}
 
 function fotoRowToEntry(f: FotoRow): FotoEntry {
   return {
@@ -116,6 +142,19 @@ function rowToRecord(p: ProjectRow): Incidencia {
     ingeniero: p.ingeniero_proyecto ?? '',
     direccion: p.direccion ?? '',
     fotos: fotos.map(fotoRowToEntry),
+    preventivo: p.preventivo_id ? origenPreventivo(p) : undefined,
+  }
+}
+
+function origenPreventivo(p: ProjectRow): NonNullable<Incidencia['preventivo']> {
+  const inf = p.preventivo?.informes_preventivo?.[0]
+  return {
+    id: p.preventivo_id as string,
+    cuadrante: p.preventivo?.ott ?? '',
+    comuna: p.preventivo?.comuna ?? '',
+    semana: inf?.semana ?? '',
+    // Sin fecha en el informe, se usa el año en que se creó la incidencia (= año del cierre).
+    anio: inf?.fecha ? inf.fecha.slice(0, 4) : String(new Date(p.created_at).getFullYear()),
   }
 }
 
@@ -153,9 +192,11 @@ export const incidenciaRepo = {
     const estado = opts?.estado ?? 'activo'
     // area='OyM' + subarea='incidencia': sin el segundo filtro, se mezclaría
     // con los Preventivos reales (mismo area, la única forma de distinguirlos).
-    let query = supabase.from('projects').select(SELECT_NESTED).eq('area', 'OyM').eq('subarea', 'incidencia')
-    if (estado !== 'todos') query = query.eq('estado', estado)
-    const { data, error } = await query.order('updated_at', { ascending: false })
+    const { data, error } = await conFallback((select) => {
+      let query = supabase.from('projects').select(select).eq('area', 'OyM').eq('subarea', 'incidencia')
+      if (estado !== 'todos') query = query.eq('estado', estado)
+      return query.order('updated_at', { ascending: false })
+    })
     if (error) throw new Error(`projects.list: ${error.message}`)
     return (data as ProjectRow[]).map(rowToRecord)
   },
@@ -163,11 +204,8 @@ export const incidenciaRepo = {
   /** Carga una incidencia por id de project. `null` si no existe o la RLS lo oculta. */
   async load(id: string): Promise<Incidencia | null> {
     if (!isUuid(id)) return null
-    const { data, error } = await supabase
-      .from('projects')
-      .select(SELECT_NESTED)
-      .eq('id', id)
-      .maybeSingle()
+    const { data, error } = await conFallback((select) =>
+      supabase.from('projects').select(select).eq('id', id).maybeSingle())
     if (error) throw new Error(`projects.load: ${error.message}`)
     return data ? rowToRecord(data as ProjectRow) : null
   },
