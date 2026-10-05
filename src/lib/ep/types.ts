@@ -27,6 +27,8 @@ export interface EpLinea {
   precioUnitario: number
   cantidad: number
   observaciones: string | null
+  /** Solo en líneas de tendido (cable) — 4ª columna manual del Excel de Entel. null = no aplica. */
+  tipoTendido: string | null
   origen: EpLineaOrigen
   orden: number
 }
@@ -39,15 +41,16 @@ export interface EpLineaInput {
   precioUnitario: number
   cantidad: number
   observaciones?: string | null
+  tipoTendido?: string | null
   origen: EpLineaOrigen
 }
 
 /**
  * Línea sugerida en vivo por `calcularAvanceEp` — todavía no es un `EpLinea`
- * (no tiene id/orden, no está guardada). Fuentes cubiertas: (a) materiales
- * instalados vía `lpu_material_map`, (b) metros tendidos vía
- * `lpu_tendido_map`. (c) Eventos/Hitos queda deliberadamente fuera (ver
- * docs/CONTINUAR-BACKEND.md — "indagar un poco más" antes de definir).
+ * (no tiene id/orden, no está guardada). Única fuente: materiales instalados
+ * vía `lpu_material_map`. El tendido es "un material más": el cable instalado
+ * (en metros) se mapea a su código LPU igual que cualquier otro SKU, y su
+ * `tipoTendido` sale del material. Eventos/Hitos queda fuera del alcance.
  */
 export interface EpLineaSugerida {
   lpuCodigoId: string
@@ -56,4 +59,17 @@ export interface EpLineaSugerida {
   unidad: string | null
   precioUnitario: number
   cantidad: number
+  tipoTendido: string | null
+}
+
+/** Material instalado en el proyecto que no genera ninguna línea porque no tiene código LPU activo. */
+export interface MaterialSinLpu {
+  sku: string
+  descripcion: string
+  cantidad: number
+}
+
+export interface AvanceEp {
+  lineas: EpLineaSugerida[]
+  sinLpu: MaterialSinLpu[]
 }

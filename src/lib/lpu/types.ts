@@ -1,5 +1,5 @@
 // Tipos del catálogo LPU (Lista de Precios Unitarios) y sus tablas de mapeo
-// hacia materiales/tendido — base para autogenerar el borrador del Estado de
+// hacia materiales — base para autogenerar el borrador del Estado de
 // Pago (EP) al cerrar un OTT. Ver supabase/migrations/0031, 0032, 0036 y
 // docs/CONTINUAR-BACKEND.md punto 19 para el diseño completo.
 
@@ -35,28 +35,4 @@ export interface LpuMaterialMapInput {
   materialId: string
   lpuCodigoId: string
   factorCantidad: number
-}
-
-/**
- * (tipoTendido, capacidadMin, capacidadMax) → lpu_codigo_id. Al regenerar el
- * avance, se busca el material de categoría cable instalado en el proyecto
- * (si hay exactamente uno) y se usa su tipoTendido/capacidad para elegir la
- * fila cuyo rango [capacidadMin, capacidadMax] lo contenga. min/max en null
- * = sin límite por ese lado.
- */
-export interface LpuTendidoMap {
-  id: string
-  tipoTendido: string
-  capacidadMin: number | null
-  capacidadMax: number | null
-  lpuCodigoId: string
-  activo: boolean
-  lpuCodigo: LpuCodigo | null
-}
-
-export interface LpuTendidoMapInput {
-  tipoTendido: string
-  capacidadMin: number | null
-  capacidadMax: number | null
-  lpuCodigoId: string
 }

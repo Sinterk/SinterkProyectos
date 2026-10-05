@@ -1,8 +1,8 @@
-// Capa de datos del catálogo LPU y sus mapeos hacia materiales/tendido —
+// Capa de datos del catálogo LPU y su mapeo hacia materiales —
 // ver src/lib/lpu/types.ts y docs/CONTINUAR-BACKEND.md punto 19.
 
 import { supabase } from '../supabaseClient'
-import type { LpuCodigo, LpuMaterialMap, LpuMaterialMapInput, LpuTendidoMap, LpuTendidoMapInput } from './types'
+import type { LpuCodigo, LpuMaterialMap, LpuMaterialMapInput } from './types'
 
 interface LpuCodigoRow {
   id: string
@@ -78,55 +78,6 @@ export async function borrarLpuMaterialMap(id: string): Promise<void> {
 }
 
 // ---------------------------------------------------------------------------
-// lpu_tendido_map
-// ---------------------------------------------------------------------------
-
-interface LpuTendidoMapRow {
-  id: string
-  tipo_tendido: string
-  capacidad_min: number | null
-  capacidad_max: number | null
-  lpu_codigo_id: string
-  activo: boolean
-  lpu_codigos: LpuCodigoRow | null
-}
-
-function tendidoMapFromRow(r: LpuTendidoMapRow): LpuTendidoMap {
-  return {
-    id: r.id, tipoTendido: r.tipo_tendido,
-    capacidadMin: r.capacidad_min === null ? null : Number(r.capacidad_min),
-    capacidadMax: r.capacidad_max === null ? null : Number(r.capacidad_max),
-    lpuCodigoId: r.lpu_codigo_id, activo: r.activo,
-    lpuCodigo: r.lpu_codigos ? lpuCodigoFromRow(r.lpu_codigos) : null,
-  }
-}
-
-export async function listLpuTendidoMap(): Promise<LpuTendidoMap[]> {
-  const { data, error } = await supabase.from('lpu_tendido_map')
-    .select('*, lpu_codigos(*)').order('tipo_tendido')
-  if (error) throw new Error(`lpu_tendido_map.list: ${error.message}`)
-  return (data as LpuTendidoMapRow[]).map(tendidoMapFromRow)
-}
-
-export async function crearLpuTendidoMap(input: LpuTendidoMapInput): Promise<void> {
-  const { error } = await supabase.from('lpu_tendido_map').insert({
-    tipo_tendido: input.tipoTendido, capacidad_min: input.capacidadMin, capacidad_max: input.capacidadMax,
-    lpu_codigo_id: input.lpuCodigoId,
-  })
-  if (error) throw new Error(`lpu_tendido_map.crear: ${error.message}`)
-}
-
-export async function actualizarLpuTendidoMap(id: string, activo: boolean): Promise<void> {
-  const { error } = await supabase.from('lpu_tendido_map').update({ activo }).eq('id', id)
-  if (error) throw new Error(`lpu_tendido_map.actualizar: ${error.message}`)
-}
-
-export async function borrarLpuTendidoMap(id: string): Promise<void> {
-  const { error } = await supabase.from('lpu_tendido_map').delete().eq('id', id)
-  if (error) throw new Error(`lpu_tendido_map.borrar: ${error.message}`)
-}
-
-// ---------------------------------------------------------------------------
 // Estado de Pago (EP) — lecturas de apoyo: zonas y precios
 // ---------------------------------------------------------------------------
 
@@ -153,4 +104,16 @@ export async function listLpuMaterialMapPorMateriales(materialIds: string[]): Pr
     .select('*, lpu_codigos(*)').in('material_id', materialIds).eq('activo', true)
   if (error) throw new Error(`lpu_material_map.listPorMateriales: ${error.message}`)
   return (data as LpuMaterialMapRow[]).map(materialMapFromRow)
+}
+
+/** TODOS los mapeos (activos e inactivos) agrupados por material — para la columna LPU del Catálogo. */
+export async function listLpuMaterialMapTodos(): Promise<Map<string, LpuMaterialMap[]>> {
+  const { data, error } = await supabase.from('lpu_material_map').select('*, lpu_codigos(*)').order('created_at')
+  if (error) throw new Error(`lpu_material_map.listTodos: ${error.message}`)
+  const out = new Map<string, LpuMaterialMap[]>()
+  for (const r of data as LpuMaterialMapRow[]) {
+    const m = materialMapFromRow(r)
+    out.set(m.materialId, [...(out.get(m.materialId) ?? []), m])
+  }
+  return out
 }

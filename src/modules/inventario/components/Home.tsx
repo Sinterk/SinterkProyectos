@@ -32,10 +32,9 @@ import { parseArchivoXlsx, parseTextoPegado } from '@/lib/inventario/importarSap
 import type { FilaImportSap } from '@/lib/inventario/importarSap'
 import { compareSku } from '@/lib/inventario/sku'
 import {
-  listLpuCodigos, listLpuMaterialMapPorMaterial, crearLpuMaterialMap, actualizarLpuMaterialMap, borrarLpuMaterialMap,
-  listLpuTendidoMap, crearLpuTendidoMap, actualizarLpuTendidoMap, borrarLpuTendidoMap,
+  listLpuCodigos, listLpuMaterialMapPorMaterial, listLpuMaterialMapTodos, crearLpuMaterialMap, actualizarLpuMaterialMap, borrarLpuMaterialMap,
 } from '@/lib/lpu/lpuRepo'
-import type { LpuCodigo, LpuMaterialMap, LpuTendidoMap } from '@/lib/lpu/types'
+import type { LpuCodigo, LpuMaterialMap } from '@/lib/lpu/types'
 import { ColumnHeader } from '@/ui/ColumnHeader'
 
 type MainTab = 'registro' | 'stock' | 'conteo' | 'movimientos' | 'catalogo'
@@ -1944,8 +1943,12 @@ function CatalogoTab() {
   const [proveedoresCatalogo, setProveedoresCatalogo] = useState<Proveedor[]>([])
   const [paquetes, setPaquetes] = useState<Paquete[] | null>(null)
   const [codigosLpu, setCodigosLpu] = useState<LpuCodigo[] | null>(null)
+  const [mapeosLpu, setMapeosLpu] = useState<Map<string, LpuMaterialMap[]>>(new Map())
+  const [materialLpuId, setMaterialLpuId] = useState('')
+  const [soloSinLpu, setSoloSinLpu] = useState(false)
   const [error, setError] = useState<string | null>(null)
   const [q, setQ] = useState('')
+  const editorLpuRef = useRef<HTMLDivElement>(null)
 
   async function reload() {
     try {
@@ -1960,16 +1963,27 @@ function CatalogoTab() {
   useEffect(() => { reload() }, [])
   useEffect(() => { listPaquetes().then(setPaquetes).catch((err) => setError(err instanceof Error ? err.message : String(err))) }, [])
   useEffect(() => { listLpuCodigos().then(setCodigosLpu).catch((err) => setError(err instanceof Error ? err.message : String(err))) }, [])
+  function recargarMapeosLpu() {
+    listLpuMaterialMapTodos().then(setMapeosLpu).catch((err) => setError(err instanceof Error ? err.message : String(err)))
+  }
+  useEffect(recargarMapeosLpu, [])
+
+  function editarLpu(materialId: string) {
+    setMaterialLpuId(materialId)
+    // El editor está bajo la tabla: se lleva la vista hasta él.
+    setTimeout(() => editorLpuRef.current?.scrollIntoView({ behavior: 'smooth', block: 'start' }), 50)
+  }
 
   const filtrados = useMemo(() => {
     if (!materiales) return null
     const query = q.trim().toLowerCase()
-    if (!query) return materiales
-    return materiales.filter((m) =>
+    const base = soloSinLpu ? materiales.filter((m) => !(mapeosLpu.get(m.id) ?? []).some((x) => x.activo)) : materiales
+    if (!query) return base
+    return base.filter((m) =>
       m.sku.toLowerCase().includes(query) ||
       m.descripcion.toLowerCase().includes(query) ||
       (m.apodo ?? '').toLowerCase().includes(query))
-  }, [materiales, q])
+  }, [materiales, q, soloSinLpu, mapeosLpu])
 
   function actualizarLocal(materialId: string, cambios: Partial<Material>) {
     setMateriales((prev) => (prev ?? []).map((m) => (m.id === materialId ? { ...m, ...cambios } : m)))
@@ -2011,8 +2025,14 @@ function CatalogoTab() {
       <NuevoMaterialForm tipos={tipos} proveedoresCatalogo={proveedoresCatalogo}
         onCreated={agregarMaterialLocal} onNuevoTipo={crearTipoCatalogo} onNuevoProveedor={crearProveedorCatalogo} />
 
-      <input value={q} onChange={(e) => setQ(e.target.value)} placeholder="Buscar por SKU, descripción o nombre alternativo…"
-        className={`${inputCls} w-full`} />
+      <div className="flex flex-wrap items-center gap-3">
+        <input value={q} onChange={(e) => setQ(e.target.value)} placeholder="Buscar por SKU, descripción o nombre alternativo…"
+          className={`${inputCls} flex-1 min-w-[14rem]`} />
+        <label className="flex items-center gap-1.5 text-xs text-slate-300 cursor-pointer shrink-0">
+          <input type="checkbox" checked={soloSinLpu} onChange={(e) => setSoloSinLpu(e.target.checked)} />
+          Solo sin LPU
+        </label>
+      </div>
 
       {error && <p className="text-xs text-red-400">{error}</p>}
 
@@ -2029,14 +2049,16 @@ function CatalogoTab() {
                 <th className="px-2 py-1.5">Tipo</th>
                 <th className="px-2 py-1.5">Mínimo</th>
                 <th className="px-2 py-1.5">Proveedores</th>
+                <th className="px-2 py-1.5">LPU (Estado de Pago)</th>
               </tr>
             </thead>
             <tbody>
               {filtrados.length === 0 && (
-                <tr><td colSpan={6} className="px-2 py-3 text-center text-slate-500">Sin coincidencias.</td></tr>
+                <tr><td colSpan={7} className="px-2 py-3 text-center text-slate-500">Sin coincidencias.</td></tr>
               )}
               {filtrados.map((m) => (
                 <FilaCatalogoMaterial key={m.id} material={m} tipos={tipos} proveedoresCatalogo={proveedoresCatalogo}
+                  mapeosLpu={mapeosLpu.get(m.id) ?? []} onEditarLpu={() => editarLpu(m.id)}
                   onApodoChange={(apodo) => actualizarLocal(m.id, { apodo })}
                   onDescripcionChange={(descripcion) => actualizarLocal(m.id, { descripcion })}
                   onMinimoSaved={reload}
@@ -2074,28 +2096,23 @@ function CatalogoTab() {
         )}
       </div>
 
-      <div className="bg-slate-800 rounded-2xl border border-slate-700 p-4 space-y-3">
+      <div ref={editorLpuRef} className="bg-slate-800 rounded-2xl border border-slate-700 p-4 space-y-3 scroll-mt-4">
         <div>
           <h2 className="text-xs font-semibold text-brand-400 uppercase tracking-wide">Material → Código LPU</h2>
           <p className="text-[11px] text-slate-500 leading-relaxed mt-1">
-            Qué línea del Estado de Pago sugiere cada material instalado (ej. mufa → confección + fusión), y el tipo de tendido/capacidad de los SKUs de cable.
+            Qué línea(s) del Estado de Pago genera cada material instalado (ej. mufa → confección + fusión). El cable
+            también es un material: su cantidad instalada (metros) se cobra con el código que le asignes acá, y su
+            tipo de tendido sale de este mismo editor. Cantidad de la línea = instalado × factor.
           </p>
         </div>
         {!materiales || !codigosLpu ? (
           <p className="text-xs text-slate-500">Cargando…</p>
         ) : (
-          <LpuMaterialMapEditor materiales={materiales} codigos={codigosLpu} />
+          <LpuMaterialMapEditor materiales={materiales} codigos={codigosLpu}
+            materialId={materialLpuId} onMaterialChange={setMaterialLpuId}
+            onMapeosChange={recargarMapeosLpu}
+            onTendidoSaved={(id, tipoTendido) => actualizarLocal(id, { tipoTendido })} />
         )}
-      </div>
-
-      <div className="bg-slate-800 rounded-2xl border border-slate-700 p-4 space-y-3">
-        <div>
-          <h2 className="text-xs font-semibold text-brand-400 uppercase tracking-wide">Tendido → Código LPU</h2>
-          <p className="text-[11px] text-slate-500 leading-relaxed mt-1">
-            Qué código LPU corresponde a cada combinación de tipo de tendido + rango de capacidad (n° de hilos).
-          </p>
-        </div>
-        {!codigosLpu ? <p className="text-xs text-slate-500">Cargando…</p> : <LpuTendidoMapEditor codigos={codigosLpu} />}
       </div>
     </div>
   )
@@ -2329,10 +2346,12 @@ function NuevoMaterialForm({ tipos, proveedoresCatalogo, onCreated, onNuevoTipo,
   )
 }
 
-function FilaCatalogoMaterial({ material, tipos, proveedoresCatalogo, onApodoChange, onDescripcionChange, onMinimoSaved, onTipoChange, onNuevoTipo, onNuevoProveedor, onProveedoresChange }: {
+function FilaCatalogoMaterial({ material, tipos, proveedoresCatalogo, mapeosLpu, onEditarLpu, onApodoChange, onDescripcionChange, onMinimoSaved, onTipoChange, onNuevoTipo, onNuevoProveedor, onProveedoresChange }: {
   material: Material
   tipos: MaterialTipo[]
   proveedoresCatalogo: Proveedor[]
+  mapeosLpu: LpuMaterialMap[]
+  onEditarLpu: () => void
   onApodoChange: (apodo: string | null) => void
   onDescripcionChange: (descripcion: string) => void
   onMinimoSaved: () => void
@@ -2433,6 +2452,22 @@ function FilaCatalogoMaterial({ material, tipos, proveedoresCatalogo, onApodoCha
       <td className="px-2 py-1.5">
         <ProveedoresSelect value={material.proveedores} catalogo={proveedoresCatalogo}
           onChange={onProveedoresChange} onNuevoProveedor={onNuevoProveedor} />
+      </td>
+      <td className="px-2 py-1.5">
+        {/* Solo lectura acá — el clic lleva al editor "Material → Código LPU" con este material elegido. */}
+        <button type="button" onClick={onEditarLpu} title="Editar los códigos LPU de este material"
+          className="w-full text-left rounded px-1.5 py-1 hover:bg-slate-700 min-w-[8rem]">
+          {mapeosLpu.length === 0 ? (
+            <span className="text-amber-400/80">Sin LPU</span>
+          ) : (
+            mapeosLpu.map((x) => (
+              <span key={x.id} className={`block whitespace-nowrap ${x.activo ? 'text-slate-200' : 'text-slate-500 line-through'}`}>
+                {x.lpuCodigo?.codigoAtt ?? '?'}{x.factorCantidad !== 1 ? <span className="text-slate-500"> ×{x.factorCantidad}</span> : null}
+              </span>
+            ))
+          )}
+          {material.tipoTendido && <span className="block text-[10px] text-slate-500">tendido: {material.tipoTendido}</span>}
+        </button>
       </td>
     </tr>
   )
@@ -2535,12 +2570,18 @@ function ProveedoresSelect({ value, catalogo, onChange, onNuevoProveedor }: {
 // sin ColumnHeader) porque se busca UN material o UNA fila a la vez.
 // ---------------------------------------------------------------------------
 
-function LpuMaterialMapEditor({ materiales, codigos }: { materiales: Material[]; codigos: LpuCodigo[] }) {
-  const [materialId, setMaterialId] = useState('')
+function LpuMaterialMapEditor({ materiales, codigos, materialId, onMaterialChange, onMapeosChange, onTendidoSaved }: {
+  materiales: Material[]
+  codigos: LpuCodigo[]
+  materialId: string
+  onMaterialChange: (id: string) => void
+  onMapeosChange: () => void
+  onTendidoSaved: (materialId: string, tipoTendido: string | null) => void
+}) {
+  const setMaterialId = onMaterialChange
   const material = materiales.find((m) => m.id === materialId) ?? null
 
   const [tipoTendido, setTipoTendido] = useState('')
-  const [capacidad, setCapacidad] = useState('')
   const [savingTendido, setSavingTendido] = useState(false)
   const [tendidoMsg, setTendidoMsg] = useState<string | null>(null)
 
@@ -2552,9 +2593,8 @@ function LpuMaterialMapEditor({ materiales, codigos }: { materiales: Material[];
 
   useEffect(() => {
     setTendidoMsg(null)
-    if (!material) { setTipoTendido(''); setCapacidad(''); setMapas(null); return }
+    if (!material) { setTipoTendido(''); setMapas(null); return }
     setTipoTendido(material.tipoTendido ?? '')
-    setCapacidad(material.capacidad === null ? '' : String(material.capacidad))
     reload(material.id)
   }, [materialId]) // eslint-disable-line react-hooks/exhaustive-deps
 
@@ -2563,20 +2603,16 @@ function LpuMaterialMapEditor({ materiales, codigos }: { materiales: Material[];
     listLpuMaterialMapPorMaterial(id).catch((err) => { setError(err instanceof Error ? err.message : String(err)); return [] }).then(setMapas)
   }
 
-  const tendidoDirty = material && (
-    tipoTendido !== (material.tipoTendido ?? '') ||
-    capacidad !== (material.capacidad === null ? '' : String(material.capacidad))
-  )
+  const tendidoDirty = !!material && tipoTendido.trim() !== (material.tipoTendido ?? '')
 
   async function guardarTendido() {
     if (!material) return
     setSavingTendido(true)
     setTendidoMsg(null)
     try {
-      await updateMaterialTendido(material.id, {
-        tipoTendido: tipoTendido.trim() || null,
-        capacidad: capacidad.trim() === '' ? null : Number(capacidad),
-      })
+      const valor = tipoTendido.trim() || null
+      await updateMaterialTendido(material.id, { tipoTendido: valor, capacidad: material.capacidad })
+      onTendidoSaved(material.id, valor)
       setTendidoMsg('Guardado')
     } catch (err) {
       setTendidoMsg(err instanceof Error ? err.message : String(err))
@@ -2594,6 +2630,7 @@ function LpuMaterialMapEditor({ materiales, codigos }: { materiales: Material[];
       setNuevoCodigoId('')
       setNuevoFactor('1')
       reload(material.id)
+      onMapeosChange()
     } catch (err) {
       setError(err instanceof Error ? err.message : String(err))
     } finally {
@@ -2607,6 +2644,7 @@ function LpuMaterialMapEditor({ materiales, codigos }: { materiales: Material[];
     try {
       await borrarLpuMaterialMap(id)
       if (material) reload(material.id)
+      onMapeosChange()
     } catch (err) {
       setError(err instanceof Error ? err.message : String(err))
     } finally {
@@ -2620,6 +2658,7 @@ function LpuMaterialMapEditor({ materiales, codigos }: { materiales: Material[];
     try {
       await actualizarLpuMaterialMap(m.id, { activo: !m.activo })
       if (material) reload(material.id)
+      onMapeosChange()
     } catch (err) {
       setError(err instanceof Error ? err.message : String(err))
     } finally {
@@ -2633,18 +2672,11 @@ function LpuMaterialMapEditor({ materiales, codigos }: { materiales: Material[];
 
       {material && (
         <div className="bg-slate-700/50 rounded-xl p-3 space-y-3">
-          <div className="grid grid-cols-2 gap-2 items-end">
-            <label className="text-xs text-slate-300 space-y-1">
-              <span>Tipo de tendido (solo cables)</span>
-              <input value={tipoTendido} onChange={(e) => setTipoTendido(e.target.value)} placeholder="Subterráneo / Aéreo…"
-                className="w-full bg-slate-700 text-white text-sm rounded-lg px-2 py-1.5 border border-slate-600 focus:border-brand-500 focus:outline-none" />
-            </label>
-            <label className="text-xs text-slate-300 space-y-1">
-              <span>Capacidad (n° de hilos)</span>
-              <input value={capacidad} onChange={(e) => setCapacidad(e.target.value)} type="number" placeholder="ej. 24"
-                className="w-full bg-slate-700 text-white text-sm rounded-lg px-2 py-1.5 border border-slate-600 focus:border-brand-500 focus:outline-none" />
-            </label>
-          </div>
+          <label className="block text-xs text-slate-300 space-y-1">
+            <span>Tipo de tendido (solo cables — va en la columna "Tipo de tendido" del EP)</span>
+            <input value={tipoTendido} onChange={(e) => setTipoTendido(e.target.value)} placeholder="Subterráneo / Aéreo…"
+              className="w-full bg-slate-700 text-white text-sm rounded-lg px-2 py-1.5 border border-slate-600 focus:border-brand-500 focus:outline-none" />
+          </label>
           <div className="flex items-center justify-between gap-2">
             {tendidoMsg && <p className="text-xs text-slate-400">{tendidoMsg}</p>}
             <button type="button" onClick={guardarTendido} disabled={!tendidoDirty || savingTendido}
@@ -2690,132 +2722,6 @@ function LpuMaterialMapEditor({ materiales, codigos }: { materiales: Material[];
           </div>
         </div>
       )}
-    </div>
-  )
-}
-
-function LpuTendidoMapEditor({ codigos }: { codigos: LpuCodigo[] }) {
-  const [filas, setFilas] = useState<LpuTendidoMap[] | null>(null)
-  const [error, setError] = useState<string | null>(null)
-  const [busy, setBusy] = useState(false)
-
-  const [tipoTendido, setTipoTendido] = useState('')
-  const [capMin, setCapMin] = useState('')
-  const [capMax, setCapMax] = useState('')
-  const [codigoId, setCodigoId] = useState('')
-
-  const tiposConocidos = useMemo(
-    () => Array.from(new Set((filas ?? []).map((f) => f.tipoTendido))).sort(),
-    [filas],
-  )
-
-  function reload() {
-    setFilas(null)
-    listLpuTendidoMap().catch((err) => { setError(err instanceof Error ? err.message : String(err)); return [] }).then(setFilas)
-  }
-
-  useEffect(reload, [])
-
-  async function agregar() {
-    if (!tipoTendido.trim() || !codigoId) return
-    setBusy(true)
-    setError(null)
-    try {
-      await crearLpuTendidoMap({
-        tipoTendido: tipoTendido.trim(),
-        capacidadMin: capMin.trim() === '' ? null : Number(capMin),
-        capacidadMax: capMax.trim() === '' ? null : Number(capMax),
-        lpuCodigoId: codigoId,
-      })
-      setTipoTendido(''); setCapMin(''); setCapMax(''); setCodigoId('')
-      reload()
-    } catch (err) {
-      setError(err instanceof Error ? err.message : String(err))
-    } finally {
-      setBusy(false)
-    }
-  }
-
-  async function toggleActivo(f: LpuTendidoMap) {
-    setBusy(true)
-    setError(null)
-    try {
-      await actualizarLpuTendidoMap(f.id, !f.activo)
-      reload()
-    } catch (err) {
-      setError(err instanceof Error ? err.message : String(err))
-    } finally {
-      setBusy(false)
-    }
-  }
-
-  async function quitar(id: string) {
-    setBusy(true)
-    setError(null)
-    try {
-      await borrarLpuTendidoMap(id)
-      reload()
-    } catch (err) {
-      setError(err instanceof Error ? err.message : String(err))
-    } finally {
-      setBusy(false)
-    }
-  }
-
-  return (
-    <div className="space-y-2">
-      {error && <p className="text-xs text-red-400">{error}</p>}
-      {filas === null ? (
-        <p className="text-xs text-slate-500">Cargando…</p>
-      ) : filas.length === 0 ? (
-        <p className="text-xs text-slate-500">Sin filas todavía.</p>
-      ) : (
-        <div className="space-y-1.5">
-          {filas.map((f) => (
-            <div key={f.id} className="flex items-center justify-between gap-2 bg-slate-700/50 rounded-lg px-3 py-2 text-xs">
-              <div className={`min-w-0 truncate ${f.activo ? 'text-slate-200' : 'text-slate-500 line-through'}`}>
-                <span className="font-medium">{f.tipoTendido}</span>
-                <span className="text-slate-500"> · {f.capacidadMin ?? '—'}–{f.capacidadMax ?? '—'} hilos → </span>
-                {f.lpuCodigo ? `${f.lpuCodigo.codigoAtt} — ${f.lpuCodigo.partida || f.lpuCodigo.descripcion}` : f.lpuCodigoId}
-              </div>
-              <div className="flex items-center gap-2 shrink-0">
-                <button type="button" onClick={() => toggleActivo(f)} disabled={busy}
-                  className="text-slate-400 hover:text-brand-300 disabled:opacity-40">
-                  {f.activo ? 'Desactivar' : 'Activar'}
-                </button>
-                <button type="button" onClick={() => quitar(f.id)} disabled={busy}
-                  className="text-slate-500 hover:text-red-400 text-base leading-none disabled:opacity-40">×</button>
-              </div>
-            </div>
-          ))}
-        </div>
-      )}
-
-      <div className="grid grid-cols-2 sm:grid-cols-4 gap-2 items-end pt-1">
-        <label className="text-xs text-slate-300 space-y-1 col-span-2 sm:col-span-1">
-          <span>Tipo de tendido</span>
-          <input value={tipoTendido} onChange={(e) => setTipoTendido(e.target.value)} placeholder="Subterráneo…" list="tipos-tendido-conocidos"
-            className="w-full bg-slate-700 text-white text-sm rounded-lg px-2 py-1.5 border border-slate-600 focus:border-brand-500 focus:outline-none" />
-          <datalist id="tipos-tendido-conocidos">
-            {tiposConocidos.map((t) => <option key={t} value={t} />)}
-          </datalist>
-        </label>
-        <label className="text-xs text-slate-300 space-y-1">
-          <span>Capacidad mín.</span>
-          <input value={capMin} onChange={(e) => setCapMin(e.target.value)} type="number" placeholder="sin límite"
-            className="w-full bg-slate-700 text-white text-sm rounded-lg px-2 py-1.5 border border-slate-600 focus:border-brand-500 focus:outline-none" />
-        </label>
-        <label className="text-xs text-slate-300 space-y-1">
-          <span>Capacidad máx.</span>
-          <input value={capMax} onChange={(e) => setCapMax(e.target.value)} type="number" placeholder="sin límite"
-            className="w-full bg-slate-700 text-white text-sm rounded-lg px-2 py-1.5 border border-slate-600 focus:border-brand-500 focus:outline-none" />
-        </label>
-        <LpuCodigoSelect codigos={codigos} value={codigoId} onChange={setCodigoId} className="col-span-2 sm:col-span-4" />
-        <button type="button" onClick={agregar} disabled={!tipoTendido.trim() || !codigoId || busy}
-          className="col-span-2 sm:col-span-4 px-3 py-1.5 rounded-lg bg-brand-600 hover:bg-brand-700 disabled:opacity-40 text-white text-sm font-semibold">
-          + Agregar
-        </button>
-      </div>
     </div>
   )
 }

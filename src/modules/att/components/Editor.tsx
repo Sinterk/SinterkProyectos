@@ -216,7 +216,7 @@ export function Editor() {
           <p className="text-xs text-slate-500 text-center py-8">Guarda el informe primero para gestionar logística.</p>
         )
       ) : isUuid(record.id) ? (
-        <EstadoPagoTab projectId={record.id} tramos={record.tramos} />
+        <EstadoPagoTab projectId={record.id} />
       ) : (
         <p className="text-xs text-slate-500 text-center py-8">Guarda el informe primero para armar el Estado de Pago.</p>
       )}
