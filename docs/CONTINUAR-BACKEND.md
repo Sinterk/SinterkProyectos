@@ -25,10 +25,19 @@
   18. ~~Versión imprimible de materiales por OTT~~ — **hecho, v2.14** más abajo: "Hoja de logística" en PDF, con firma en papel (salida/instalado).
   19. ~~Materiales de OyM: asignar desde la incidencia + origen técnico/bodega al instalar~~ — **hecho, v2.13** más abajo.
   20. ~~Correr en el SQL Editor `supabase/migrations/0074_entrada_acredita_digital_siempre.sql`~~ — **corrida y confirmada por Andrés el 30-09**. Ver v2.17 más abajo.
-  21. **Enlace entre Preventivos e Incidencias** — construido en v2.30 (ver más abajo). **Falta correr en el SQL Editor `supabase/migrations/0075_incidencia_de_preventivo.sql`** y probarlo cerrando un cuadrante real; recién ahí subir a `main`.
+  21. ~~Enlace entre Preventivos e Incidencias~~ — **hecho, v2.30/v2.31** más abajo: `0075` corrida y tablas sincronizadas (confirmado por Andrés el 05-10). **Falta correr `0076_incidencia_preventivo_datos.sql`** (ingeniero fijo + dirección = nombre del cuadrante).
   22. **Asignación de material en salidas preventivas (material poco específico)** — se propusieron 3 formas (02-10): usar las Asignaciones genéricas que ya existen, sumarles un "Kit preventivo" del catálogo de Paquetes, o un presupuesto estimado por ronda/cuadrante. Falta que Andrés elija.
   23. **Borrar 2 filas de prueba que dejó una verificación (05-10)**: un preventivo `ba01cf97-8e4c-4882-8082-852f7dfddea4` y una incidencia `22092956-e86a-4d34-b830-73525cc22781` (ambas con código vacío, quedaron "Cerradas" — el rol invitado no puede borrar). En el SQL Editor: `delete from projects where id in ('ba01cf97-8e4c-4882-8082-852f7dfddea4', '22092956-e86a-4d34-b830-73525cc22781');` (junto con la del pendiente #10).
 - **Deploy**: el push del 26-08 a `main` falló al desplegar por una interrupción real de GitHub Actions/Pages (confirmada en githubstatus.com, no un problema del repo) — falta reintentar el workflow ("Re-run all jobs") una vez que GitHub se recupere. Fuera de eso, `.github/workflows/deploy.yml` publica bien en cada push a `main`.
+
+## v2.31 — Ajustes del enlace + Instalado desde bodega en OyM
+
+Andrés: (1) Responsable e ingeniero son cosas distintas — mantener los valores anteriores de Responsable; "Guillermo Figueroa" solo como ingeniero al crear la incidencia. (2) La dirección de la incidencia debe ser el nombre del cuadrante. (3) En OyM, con origen = bodega se podía Entregar pero no Instalar — agregar que también se pueda Instalar.
+
+- **Responsable revertido**: Preventivos vuelve a como estaba antes de v2.30 (nace vacío, Zona propone el equipo de la zona). Se quitó `RESPONSABLE_POR_DEFECTO`.
+- **`0076_incidencia_preventivo_datos.sql`** (nueva, hay que correrla): reemplaza la función del trigger — la incidencia nace con ingeniero "Guillermo Figueroa" (ya no copia el Responsable) y dirección = `nombre_cuadrante` del informe (o el código del cuadrante si está vacío). Además corrige las incidencias que 0075 ya creó, solo si el valor seguía siendo la copia automática.
+- **Instalado con origen = bodega (solo OyM)**, `ResumenProyectoTable.registrarCampoFisico`: el Instalado saca el material de esa bodega directamente — registra una Entrega de la misma cantidad (bodega → técnico) y luego el Instalado. Antes el Instalado siempre descontaba del stock del técnico, por eso desde una bodega "solo se podía entregar". Con origen técnico (o sin origen) y en ATT no cambia nada. Si la Entrega queda registrada y el Instalado falla, el error lo dice (para no repetir la entrega al reintentar). Si en la misma fila se teclea además un Entregado, ese se registra aparte y queda en tránsito.
+- Verificado en el navegador interceptando `registrar_movimiento` (0 movimientos reales escritos): origen bodega + Instalado 2 → `entrega` 2 (con bodega) y `instalado` 2; origen técnico + Instalado 1 → solo `instalado` 1.
 
 ## v2.30 — Enlace Preventivos → Incidencias (una incidencia por cuadrante, material sincronizado)
 

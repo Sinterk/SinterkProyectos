@@ -19,9 +19,6 @@ export interface FotoEntry {
   annotated: boolean
 }
 
-/** Responsable (ingeniero de Entel) con el que nace un cuadrante nuevo — editable por cuadrante. También es el ingeniero de la incidencia que se crea al cerrarlo. */
-export const RESPONSABLE_POR_DEFECTO = 'Guillermo Figueroa'
-
 export interface CuadranteInfo {
   /** Llena el TÉCNICO */
   cuadrante: string

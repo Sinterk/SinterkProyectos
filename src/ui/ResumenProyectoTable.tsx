@@ -518,6 +518,44 @@ export function ResumenProyectoTable({ projectId, area, puntos, agregarPuntos, r
   const pendientes = [...pendientesExistentes, ...pendientesNuevas, ...pendientesRebaja]
   const hayPendientes = pendientes.length > 0
 
+  /**
+   * Registra un movimiento físico de una fila. Excepción OyM (pedido de
+   * Andrés): con origen = una bodega real, el Instalado saca el material de
+   * ESA bodega directamente — antes el Instalado siempre descontaba del stock
+   * del técnico, así que desde una bodega solo se podía Entregar. Se registra
+   * primero una Entrega de esa misma cantidad (bodega → técnico) y luego el
+   * Instalado, que consume justo lo recién entregado: la bodega baja, el
+   * técnico queda igual y el proyecto suma Entregado e Instalado. Con origen
+   * técnico (o sin origen) y en ATT no cambia nada.
+   */
+  async function registrarCampoFisico(a: {
+    campo: Campo; materialId: string; cantidad: number; lote?: string; puntoId: string | null
+    tecnicoUserId: string; bodegaId: string; nota?: string
+  }) {
+    const desdeBodega = area === 'OyM' && a.campo === 'cantInstalada' && !!a.bodegaId
+    let entregada = false
+    try {
+      if (desdeBodega) {
+        await registrarMovimiento({
+          tipoUI: 'entrega', materialId: a.materialId, cantidad: a.cantidad, lote: a.lote,
+          projectId, puntoId: a.puntoId, tecnicoUserId: a.tecnicoUserId, ubicacionBodegaId: a.bodegaId, nota: a.nota,
+        })
+        entregada = true
+      }
+      await registrarMovimiento({
+        tipoUI: CAMPO_TIPO[a.campo]!, materialId: a.materialId, cantidad: a.cantidad, lote: a.lote,
+        projectId, puntoId: a.puntoId, tecnicoUserId: a.tecnicoUserId,
+        ubicacionBodegaId: CAMPO_NECESITA_BODEGA.includes(a.campo) ? a.bodegaId : undefined,
+        nota: a.nota,
+      })
+    } catch (err) {
+      const msg = err instanceof Error ? err.message : String(err)
+      throw new Error(entregada
+        ? `La entrega desde la bodega quedó registrada, pero falló el Instalado (${msg}). Reintenta con origen = técnico.`
+        : msg)
+    }
+  }
+
   async function guardarCambios() {
     if (!rows) return
     setSaving(true)
@@ -575,10 +613,9 @@ export function ResumenProyectoTable({ projectId, area, puntos, agregarPuntos, r
               tecnicoUserId: tecnicoFila, cantidad: n,
             })
           } else {
-            await registrarMovimiento({
-              tipoUI: CAMPO_TIPO[campo]!, materialId: row.materialId, cantidad: n, lote: loteFila || undefined,
-              projectId, puntoId: row.puntoId, tecnicoUserId: tecnicoFila,
-              ubicacionBodegaId: CAMPO_NECESITA_BODEGA.includes(campo) ? bodegaFila : undefined,
+            await registrarCampoFisico({
+              campo, materialId: row.materialId, cantidad: n, lote: loteFila || undefined,
+              puntoId: row.puntoId, tecnicoUserId: tecnicoFila, bodegaId: bodegaFila,
               nota: rowNota[key]?.trim() || undefined,
             })
           }
@@ -620,10 +657,9 @@ export function ResumenProyectoTable({ projectId, area, puntos, agregarPuntos, r
           continue
         }
         try {
-          await registrarMovimiento({
-            tipoUI: CAMPO_TIPO[campo]!, materialId: fila.materialId, cantidad: n, lote: fila.lote || undefined,
-            projectId, puntoId: fila.puntoId, tecnicoUserId: fila.tecnicoUserId,
-            ubicacionBodegaId: CAMPO_NECESITA_BODEGA.includes(campo) ? bodegaFila : undefined,
+          await registrarCampoFisico({
+            campo, materialId: fila.materialId, cantidad: n, lote: fila.lote || undefined,
+            puntoId: fila.puntoId, tecnicoUserId: fila.tecnicoUserId, bodegaId: bodegaFila,
             nota: fila.nota.trim() || undefined,
           })
         } catch (err) {
@@ -1011,6 +1047,7 @@ export function ResumenProyectoTable({ projectId, area, puntos, agregarPuntos, r
               <p className="text-[11px] text-slate-400">
                 Cada "+" tecleado se registra como su propio movimiento — no se puede restar directamente; para
                 corregir un exceso, registra el movimiento contrario (ej. un Devuelto deshace una Entrega).
+                {area === 'OyM' && ' En OyM, con origen = bodega, el Instalado descuenta de esa bodega directamente (entrega + instalación en un paso); con origen = técnico, de lo que ese técnico ya tiene.'}
               </p>
               <div className="flex flex-wrap items-center gap-2">
                 <select value={tecnicoEdicion} onChange={(e) => setTecnicoEdicion(e.target.value)} className={selectCls}>

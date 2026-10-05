@@ -5,7 +5,7 @@ import { monotonicNow } from '@/core/utils/monotonicNow'
 import { useAuth } from '@/lib/auth'
 import { preventivoRepo, isUuid } from './data/preventivoRepo'
 import { uploadRecordPhotos } from './data/photoStorage'
-import { RESPONSABLE_POR_DEFECTO, type Preventivo, type CuadranteInfo, type Punto, type FotoKey, type FotoEntry } from './types'
+import type { Preventivo, CuadranteInfo, Punto, FotoKey, FotoEntry } from './types'
 
 export type RemoveResult =
   | { ok: true; mode: 'deleted' | 'closed' }
@@ -137,7 +137,7 @@ interface PreventivoState {
 
 const emptyC = (): CuadranteInfo => ({
   cuadrante: '', comuna: '', grupo: '', fecha: '', semana: '', semestre: '',
-  nombreCuadrante: '', direccion: '', zona: '', responsable: RESPONSABLE_POR_DEFECTO,
+  nombreCuadrante: '', direccion: '', zona: '', responsable: '',
 })
 
 export function emptyPreventivo(id: string, now: number): Preventivo {
