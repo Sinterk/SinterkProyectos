@@ -27,7 +27,7 @@ import {
 import type { ListMovimientosFilters, ImportarSapResultado, StockDeTrabajador, MovimientoDeTrabajador } from '@/lib/inventario/inventarioRepo'
 import type {
   Movimiento, StockRow, Ubicacion, Material, MaterialTipo, Proveedor, Paquete,
-  Conteo, ConteoLinea, EventoInventario, EventoResolucion, ResolucionTipo, ConsumoArea,
+  Conteo, ConteoLinea, EventoInventario, EventoResolucion, ResolucionTipo, ConsumoArea, UbicacionTipo,
 } from '@/lib/inventario/types'
 import { parseArchivoXlsx, parseTextoPegado } from '@/lib/inventario/importarSap'
 import type { FilaImportSap } from '@/lib/inventario/importarSap'
@@ -1103,14 +1103,20 @@ function TecnicoTab() {
 function ConteoTab() {
   const [selectedId, setSelectedId] = useState<string | null>(null)
   const [refreshKey, setRefreshKey] = useState(0)
+  // Bodegas y técnicos se cuentan por separado (mezclados confundían). El
+  // segmento vive acá, no en la lista, para que al volver de un conteo se
+  // quede en el mismo.
+  const [segmento, setSegmento] = useState<UbicacionTipo>('bodega')
 
   if (selectedId) {
     return <ConteoDetail conteoId={selectedId} onBack={() => { setSelectedId(null); setRefreshKey((k) => k + 1) }} />
   }
-  return <ConteoLista onSelect={setSelectedId} refreshKey={refreshKey} />
+  return <ConteoLista onSelect={setSelectedId} refreshKey={refreshKey} segmento={segmento} onSegmento={setSegmento} />
 }
 
-function ConteoLista({ onSelect, refreshKey }: { onSelect: (id: string) => void; refreshKey: number }) {
+function ConteoLista({ onSelect, refreshKey, segmento, onSegmento }: {
+  onSelect: (id: string) => void; refreshKey: number; segmento: UbicacionTipo; onSegmento: (s: UbicacionTipo) => void
+}) {
   const [conteos, setConteos] = useState<Conteo[] | null>(null)
   // Todos los estados (no solo 'abierto' como antes) — hace falta el total
   // para el contador "Eventos resueltos: X/Y" de abajo. Andrés: en vez de
@@ -1136,31 +1142,47 @@ function ConteoLista({ onSelect, refreshKey }: { onSelect: (id: string) => void;
   const eventosAbiertos = eventosTodos?.filter((e) => e.estado === 'abierto') ?? []
   const resueltosCount = eventosTodos?.filter((e) => e.estado === 'resuelto').length ?? 0
 
+  const esBodegas = segmento === 'bodega'
+  const delSegmento = (conteos ?? []).filter((c) => c.ubicacionTipo === segmento)
+  const cuenta = (tipo: UbicacionTipo) => (conteos ?? []).filter((c) => c.ubicacionTipo === tipo).length
+  const segBtn = (tipo: UbicacionTipo, etiqueta: string) => (
+    <button type="button" onClick={() => { onSegmento(tipo); setShowNuevo(false) }}
+      className={`flex-1 text-sm font-semibold py-1.5 rounded-lg ${segmento === tipo ? 'bg-brand-600 text-white' : 'bg-slate-700 text-slate-300'}`}>
+      {etiqueta} ({cuenta(tipo)})
+    </button>
+  )
+
   return (
     <div className="space-y-3">
       {error && <p className="text-xs text-red-400">{error}</p>}
 
-      {eventosTodos && (
+      <div className="flex gap-2">
+        {segBtn('bodega', 'Bodegas')}
+        {segBtn('tecnico', 'Técnicos')}
+      </div>
+
+      {/* Las diferencias de los conteos de técnicos (y las instalaciones forzadas) se resuelven en Stock → Técnico. */}
+      {esBodegas && eventosTodos && (
         <p className="text-[11px] text-slate-500">
           Eventos resueltos: <span className="text-slate-300 font-medium">{resueltosCount}/{eventosTodos.length}</span>
         </p>
       )}
 
-      {eventosAbiertos.length > 0 && <EventosAbiertosSection eventos={eventosAbiertos} onVerConteo={onSelect} onResolved={reload} />}
+      {esBodegas && eventosAbiertos.length > 0 && <EventosAbiertosSection eventos={eventosAbiertos} onVerConteo={onSelect} onResolved={reload} />}
 
       <button type="button" onClick={() => setShowNuevo((v) => !v)}
         className="w-full text-sm font-semibold py-2 rounded-xl bg-brand-600 hover:bg-brand-700 text-white">
-        {showNuevo ? 'Cancelar' : '+ Nuevo conteo'}
+        {showNuevo ? 'Cancelar' : esBodegas ? '+ Nuevo conteo de bodega' : '+ Nuevo conteo de técnico'}
       </button>
-      {showNuevo && <NuevoConteoForm onCreated={(id) => { setShowNuevo(false); onSelect(id) }} />}
+      {showNuevo && <NuevoConteoForm tipo={segmento} onCreated={(id) => { setShowNuevo(false); onSelect(id) }} />}
 
       {conteos === null ? (
         <p className="text-xs text-slate-500">Cargando…</p>
-      ) : conteos.length === 0 ? (
-        <p className="text-xs text-slate-500">Sin conteos todavía.</p>
+      ) : delSegmento.length === 0 ? (
+        <p className="text-xs text-slate-500">{esBodegas ? 'Sin conteos de bodegas todavía.' : 'Sin conteos de técnicos todavía.'}</p>
       ) : (
         <div className="space-y-1.5">
-          {conteos.map((c) => (
+          {delSegmento.map((c) => (
             <button key={c.id} type="button" onClick={() => onSelect(c.id)}
               className="w-full text-left bg-slate-800 rounded-xl border border-slate-700 hover:border-brand-500 transition-colors p-3 text-xs flex items-center justify-between gap-2">
               <div className="min-w-0">
@@ -1180,7 +1202,7 @@ function ConteoLista({ onSelect, refreshKey }: { onSelect: (id: string) => void;
   )
 }
 
-function NuevoConteoForm({ onCreated }: { onCreated: (id: string) => void }) {
+function NuevoConteoForm({ tipo, onCreated }: { tipo: UbicacionTipo; onCreated: (id: string) => void }) {
   const [ubicacionId, setUbicacionId] = useState('')
   const [naturaleza, setNaturaleza] = useState<'fisico' | 'digital'>('fisico')
   const [nota, setNota] = useState('')
@@ -1203,7 +1225,8 @@ function NuevoConteoForm({ onCreated }: { onCreated: (id: string) => void }) {
 
   return (
     <div className="bg-slate-800 rounded-2xl border border-slate-700 p-4 space-y-3">
-      <UbicacionSelect value={ubicacionId} onChange={setUbicacionId} className={`${inputCls} w-full`} />
+      <UbicacionSelect value={ubicacionId} onChange={setUbicacionId} tipo={tipo}
+        placeholder={tipo === 'bodega' ? 'Elegir bodega…' : 'Elegir técnico…'} className={`${inputCls} w-full`} />
       <div className="flex gap-2">
         <button type="button" onClick={() => setNaturaleza('fisico')}
           className={`flex-1 text-xs font-semibold py-1.5 rounded-lg ${naturaleza === 'fisico' ? 'bg-brand-600 text-white' : 'bg-slate-700 text-slate-300'}`}>

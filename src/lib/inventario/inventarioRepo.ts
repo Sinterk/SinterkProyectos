@@ -1014,12 +1014,13 @@ interface ConteoJoinRow {
   estado: 'abierto' | 'cerrado'
   nota: string | null
   created_at: string
-  ubicaciones: { nombre: string } | null
+  ubicaciones: { nombre: string; tipo: UbicacionTipo } | null
 }
 
 function conteoFromJoinRow(r: ConteoJoinRow): Conteo {
   return {
     id: r.id, ubicacionId: r.ubicacion_id, ubicacionNombre: r.ubicaciones?.nombre ?? '',
+    ubicacionTipo: r.ubicaciones?.tipo ?? 'bodega',
     naturaleza: r.naturaleza, fecha: r.fecha, usuarioId: r.usuario_id, usuarioNombre: null,
     estado: r.estado, nota: r.nota, createdAt: r.created_at,
   }
@@ -1028,7 +1029,7 @@ function conteoFromJoinRow(r: ConteoJoinRow): Conteo {
 export async function listConteos(opts?: { estado?: 'abierto' | 'cerrado' }): Promise<Conteo[]> {
   let query = supabase
     .from('conteos')
-    .select('id, ubicacion_id, naturaleza, fecha, usuario_id, estado, nota, created_at, ubicaciones(nombre)')
+    .select('id, ubicacion_id, naturaleza, fecha, usuario_id, estado, nota, created_at, ubicaciones(nombre, tipo)')
     .order('created_at', { ascending: false })
   if (opts?.estado) query = query.eq('estado', opts.estado)
   const { data, error } = await query

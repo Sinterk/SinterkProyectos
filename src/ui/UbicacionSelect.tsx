@@ -94,8 +94,8 @@ export function UbicacionSelect({ value, onChange, tipo, placeholder = 'Elegir u
         <select value={value} className={`${className ?? ''} w-full`}
           onChange={(e) => (e.target.value === NUEVA ? setCreating(true) : onChange(e.target.value))}>
           <option value="">{placeholder}</option>
-          {ubicaciones.map((u) => <option key={u.id} value={u.id}>{u.nombre}{u.tipo === 'tecnico' ? ' (técnico)' : ''}</option>)}
-          <option value={NUEVA}>+ Nueva bodega…</option>
+          {ubicaciones.map((u) => <option key={u.id} value={u.id}>{u.nombre}{u.tipo === 'tecnico' && tipo !== 'tecnico' ? ' (técnico)' : ''}</option>)}
+          {tipo !== 'tecnico' && <option value={NUEVA}>+ Nueva bodega…</option>}
         </select>
         {error && <p className="text-xs text-red-400 mt-1">{error}</p>}
       </div>

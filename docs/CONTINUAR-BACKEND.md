@@ -33,6 +33,15 @@
   26. **Asignar códigos LPU en el Catálogo** (opcional) — Andrés (05-10): se resuelve **al hacer el conteo de los vehículos**, no antes. Incluye el cable (código + "Tipo de tendido"); mientras falte, el EP lo avisa como "sin código LPU".
 - **Deploy**: el push del 26-08 a `main` falló al desplegar por una interrupción real de GitHub Actions/Pages (confirmada en githubstatus.com, no un problema del repo) — falta reintentar el workflow ("Re-run all jobs") una vez que GitHub se recupere. Fuera de eso, `.github/workflows/deploy.yml` publica bien en cada push a `main`.
 
+## v2.41 — Conteo: bodegas y técnicos por separado
+
+Andrés (06-10): en la sección de Conteo, dejar separados técnicos y bodegas — mezclados confundía.
+
+- **`ConteoTab`/`ConteoLista`** (`inventario/components/Home.tsx`): selector **Bodegas (n) | Técnicos (n)** arriba. Cada segmento lista solo sus conteos y tiene su propio botón ("+ Nuevo conteo de bodega" / "de técnico"). El segmento vive en `ConteoTab`, así que al volver desde el detalle de un conteo se queda en el mismo.
+- **"Nuevo conteo"** filtra la ubicación por tipo (`UbicacionSelect tipo=…`): en Bodegas solo bodegas (con "+ Nueva bodega…"); en Técnicos solo trabajadores con ubicación propia, **sin** la opción de crear bodega ni el sufijo "(técnico)". Un trabajador sin ubicación propia (nunca tuvo un movimiento) todavía no aparece: la ubicación se crea con su primer movimiento.
+- **Eventos**: el aviso "por reconocer" y el contador "Eventos resueltos X/Y" quedan solo en Bodegas, como antes (los de técnico siguen en Stock → Técnico → Advertencias). `Conteo` gana `ubicacionTipo` (`listConteos` trae `ubicaciones(nombre, tipo)`). Sin migración.
+- **Verificado en el navegador (cuenta jp)**: Bodegas (24) y Técnicos (1); cada lista solo muestra lo suyo; selectores de "Nuevo conteo" con 5 bodegas (+ "Nueva bodega") y con 19 técnicos (sin "Nueva bodega").
+
 ## v2.40 — Stock → Técnico: buscador "¿A quién revisar?"
 
 Andrés (06-10): en el inventario por técnico, poder filtrar por el material que tienen o si han tenido movimientos, para ver rápido a qué técnicos revisarles el material.

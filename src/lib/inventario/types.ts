@@ -204,6 +204,8 @@ export interface Conteo {
   id: string
   ubicacionId: string
   ubicacionNombre: string
+  /** Bodega o trabajador — la pestaña Conteo los muestra por separado. */
+  ubicacionTipo: UbicacionTipo
   naturaleza: 'fisico' | 'digital'
   fecha: string
   usuarioId: string | null
