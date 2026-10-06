@@ -33,6 +33,17 @@
   26. **Asignar códigos LPU en el Catálogo** (opcional) — Andrés (05-10): se resuelve **al hacer el conteo de los vehículos**, no antes. Incluye el cable (código + "Tipo de tendido"); mientras falte, el EP lo avisa como "sin código LPU".
 - **Deploy**: el push del 26-08 a `main` falló al desplegar por una interrupción real de GitHub Actions/Pages (confirmada en githubstatus.com, no un problema del repo) — falta reintentar el workflow ("Re-run all jobs") una vez que GitHub se recupere. Fuera de eso, `.github/workflows/deploy.yml` publica bien en cada push a `main`.
 
+## v2.42 — Insumos: solo se entregan, no cuentan como tránsito
+
+Andrés (06-10): los insumos son material cuyo consumo no se reporta, solo su entrega. Cambio general: solo se pueden **entregar** y **no se consideran en tránsito**; solo debe quedar el registro de a qué técnico se le entregó.
+
+- **Qué es un insumo**: material con Tipo "Insumo" del Catálogo (`lib/inventario/esInsumo.ts`, `esTipoInsumo`; 15 SKU hoy: amarras, huincha, fleje, alcohol…).
+- **Tránsito = 0 / "—"** en: la tabla de material de un proyecto (`getResumenProyecto` y `agregarPorMaterial`; `ResumenMaterialProyecto.esInsumo`), el ledger del técnico (`getTecnicoLedger` — por eso ya no salen en "Mi inventario → En tu poder") y el KPI de materiales (`getKpiMateriales`, en el cliente porque el cálculo es del RPC `kpi_materiales`). Antes había **46 filas** de insumos entregados que quedaban en Tránsito para siempre (incl. proyectos cerrados). Sin migración ni cambios de datos: es solo cómo se calcula/muestra.
+- **Solo entrega** (UI): en la tabla del proyecto (`ResumenProyectoTable`) una fila de insumo solo permite sumar **Entregado**; Solicitado/Instalado/Devuelto/Merma/Asignado quedan de solo lectura (o "—" en fila nueva). `RegistrarMovimientoForm` no ofrece insumos en solicitud/instalado/devuelto/rebajado/merma (ni al elegir un paquete; y `validar()` lo rechaza). `PuntoMaterialSection` (Instalado por punto, Preventivos) no los ofrece. `AsignacionesForm` → Devolución no los lista (mensaje "los insumos solo se entregan"). Entrega, Entrada, traspaso entre bodegas y Conteo siguen permitiéndolos.
+- **Stock del técnico**: el insumo entregado queda como stock propio del técnico (y se ve en Stock → Técnico y en el buscador). Al no reportarse el consumo, ese saldo solo sube con cada entrega; el conteo de camionetas sirve para reajustarlo.
+- **Pendiente opcional**: la restricción es solo de interfaz. Si se quiere blindar contra cualquier otra vía, habría que agregar la regla a `registrar_movimiento` (migración que Andrés correría).
+- **Verificado en el navegador (cuenta jp)**: OTT 72603666644 → los insumos muestran Entregado editable, resto sin campos, Tránsito "—"; el resto de materiales igual que antes. Entrega ofrece Amarra 150/350/550; Devolución de un técnico con solo insumos dice "no tiene materiales por devolver" y la de otro con 17 materiales no lista ningún insumo. `getKpiMateriales` devuelve tránsito 0 para los insumos (0 con tránsito ≠ 0). **No se registró ningún movimiento.**
+
 ## v2.41 — Conteo: bodegas y técnicos por separado
 
 Andrés (06-10): en la sección de Conteo, dejar separados técnicos y bodegas — mezclados confundía.

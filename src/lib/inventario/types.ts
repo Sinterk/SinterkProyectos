@@ -165,8 +165,10 @@ export interface ResumenMaterialProyecto {
   cantRezagada: number
   cantRebajada: number
   cantMerma: number
-  /** Calculado: entregada - instalada - devuelta - rezagada - merma. Nunca se guarda. */
+  /** Calculado: entregada - instalada - devuelta - rezagada - merma. Nunca se guarda. 0 en los insumos (solo se entregan). */
   cantTransito: number
+  /** Material de tipo "Insumo": solo se entrega, no cuenta como tránsito (ver esInsumo.ts). */
+  esInsumo?: boolean
   /**
    * Bodega real de origen — derivada de `movimientos` tipo='salida' (Entrega)
    * de este material+lote+punto en este proyecto (la de mayor cantidad

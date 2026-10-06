@@ -13,6 +13,7 @@ import { esTipoFerreteria, LOTE_FISICO_FERRETERIA } from '@/lib/inventario/esFer
 import { getResumenProyecto, listMateriales, registrarMovimiento } from '@/lib/inventario/inventarioRepo'
 import type { Material, ResumenMaterialProyecto } from '@/lib/inventario/types'
 import { MaterialSelect } from '@/ui/MaterialSelect'
+import { esTipoInsumo } from '@/lib/inventario/esInsumo'
 
 interface Props {
   projectId: string
@@ -64,6 +65,8 @@ export function PuntoMaterialSection({ projectId, puntoId }: Props) {
   }, [members, tecnicoUserId, session])
 
   const filasPunto = (filas ?? []).filter((f) => f.puntoId === puntoId && f.cantInstalada > 0)
+  // Los insumos solo se entregan (no se instalan): no se ofrecen acá.
+  const materialesInstalables = materiales.filter((m) => !esTipoInsumo(m.tipo?.nombre))
 
   function updateLinea(localId: string, patch: Partial<Linea>) {
     setLineas((prev) => prev.map((l) => (l.localId === localId ? { ...l, ...patch } : l)))
@@ -76,7 +79,9 @@ export function PuntoMaterialSection({ projectId, puntoId }: Props) {
   }
   /** Paquete elegido en la línea `localId`: la reemplaza por una línea por SKU, todas sin cantidad. */
   function handlePaqueteSeleccionado(localId: string, materialIds: string[]) {
-    const nuevas = materialIds.map((materialId) => ({ localId: nanoid(8), materialId, cantidad: '' }))
+    const insumos = new Set(materiales.filter((m) => esTipoInsumo(m.tipo?.nombre)).map((m) => m.id))
+    const nuevas = materialIds.filter((id) => !insumos.has(id)).map((materialId) => ({ localId: nanoid(8), materialId, cantidad: '' }))
+    if (nuevas.length === 0) return
     setLineas((prev) => reemplazarLineaPorVarias(prev, localId, nuevas))
   }
 
@@ -133,7 +138,7 @@ export function PuntoMaterialSection({ projectId, puntoId }: Props) {
       <div className="space-y-1.5">
         {lineas.map((l) => (
           <div key={l.localId} className="flex flex-wrap gap-1.5">
-            <MaterialSelect materiales={materiales} value={l.materialId}
+            <MaterialSelect materiales={materialesInstalables} value={l.materialId}
               onChange={(id) => updateLinea(l.localId, { materialId: id, cantidad: '' })}
               onSelectPaquete={(materialIds) => handlePaqueteSeleccionado(l.localId, materialIds)}
               className="flex-1 min-w-[140px]" />

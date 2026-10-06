@@ -15,6 +15,7 @@ import { useAuth } from '@/lib/auth'
 import type { Profile } from '@/lib/auth'
 import { BODEGA_DEFECTO_POR_AREA } from '@/lib/inventario/defaults'
 import { esTipoFerreteria, LOTE_FISICO_FERRETERIA } from '@/lib/inventario/esFerreteria'
+import { esTipoInsumo } from '@/lib/inventario/esInsumo'
 import { listMateriales, listUbicaciones, registrarMovimiento } from '@/lib/inventario/inventarioRepo'
 import type { Material, MovimientoTipoUI, Ubicacion } from '@/lib/inventario/types'
 import { LoteSelect } from './LoteSelect'
@@ -35,6 +36,8 @@ const TIPO_LABELS: Record<MovimientoTipoUI, string> = {
   // para que el Record<MovimientoTipoUI, string> quede exhaustivo.
   conteo: 'Conteo',
 }
+/** Tipos en que NO se pueden usar insumos: solo se entregan (ver esInsumo.ts). */
+const SIN_INSUMOS: MovimientoTipoUI[] = ['solicitud', 'instalado', 'devuelto', 'rebajado', 'merma']
 /** Tipos de Salida que no exigen proyecto (permiten "Salida preventiva"). */
 const PROYECTO_OPCIONAL: MovimientoTipoUI[] = ['entrega', 'devuelto']
 /** Tipos de Salida cuya bodega de origen/destino se elige por línea de material. */
@@ -196,6 +199,10 @@ export function RegistrarMovimientoForm({ fixedProject, puntos, lockTipoUI, solo
   // cambiar de material. Entrada es la excepción (ver el comentario en el
   // render, junto al selector de lote): ahí el lote sigue siendo libre
   // incluso para Ferretería, porque el servidor sabe partirlo (0066).
+  const esInsumoId = (id: string) => esTipoInsumo(materiales.find((m) => m.id === id)?.tipo?.nombre)
+  const sinInsumos = !esEntrada && SIN_INSUMOS.includes(tipoUI)
+  const materialesElegibles = sinInsumos ? materiales.filter((m) => !esTipoInsumo(m.tipo?.nombre)) : materiales
+
   function loteReset(materialId: string): string {
     return (!esEntrada && esTipoFerreteria(materiales.find((m) => m.id === materialId)?.tipo?.nombre))
       ? LOTE_FISICO_FERRETERIA : ''
@@ -218,9 +225,10 @@ export function RegistrarMovimientoForm({ fixedProject, puntos, lockTipoUI, solo
    * sin cantidad"). Mantiene la bodega/destino que ya tuviera esa línea.
    */
   function handlePaqueteSeleccionado(l: MaterialLinea, materialIds: string[]) {
-    const nuevas = materialIds.map((materialId) => ({
+    const nuevas = materialIds.filter((id) => !(sinInsumos && esInsumoId(id))).map((materialId) => ({
       ...l, localId: nanoid(8), materialId, cantidad: '', lote: loteReset(materialId),
     }))
+    if (nuevas.length === 0) return
     setLineas((prev) => reemplazarLineaPorVarias(prev, l.localId, nuevas))
   }
 
@@ -232,6 +240,7 @@ export function RegistrarMovimientoForm({ fixedProject, puntos, lockTipoUI, solo
     }
     for (const l of lineas) {
       if (!l.materialId) return 'Falta elegir material en alguna línea'
+      if (sinInsumos && esInsumoId(l.materialId)) return 'Los insumos solo se entregan: quita los insumos de este tipo de movimiento'
       const n = Number(l.cantidad)
       if (!l.cantidad || !(n > 0)) return 'Cantidad inválida en alguna línea'
       if (necesitaBodegaPorLinea && !l.ubicacionBodegaId) return 'Falta la bodega en alguna línea'
@@ -448,7 +457,7 @@ export function RegistrarMovimientoForm({ fixedProject, puntos, lockTipoUI, solo
                   <Fragment key={l.localId}>
                     <tr className="border-t border-slate-800 divide-x divide-slate-800">
                       <td className="px-2 py-1.5 min-w-[12rem]">
-                        <MaterialSelect materiales={materiales} value={l.materialId}
+                        <MaterialSelect materiales={materialesElegibles} value={l.materialId}
                           onChange={(id) => updateLinea(l.localId, { materialId: id, lote: loteReset(id) })}
                           onSelectPaquete={(materialIds) => handlePaqueteSeleccionado(l, materialIds)} />
                       </td>

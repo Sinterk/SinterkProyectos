@@ -28,6 +28,7 @@ import { nanoid } from '@/core/utils/nanoid'
 import { reemplazarLineaPorVarias } from '@/core/utils/lineas'
 import { BODEGA_DEFECTO_POR_AREA } from '@/lib/inventario/defaults'
 import { calcularLineasRebaja, nuevoLibroStock } from '@/lib/inventario/calcularRebaja'
+import { esTipoInsumo } from '@/lib/inventario/esInsumo'
 import { esTipoFerreteria, LOTE_FISICO_FERRETERIA } from '@/lib/inventario/esFerreteria'
 import {
   getResumenProyecto, getStock, listMateriales, listUbicaciones,
@@ -150,7 +151,7 @@ function agregarPorMaterial(rows: ResumenMaterialProyecto[], esFerreteria: (mate
         materialId: r.materialId, materialSku: r.materialSku, materialDescripcion: r.materialDescripcion,
         lote, puntoId: null,
         cantSolicitada: 0, cantEntregada: 0, cantInstalada: 0, cantDevuelta: 0, cantRezagada: 0, cantRebajada: 0,
-        cantMerma: 0, cantTransito: 0, ubicacionBodegaId: null,
+        cantMerma: 0, cantTransito: 0, ubicacionBodegaId: null, esInsumo: r.esInsumo,
       }
       map.set(k, acc)
     }
@@ -167,7 +168,7 @@ function agregarPorMaterial(rows: ResumenMaterialProyecto[], esFerreteria: (mate
     }
   }
   for (const acc of map.values()) {
-    acc.cantTransito = acc.cantEntregada - acc.cantInstalada - acc.cantDevuelta - acc.cantRezagada - acc.cantMerma
+    acc.cantTransito = acc.esInsumo ? 0 : acc.cantEntregada - acc.cantInstalada - acc.cantDevuelta - acc.cantRezagada - acc.cantMerma
   }
   return [...map.values()].sort((a, b) => a.materialSku.localeCompare(b.materialSku))
 }
@@ -825,6 +826,7 @@ export function ResumenProyectoTable({ projectId, area, puntos, agregarPuntos, r
                   const errMaterial = cellErrors[`${fila.localId}|__material__`]
                   const errTecnico = cellErrors[`${fila.localId}|__tecnico__`]
                   const esFerreteriaFila = esTipoFerreteria(materiales.find((m) => m.id === fila.materialId)?.tipo?.nombre)
+                  const esInsumoFila = esTipoInsumo(materiales.find((m) => m.id === fila.materialId)?.tipo?.nombre)
                   return (
                     <tr key={fila.localId} className="shadow-[inset_0_1px_0_0_#334155] divide-x divide-slate-700 bg-brand-950/20">
                       <td className="px-2 py-2 w-20 max-w-[5rem] align-top sticky left-0 z-10 bg-brand-950 isolate">
@@ -884,10 +886,12 @@ export function ResumenProyectoTable({ projectId, area, puntos, agregarPuntos, r
                         // tampoco aplica con origen "técnico": no sale nada de
                         // ninguna bodega en esta fila (ver ORIGEN_TECNICO_PREFIX).
                         const origenTecnico = esOrigenTecnico(fila.ubicacionBodegaId) && campo === 'cantEntregada'
-                        if (campo === CAMPO_REASIGNACION || !editableCampos.includes(campo) || origenTecnico) {
+                        // Un insumo solo se entrega: ninguna otra celda aplica.
+                        const soloEntregaInsumo = esInsumoFila && campo !== 'cantEntregada'
+                        if (campo === CAMPO_REASIGNACION || !editableCampos.includes(campo) || origenTecnico || soloEntregaInsumo) {
                           return (
                             <td key={campo} className="px-2 py-2 text-center whitespace-nowrap align-top text-slate-600"
-                              title={origenTecnico ? 'Origen de esta fila: técnico — no sale nada de bodega' : undefined}>—</td>
+                              title={soloEntregaInsumo ? 'Los insumos solo se entregan' : origenTecnico ? 'Origen de esta fila: técnico — no sale nada de bodega' : undefined}>—</td>
                           )
                         }
                         const err = cellErrors[`${fila.localId}|${campo}`]
@@ -934,6 +938,7 @@ export function ResumenProyectoTable({ projectId, area, puntos, agregarPuntos, r
                   const draft = edits[key] ?? {}
                   const errTecnicoFila = cellErrors[`${key}|__tecnico__`]
                   const esFerreteriaFila = esTipoFerreteria(materiales.find((m) => m.id === row.materialId)?.tipo?.nombre)
+                  const esInsumoRow = !!row.esInsumo || esTipoInsumo(materiales.find((m) => m.id === row.materialId)?.tipo?.nombre)
                   return (
                     <tr key={key} className="shadow-[inset_0_1px_0_0_#334155] divide-x divide-slate-700 bg-slate-800/60">
                       <td className="px-2 py-2 w-20 max-w-[5rem] sticky left-0 z-10 bg-slate-800 isolate">
@@ -970,7 +975,8 @@ export function ResumenProyectoTable({ projectId, area, puntos, agregarPuntos, r
                       </td>
                       {CAMPOS_FISICOS.map((campo) => {
                         const valor = row[campo]
-                        if (!editableCamposVista.includes(campo)) {
+                        // Un insumo solo se entrega: el resto de las celdas son de solo lectura.
+                        if (!editableCamposVista.includes(campo) || (esInsumoRow && campo !== 'cantEntregada')) {
                           return (
                             <td key={campo} className="px-2 py-2 text-center whitespace-nowrap align-top">
                               <span className="text-white font-medium">{valor}</span>
@@ -1001,8 +1007,9 @@ export function ResumenProyectoTable({ projectId, area, puntos, agregarPuntos, r
                           </td>
                         )
                       })}
-                      <td className={`px-2 py-2 text-center font-semibold whitespace-nowrap ${row.cantTransito > 0 ? 'text-amber-400' : 'text-white'}`}>
-                        {row.cantTransito}
+                      <td className={`px-2 py-2 text-center font-semibold whitespace-nowrap ${row.cantTransito > 0 ? 'text-amber-400' : 'text-white'}`}
+                        title={esInsumoRow ? 'Insumo: solo se entrega, no tiene tránsito' : undefined}>
+                        {esInsumoRow ? '—' : row.cantTransito}
                       </td>
                       <td className="px-2 py-2 align-top">
                         {/* Se copia a cada movimiento que registre esta fila al guardar. */}

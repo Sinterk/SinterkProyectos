@@ -27,6 +27,7 @@ import type { Profile } from '@/lib/auth'
 import { listMateriales, listUbicaciones, getStock, registrarMovimiento } from '@/lib/inventario/inventarioRepo'
 import type { Material, Ubicacion, StockRow } from '@/lib/inventario/types'
 import { esTipoFerreteria, LOTE_FISICO_FERRETERIA } from '@/lib/inventario/esFerreteria'
+import { esTipoInsumo } from '@/lib/inventario/esInsumo'
 import { LoteSelect } from '@/ui/LoteSelect'
 import { MaterialSelect } from '@/ui/MaterialSelect'
 import { UbicacionSelect } from '@/ui/UbicacionSelect'
@@ -125,6 +126,9 @@ export function AsignacionesForm({ onRegistered }: { onRegistered?: () => void }
     reloadStockTecnico()
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [tecnicoUbicacionId])
+
+  // Los insumos solo se entregan: nunca se devuelven (ver esInsumo.ts), no se ofrecen en Devolución.
+  const stockDevolvible = stockTecnico?.filter((r) => !esTipoInsumo(materiales.find((m) => m.id === r.materialId)?.tipo?.nombre)) ?? null
 
   function documentoAuto(t: AsigTipo): string {
     const label = t === 'entrega' ? 'preventivos' : t === 'devolucion' ? 'Devolución' : 'Conteo'
@@ -295,10 +299,10 @@ export function AsignacionesForm({ onRegistered }: { onRegistered?: () => void }
           <span className={labelCls}>Materiales asignados al técnico</span>
           {!tecnicoUserId ? (
             <p className="text-xs text-slate-500">Elige un técnico para ver lo que tiene asignado.</p>
-          ) : stockTecnico === null ? (
+          ) : stockDevolvible === null ? (
             <p className="text-xs text-slate-500">Cargando…</p>
-          ) : stockTecnico.length === 0 ? (
-            <p className="text-xs text-slate-500">Este técnico no tiene materiales asignados.</p>
+          ) : stockDevolvible.length === 0 ? (
+            <p className="text-xs text-slate-500">Este técnico no tiene materiales por devolver (los insumos solo se entregan).</p>
           ) : (
             <div className="overflow-x-auto rounded-xl border border-slate-700">
               <table className="w-full text-xs border-collapse">
@@ -313,7 +317,7 @@ export function AsignacionesForm({ onRegistered }: { onRegistered?: () => void }
                   </tr>
                 </thead>
                 <tbody>
-                  {stockTecnico.map((r) => {
+                  {stockDevolvible.map((r) => {
                     const key = `${r.materialId}|${r.lote}`
                     const res = devResultados[key]
                     return (

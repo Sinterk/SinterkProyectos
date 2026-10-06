@@ -14,6 +14,7 @@ import type {
 } from './types'
 import type { FilaImportSap } from './importarSap'
 import { esTipoCable } from './esCable'
+import { esTipoInsumo } from './esInsumo'
 
 // Nota sobre embeds de PostgREST: `stock`/`movimientos`/`proyecto_materiales`
 // referencian a `materiales`/`ubicaciones`/`profiles`/`projects` con una FK
@@ -763,7 +764,7 @@ interface ProyectoMaterialJoinRow {
   cant_rezagada: number
   cant_rebajada: number
   cant_merma: number
-  materiales: { sku: string; descripcion: string } | null
+  materiales: { sku: string; descripcion: string; material_tipos: { nombre: string } | null } | null
 }
 
 interface SolicitudJoinRow {
@@ -771,7 +772,7 @@ interface SolicitudJoinRow {
   lote: string
   punto_id: string | null
   cantidad: number
-  materiales: { sku: string; descripcion: string } | null
+  materiales: { sku: string; descripcion: string; material_tipos: { nombre: string } | null } | null
 }
 
 interface EntregaJoinRow {
@@ -799,11 +800,11 @@ export async function getResumenProyecto(projectId: string): Promise<ResumenMate
   const [pmRes, solRes, entRes] = await Promise.all([
     supabase
       .from('proyecto_materiales')
-      .select('material_id, lote, punto_id, cant_entregada, cant_instalada, cant_devuelta, cant_rezagada, cant_rebajada, cant_merma, materiales(sku, descripcion)')
+      .select('material_id, lote, punto_id, cant_entregada, cant_instalada, cant_devuelta, cant_rezagada, cant_rebajada, cant_merma, materiales(sku, descripcion, material_tipos(nombre))')
       .eq('project_id', projectId),
     supabase
       .from('movimientos')
-      .select('material_id, lote, punto_id, cantidad, materiales(sku, descripcion)')
+      .select('material_id, lote, punto_id, cantidad, materiales(sku, descripcion, material_tipos(nombre))')
       .eq('project_id', projectId)
       .eq('tipo', 'solicitud'),
     supabase
@@ -819,7 +820,7 @@ export async function getResumenProyecto(projectId: string): Promise<ResumenMate
   const key = (materialId: string, lote: string, puntoId: string | null) => `${materialId}|${lote}|${puntoId ?? ''}`
   const map = new Map<string, ResumenMaterialProyecto>()
 
-  function ensure(materialId: string, lote: string, puntoId: string | null, mat: { sku: string; descripcion: string } | null) {
+  function ensure(materialId: string, lote: string, puntoId: string | null, mat: { sku: string; descripcion: string; material_tipos: { nombre: string } | null } | null) {
     const k = key(materialId, lote, puntoId)
     let row = map.get(k)
     if (!row) {
@@ -828,6 +829,7 @@ export async function getResumenProyecto(projectId: string): Promise<ResumenMate
         lote, puntoId,
         cantSolicitada: 0, cantEntregada: 0, cantInstalada: 0, cantDevuelta: 0, cantRezagada: 0, cantRebajada: 0,
         cantMerma: 0, cantTransito: 0, ubicacionBodegaId: null,
+        esInsumo: esTipoInsumo(mat?.material_tipos?.nombre),
       }
       map.set(k, row)
     }
@@ -864,7 +866,8 @@ export async function getResumenProyecto(projectId: string): Promise<ResumenMate
   }
 
   for (const row of map.values()) {
-    row.cantTransito = row.cantEntregada - row.cantInstalada - row.cantDevuelta - row.cantRezagada - row.cantMerma
+    // Un insumo solo se entrega: no hay "tránsito" pendiente de instalar/devolver.
+    row.cantTransito = row.esInsumo ? 0 : row.cantEntregada - row.cantInstalada - row.cantDevuelta - row.cantRezagada - row.cantMerma
   }
 
   // Una fila con todo en 0 es lo que deja `proyecto_materiales` tras anular el
@@ -939,7 +942,7 @@ interface MovimientoLedgerJoinRow {
   lote: string
   tipo: string
   cantidad: number
-  materiales: { sku: string; descripcion: string } | null
+  materiales: { sku: string; descripcion: string; material_tipos: { nombre: string } | null } | null
   projects: { ott: string; area: string } | null
 }
 
@@ -962,13 +965,14 @@ interface MovimientoLedgerJoinRow {
 export async function getTecnicoLedger(userId: string): Promise<TecnicoLedgerRow[]> {
   const { data, error } = await supabase
     .from('movimientos')
-    .select('project_id, material_id, lote, tipo, cantidad, materiales(sku,descripcion), projects(ott,area)')
+    .select('project_id, material_id, lote, tipo, cantidad, materiales(sku,descripcion,material_tipos(nombre)), projects(ott,area)')
     .eq('usuario_id', userId)
     .in('tipo', ['salida', 'instalado', 'traslado', 'rebaja', 'merma', 'ajuste'])
   if (error) throw new Error(`movimientos.tecnico: ${error.message}`)
 
   const key = (r: MovimientoLedgerJoinRow) => `${r.project_id ?? ''}|${r.material_id}|${r.lote}`
   const map = new Map<string, TecnicoLedgerRow>()
+  const insumos = new Set<string>()
 
   for (const r of (data as unknown as MovimientoLedgerJoinRow[])) {
     const k = key(r)
@@ -982,6 +986,7 @@ export async function getTecnicoLedger(userId: string): Promise<TecnicoLedgerRow
       }
       map.set(k, row)
     }
+    if (esTipoInsumo(r.materiales?.material_tipos?.nombre)) insumos.add(k)
     const cantidad = Number(r.cantidad)
     if (r.tipo === 'salida' || r.tipo === 'ajuste') row.cantEntregada += cantidad
     else if (r.tipo === 'instalado') row.cantInstalada += cantidad
@@ -990,8 +995,9 @@ export async function getTecnicoLedger(userId: string): Promise<TecnicoLedgerRow
     else if (r.tipo === 'merma') row.cantMerma += cantidad
   }
 
-  for (const row of map.values()) {
-    row.cantTransito = row.cantEntregada - row.cantInstalada - row.cantDevuelta - row.cantRebajada - row.cantMerma
+  for (const [k, row] of map) {
+    // Insumos: solo se entregan, nunca quedan "en tránsito" (ver esInsumo.ts).
+    row.cantTransito = insumos.has(k) ? 0 : row.cantEntregada - row.cantInstalada - row.cantDevuelta - row.cantRebajada - row.cantMerma
   }
 
   return [...map.values()]

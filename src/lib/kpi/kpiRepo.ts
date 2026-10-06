@@ -4,6 +4,8 @@
 // acá solo se traduce input/output entre camelCase y snake_case.
 
 import { supabase } from '../supabaseClient'
+import { listMateriales } from '../inventario/inventarioRepo'
+import { esTipoInsumo } from '../inventario/esInsumo'
 
 export type KpiProyectoEstado = 'abierto' | 'cerrado' | 'pendiente'
 
@@ -168,6 +170,8 @@ export async function getKpiMateriales(input: {
     p_stock_ubicacion_ids: input.stockUbicacionIds && input.stockUbicacionIds.length > 0 ? input.stockUbicacionIds : null,
   })
   if (error) throw new Error(`kpi_materiales: ${error.message}`)
+  // El tránsito de un insumo no existe (solo se entrega): se pone en 0 acá, en el cliente.
+  const insumos = new Set((await listMateriales()).filter((m) => esTipoInsumo(m.tipo?.nombre)).map((m) => m.id))
   return (data as KpiMaterialRpcRow[] | null ?? []).map((r) => ({
     materialId: r.material_id,
     sku: r.sku,
@@ -178,7 +182,7 @@ export async function getKpiMateriales(input: {
     devuelto: Number(r.devuelto),
     rebajado: Number(r.rebajado),
     merma: Number(r.merma),
-    transito: Number(r.transito),
+    transito: insumos.has(r.material_id) ? 0 : Number(r.transito),
     origenBodega: r.origen_bodega,
     origenTecnico: r.origen_tecnico,
     fisico: r.fisico === null ? null : Number(r.fisico),
