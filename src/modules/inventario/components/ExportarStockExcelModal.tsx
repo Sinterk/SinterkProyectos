@@ -2,7 +2,7 @@
 // elegir bodega(s) + Físico/Digital/Ambos, botón en Inventario > Stock. Mismo
 // patrón de modal que ZipArchiveViewer.tsx (overlay fixed + tarjeta centrada).
 import { useEffect, useState } from 'react'
-import { getStock, listUbicaciones } from '@/lib/inventario/inventarioRepo'
+import { getMaterialOttsAbiertas, getStock, listUbicaciones } from '@/lib/inventario/inventarioRepo'
 import type { StockRow, Ubicacion } from '@/lib/inventario/types'
 import { generarStockExcel } from '../utils/generarStockExcel'
 import type { NaturalezaExport } from '../utils/generarStockExcel'
@@ -24,6 +24,7 @@ function ExportarStockExcelModal({ onClose }: { onClose: () => void }) {
   const [bodegas, setBodegas] = useState<Ubicacion[]>([])
   const [seleccionadas, setSeleccionadas] = useState<Set<string>>(new Set())
   const [naturaleza, setNaturaleza] = useState<NaturalezaExport>('ambos')
+  const [incluirOtt, setIncluirOtt] = useState(false)
   const [generando, setGenerando] = useState(false)
   const [error, setError] = useState<string | null>(null)
   const [aviso, setAviso] = useState<string | null>(null)
@@ -60,10 +61,11 @@ function ExportarStockExcelModal({ onClose }: { onClose: () => void }) {
       const bodegasLabel = seleccionadas.size === bodegas.length
         ? 'todas'
         : bodegas.filter((b) => seleccionadas.has(b.id)).map((b) => b.nombre).join('_')
-      const r = generarStockExcel(rows, naturaleza, bodegasLabel)
+      const materialOtts = incluirOtt ? await getMaterialOttsAbiertas() : undefined
+      const r = generarStockExcel(rows, naturaleza, bodegasLabel, materialOtts)
       // Digital: lo que está en lotes 'SinDefinir'/'Físico' no se exporta — se avisa para que no pase desapercibido.
       if (r.omitidasSinLote.filas > 0) {
-        setAviso(`Excel generado (${r.filas} filas). No se incluyeron ${r.omitidasSinLote.filas} fila(s) con digital en lote SinDefinir/Físico (${r.omitidasSinLote.unidades} unidades en total).`)
+        setAviso(`Excel generado (${r.filas} filas${incluirOtt ? ` + ${r.filasOtt} en la hoja de OTT` : ''}). No se incluyeron ${r.omitidasSinLote.filas} fila(s) con digital en lote SinDefinir/Físico (${r.omitidasSinLote.unidades} unidades en total).`)
         return
       }
       onClose()
@@ -115,6 +117,17 @@ function ExportarStockExcelModal({ onClose }: { onClose: () => void }) {
             ))}
           </div>
         </div>
+
+        <label className="flex items-start gap-2 text-sm text-slate-200 cursor-pointer">
+          <input type="checkbox" checked={incluirOtt} onChange={(e) => setIncluirOtt(e.target.checked)}
+            className="mt-0.5 rounded border-slate-600 bg-slate-700 text-brand-600 focus:ring-brand-500" />
+          <span>
+            Incluir material <b>en tránsito e instalado</b> de las OTT abiertas
+            <span className="block text-[11px] text-slate-500">
+              Hoja aparte con OTT, bodega de origen y lote (Ferretería: "Físico"). Sin insumos.
+            </span>
+          </span>
+        </label>
 
         {error && <p className="text-xs text-red-400">{error}</p>}
         {aviso && <p className="text-xs text-amber-400">{aviso}</p>}

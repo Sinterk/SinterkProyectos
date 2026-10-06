@@ -37,6 +37,16 @@
   30. ~~Correr `supabase/migrations/0081_stock_sin_lotes_vacios_sin_excepcion.sql`~~ — **corrida por Andrés el 06-10.**
 - **Deploy**: el push del 26-08 a `main` falló al desplegar por una interrupción real de GitHub Actions/Pages (confirmada en githubstatus.com, no un problema del repo) — falta reintentar el workflow ("Re-run all jobs") una vez que GitHub se recupere. Fuera de eso, `.github/workflows/deploy.yml` publica bien en cada push a `main`.
 
+## v2.48 — Excel de stock: hoja con el material en tránsito e instalado de las OTT abiertas
+
+Andrés (06-10): en la exportación a Excel, poder incluir el material en tránsito e instalado de las OTT abiertas, con el origen (bodega) y el lote si existe (Ferretería dirá "Físico"), en otra pestaña e incluyendo las OTT.
+
+- **Modal "Exportar stock a Excel"**: casilla nueva **"Incluir material en tránsito e instalado de las OTT abiertas"** (desmarcada por defecto). Marcada, el libro trae una 2.ª pestaña **"Tránsito e instalado OTT"** además de "Stock" (que sigue filtrado por bodega/naturaleza como antes).
+- **Contenido de la hoja** (`getMaterialOttsAbiertas`, `inventarioRepo.ts`): una fila por **proyecto abierto (estado `activo`) + material + lote** con **Área** (ATT / Preventivo / Incidencia), **OTT**, **Dirección** (la del proyecto, vacía si no tiene), **SKU**, **Descripción**, **Bodega origen** (la de mayor cantidad entregada según las Entregas), **Lote** (vacío si es SinDefinir; **Ferretería = "Físico"** y sus puntos se juntan), **Entregado, Instalado, Devuelto, Merma, Asignado a técnico y En tránsito** (misma fórmula que la tabla de Logística). Solo van las filas con tránsito ≠ 0 o instalado ≠ 0. **Sin insumos** (solo se entregan). Orden: Área, OTT, SKU, lote.
+- **Alcance**: incluye también Preventivos e Incidencias abiertos (columna Área para filtrar); si solo se quieren las OTT de ATT, basta filtrar esa columna. Hoy: 89 filas en 21 proyectos (85 ATT, 4 Preventivo).
+- **Consulta en bloque**: 3 lecturas paginadas (proyectos, `proyecto_materiales`, Entregas) en vez de un resumen por proyecto. Sin migración.
+- **Verificado en el navegador**: el libro generado tiene las hojas "Stock" (82 filas, C088 digital) y "Tránsito e instalado OTT" (89 filas, 13 columnas); cruzado contra `getResumenProyecto` de la OTT 72603681118 (14 SKU): 0 diferencias en entregado/instalado/tránsito; Ferretería sale con lote "Físico"; 2 filas sin bodega de origen conocida. La casilla aparece desmarcada en el modal.
+
 ## v2.47 — Sin excepción por umbral: un material agotado no deja fila (migración 0081)
 
 Andrés (06-10): sobre los SKU con umbral, la fila vacía también debe desaparecer — es común que cuando no queda de un tipo se reabastezca con uno similar (ej. se acaba el cable ADSS 32 y se compra ADSS 24), así que es natural que quede en 0. (Se interpretó "debe desaparecer".)

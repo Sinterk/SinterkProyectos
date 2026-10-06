@@ -5,6 +5,7 @@
 // Excel.
 import * as XLSX from 'xlsx-js-style'
 import type { StockRow } from '@/lib/inventario/types'
+import type { FilaMaterialOtt } from '@/lib/inventario/inventarioRepo'
 import { compareSku } from '@/lib/inventario/sku'
 import { LOTE_FISICO_FERRETERIA } from '@/lib/inventario/esFerreteria'
 
@@ -73,7 +74,9 @@ export function filtrarFilasExport(rows: StockRow[], naturaleza: NaturalezaExpor
  * según `naturaleza` y se ordena igual que la tabla de Stock > Bodega
  * (Bodega, luego SKU, luego Lote).
  */
-export function generarStockExcel(rowsTodas: StockRow[], naturaleza: NaturalezaExport, bodegasLabel: string): { filas: number; omitidasSinLote: { filas: number; unidades: number } } {
+export function generarStockExcel(
+  rowsTodas: StockRow[], naturaleza: NaturalezaExport, bodegasLabel: string, materialOtts?: FilaMaterialOtt[],
+): { filas: number; omitidasSinLote: { filas: number; unidades: number }; filasOtt: number } {
   const { filas: rows, omitidasSinLote } = filtrarFilasExport(rowsTodas, naturaleza)
   const incluyeFisico = naturaleza === 'fisico' || naturaleza === 'ambos'
   const incluyeDigital = naturaleza === 'digital' || naturaleza === 'ambos'
@@ -113,9 +116,39 @@ export function generarStockExcel(rowsTodas: StockRow[], naturaleza: NaturalezaE
   const wb = XLSX.utils.book_new()
   XLSX.utils.book_append_sheet(wb, ws, 'Stock')
 
+  // Hoja aparte: material en tránsito e instalado de las OTT abiertas.
+  if (materialOtts) agregarHojaOtt(wb, materialOtts)
+
   const naturalezaLabel = naturaleza === 'fisico' ? 'Fisico' : naturaleza === 'digital' ? 'Digital' : 'FisicoDigital'
   const fecha = new Date().toISOString().slice(0, 10)
   const fileName = `Stock_${naturalezaLabel}_${slugify(bodegasLabel)}_${fecha}.xlsx`
   XLSX.writeFile(wb, fileName)
-  return { filas: rows.length, omitidasSinLote }
+  return { filas: rows.length, omitidasSinLote, filasOtt: materialOtts?.length ?? 0 }
+}
+
+/**
+ * Pestaña "Tránsito e instalado OTT": una fila por OTT abierta + material + lote
+ * con su bodega de origen. Lote vacío = sin lote (SinDefinir); Ferretería dice
+ * "Físico". Los insumos no entran (solo se entregan).
+ */
+function agregarHojaOtt(wb: XLSX.WorkBook, filas: FilaMaterialOtt[]): void {
+  const headers = ['Área', 'OTT', 'Dirección', 'SKU', 'Descripción', 'Bodega origen', 'Lote',
+    'Entregado', 'Instalado', 'Devuelto', 'Merma', 'Asignado a técnico', 'En tránsito']
+  const numericas = new Set([7, 8, 9, 10, 11, 12])
+  const dataRows: (string | number)[][] = filas.map((f) => [
+    f.area, f.ott, f.direccion, f.sku, f.descripcion, f.bodegaOrigen, f.lote,
+    f.entregado, f.instalado, f.devuelto, f.merma, f.asignadoATecnico, f.transito,
+  ])
+  const aoa = [headers, ...dataRows]
+  const ws = XLSX.utils.aoa_to_sheet(aoa)
+  for (let r = 0; r < aoa.length; r++) {
+    for (let c = 0; c < headers.length; c++) {
+      const addr = XLSX.utils.encode_cell({ r, c })
+      if (!ws[addr]) ws[addr] = { v: '', t: 's' }
+      ws[addr].s = cellStyle(r === 0, r, numericas.has(c))
+    }
+  }
+  ws['!cols'] = [11, 16, 30, 14, 40, 14, 14, 10, 10, 10, 9, 12, 11].map((w) => ({ wch: w }))
+  ws['!rows'] = aoa.map((_, i) => ({ hpt: i === 0 ? 30 : 18 }))
+  XLSX.utils.book_append_sheet(wb, ws, 'Tránsito e instalado OTT')
 }

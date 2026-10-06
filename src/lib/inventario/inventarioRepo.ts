@@ -15,6 +15,7 @@ import type {
 import type { FilaImportSap } from './importarSap'
 import { esTipoCable } from './esCable'
 import { esTipoInsumo } from './esInsumo'
+import { esTipoFerreteria, LOTE_FISICO_FERRETERIA } from './esFerreteria'
 
 // Nota sobre embeds de PostgREST: `stock`/`movimientos`/`proyecto_materiales`
 // referencian a `materiales`/`ubicaciones`/`profiles`/`projects` con una FK
@@ -931,6 +932,118 @@ export async function getTotalesMaterialPorProyecto(
     }
   }
   return out
+}
+
+/** Una línea del Excel "material en tránsito e instalado de las OTT abiertas" (ver getMaterialOttsAbiertas). */
+export interface FilaMaterialOtt {
+  area: 'ATT' | 'Preventivo' | 'Incidencia'
+  ott: string
+  direccion: string
+  sku: string
+  descripcion: string
+  /** Bodega de la que salió (la de mayor cantidad entregada); '' si no se sabe. */
+  bodegaOrigen: string
+  /** Lote real; '' si es SinDefinir. Ferretería: 'Físico'. */
+  lote: string
+  entregado: number
+  instalado: number
+  devuelto: number
+  merma: number
+  asignadoATecnico: number
+  transito: number
+}
+
+/**
+ * Material de las OTT ABIERTAS (proyectos en estado 'activo' de ATT, Preventivos
+ * e Incidencias), una fila por proyecto+material+lote con lo que hoy está en
+ * tránsito o instalado. Se pide en bloque (no un resumen por proyecto) para que
+ * el Excel de stock no haga decenas de consultas. Los insumos no entran: solo se
+ * entregan, no tienen tránsito ni instalado (ver esInsumo.ts). Ferretería va con
+ * lote 'Físico' y sus puntos se juntan en una sola fila.
+ */
+export async function getMaterialOttsAbiertas(): Promise<FilaMaterialOtt[]> {
+  const { data: proys, error: errP } = await supabase
+    .from('projects').select('id, ott, area, subarea, direccion').eq('estado', 'activo')
+  if (errP) throw new Error(`projects.abiertos: ${errP.message}`)
+  const proyectos = new Map((proys as { id: string; ott: string; area: 'ATT' | 'OyM'; subarea: string | null; direccion: string | null }[]).map((p) => [p.id, p]))
+  const ids = [...proyectos.keys()]
+  if (ids.length === 0) return []
+
+  interface PmRow {
+    project_id: string; material_id: string; lote: string
+    cant_entregada: number; cant_instalada: number; cant_devuelta: number; cant_rezagada: number; cant_merma: number
+    materiales: { sku: string; descripcion: string; material_tipos: { nombre: string } | null } | null
+  }
+  const pm: PmRow[] = []
+  for (let desde = 0; ; desde += 1000) {
+    const { data, error } = await supabase
+      .from('proyecto_materiales')
+      .select('project_id, material_id, lote, cant_entregada, cant_instalada, cant_devuelta, cant_rezagada, cant_merma, materiales(sku, descripcion, material_tipos(nombre))')
+      .in('project_id', ids).order('project_id').order('material_id').order('lote').range(desde, desde + 999)
+    if (error) throw new Error(`proyecto_materiales.abiertos: ${error.message}`)
+    pm.push(...(data as unknown as PmRow[]))
+    if ((data as unknown[]).length < 1000) break
+  }
+
+  // Bodega de origen: de las Entregas (movimientos 'salida') de cada proyecto.
+  const bodegaPorClave = new Map<string, Map<string, number>>()
+  const sumar = (k: string, ubicacionId: string, cantidad: number) => {
+    const m = bodegaPorClave.get(k) ?? new Map<string, number>()
+    m.set(ubicacionId, (m.get(ubicacionId) ?? 0) + cantidad)
+    bodegaPorClave.set(k, m)
+  }
+  for (let desde = 0; ; desde += 1000) {
+    const { data, error } = await supabase
+      .from('movimientos').select('project_id, material_id, lote, ubicacion_id, cantidad')
+      .eq('tipo', 'salida').in('project_id', ids).order('created_at').order('id').range(desde, desde + 999)
+    if (error) throw new Error(`movimientos.entregas_abiertas: ${error.message}`)
+    for (const r of data as { project_id: string; material_id: string; lote: string; ubicacion_id: string; cantidad: number }[]) {
+      sumar(`${r.project_id}|${r.material_id}|${r.lote}`, r.ubicacion_id, Number(r.cantidad))
+      sumar(`${r.project_id}|${r.material_id}`, r.ubicacion_id, Number(r.cantidad)) // respaldo sin lote (Ferretería)
+    }
+    if ((data as unknown[]).length < 1000) break
+  }
+  const nombreBodega = new Map((await listUbicaciones()).map((u) => [u.id, u.nombre]))
+  const bodegaDe = (k: string): string => {
+    const m = bodegaPorClave.get(k)
+    if (!m || m.size === 0) return ''
+    return nombreBodega.get([...m.entries()].sort((a, b) => b[1] - a[1])[0][0]) ?? ''
+  }
+
+  const acum = new Map<string, FilaMaterialOtt>()
+  for (const r of pm) {
+    const tipo = r.materiales?.material_tipos?.nombre
+    if (esTipoInsumo(tipo)) continue
+    const p = proyectos.get(r.project_id)
+    if (!p) continue
+    const ferreteria = esTipoFerreteria(tipo)
+    const lote = ferreteria ? LOTE_FISICO_FERRETERIA : r.lote
+    const k = `${r.project_id}|${r.material_id}|${lote}`
+    let f = acum.get(k)
+    if (!f) {
+      f = {
+        area: p.area === 'ATT' ? 'ATT' : p.subarea === 'incidencia' ? 'Incidencia' : 'Preventivo',
+        ott: p.ott, direccion: p.direccion ?? '',
+        sku: r.materiales?.sku ?? '', descripcion: r.materiales?.descripcion ?? '',
+        bodegaOrigen: bodegaDe(ferreteria ? `${r.project_id}|${r.material_id}` : k) || bodegaDe(`${r.project_id}|${r.material_id}`),
+        lote: lote === 'SinDefinir' ? '' : lote,
+        entregado: 0, instalado: 0, devuelto: 0, merma: 0, asignadoATecnico: 0, transito: 0,
+      }
+      acum.set(k, f)
+    }
+    f.entregado += Number(r.cant_entregada)
+    f.instalado += Number(r.cant_instalada)
+    f.devuelto += Number(r.cant_devuelta)
+    f.merma += Number(r.cant_merma)
+    f.asignadoATecnico += Number(r.cant_rezagada)
+  }
+  for (const f of acum.values()) f.transito = f.entregado - f.instalado - f.devuelto - f.asignadoATecnico - f.merma
+
+  // Solo lo que está en tránsito o ya instalado.
+  return [...acum.values()]
+    .filter((f) => f.transito !== 0 || f.instalado !== 0)
+    .sort((a, b) => a.area.localeCompare(b.area) || a.ott.localeCompare(b.ott, undefined, { numeric: true })
+      || a.sku.localeCompare(b.sku, undefined, { numeric: true }) || a.lote.localeCompare(b.lote))
 }
 
 // ---------------------------------------------------------------------------
