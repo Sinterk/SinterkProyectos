@@ -33,6 +33,15 @@
   26. **Asignar códigos LPU en el Catálogo** (opcional) — Andrés (05-10): se resuelve **al hacer el conteo de los vehículos**, no antes. Incluye el cable (código + "Tipo de tendido"); mientras falte, el EP lo avisa como "sin código LPU".
 - **Deploy**: el push del 26-08 a `main` falló al desplegar por una interrupción real de GitHub Actions/Pages (confirmada en githubstatus.com, no un problema del repo) — falta reintentar el workflow ("Re-run all jobs") una vez que GitHub se recupere. Fuera de eso, `.github/workflows/deploy.yml` publica bien en cada push a `main`.
 
+## v2.44 — Excel de stock: sin lotes vacíos; en digital solo lotes reales de SAP
+
+Andrés (06-10): en el Excel de stock digital de C088 aparecían materiales sin digital (Amarra 150, Bajada Lateral, CAJAMURALEVER, DU08, Huincha Aislante, Plumón Blanco, STKCMIC) y el lote `51024 · ODF 12 FIBRAS · C088 · 2/2 ENTEL · 0`. Pidió: no mostrar lote `SinDefinir` ni `Físico` en ese contexto, y no mostrar lotes vacíos.
+
+- **Causa (datos reales)**: el Excel exportaba TODAS las filas de `stock` de la bodega (C088: 141), sin mirar si tenían cantidad en lo exportado. `adjust_stock` no borra la fila cuando el saldo queda en 0, así que queda un resto por cada material/lote que alguna vez pasó por la bodega: 58 de las 141 filas tenían digital 0 y 28 solo físico. Los 7 materiales eran filas `SinDefinir`/lote 0109 en 0/0 (Amarra 150, Huincha y Plumón son insumos entregados desde C088 antes de existir la bodega Insumos; DU08, Bajada Lateral y STKCMIC también) o físico sin digital (CAJAMURALEVER, 2 u. físicas sin SAP); `2/2 ENTEL` es un lote de 51024 ya entregado completo (0/0).
+- **Cambio** (`utils/generarStockExcel.ts` → `filtrarFilasExport`): **nunca lotes vacíos** (se descartan filas sin cantidad en lo exportado); en **Digital** además se excluyen los lotes `SinDefinir` (placeholder de "sin lote asignado") y `Físico` (el lote que solo junta lo físico de la bodega), porque no son lotes de SAP. Físico y Ambos solo quitan las filas vacías (el físico sí puede estar en `SinDefinir`/`Físico`). C088 digital: **141 → 82 filas**, sin ninguno de los 7 materiales ni `2/2 ENTEL`.
+- **Aviso**: si en Digital queda fuera digital real que estaba en `SinDefinir`/`Físico`, el modal lo dice ("No se incluyeron N fila(s)… X unidades"). Hoy es 1 fila: **SKU 220, SinDefinir, 40 unidades de digital** — conviene asignarle su lote real de SAP (corregir la entrada) para que salga en el Excel.
+- **Sin tocar datos**: las filas en 0/0 siguen en la tabla `stock` (la pestaña Bodega las usa para alertas de umbral, ej. "Renovar"). Limpiarlas con SQL es opcional.
+
 ## v2.43 — Insumos: fuera de la "posesión" del técnico; en los KPI solo la entrega
 
 Andrés (06-10): los insumos tampoco deben aparecer en la posesión de stock de un técnico, y en los KPI solo debe registrarse la entrega. **Corrige lo dicho en v2.42**: el stock de insumos del técnico ya no se muestra (la entrega queda en los movimientos).

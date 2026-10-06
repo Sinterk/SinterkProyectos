@@ -6,6 +6,7 @@
 import * as XLSX from 'xlsx-js-style'
 import type { StockRow } from '@/lib/inventario/types'
 import { compareSku } from '@/lib/inventario/sku'
+import { LOTE_FISICO_FERRETERIA } from '@/lib/inventario/esFerreteria'
 
 export type NaturalezaExport = 'fisico' | 'digital' | 'ambos'
 
@@ -34,13 +35,46 @@ function slugify(s: string): string {
   return s.replace(/\s+/g, '_').replace(/[^\w._-]/g, '') || 'todas'
 }
 
+/** Placeholder de material al que todavía no se le asignó un lote (no es un lote real). */
+const LOTE_SIN_DEFINIR = 'SinDefinir'
+
+/**
+ * Qué filas de `stock` entran al Excel según la naturaleza:
+ * - **Nunca lotes vacíos**: se descartan las filas sin cantidad en lo que se exporta
+ *   (`adjust_stock` no borra la fila cuando queda en 0, así que quedan restos de
+ *   todo lo que alguna vez pasó por la bodega).
+ * - **Digital**: solo lotes reales de SAP — 'SinDefinir' (placeholder) y 'Físico'
+ *   (lote que solo junta lo que hay físicamente en la bodega) no son un lote de
+ *   SAP y no se muestran. Es la vista que se compara contra SAP.
+ * Devuelve también cuánto digital quedó fuera por ser de esos lotes, para avisarlo.
+ */
+export function filtrarFilasExport(rows: StockRow[], naturaleza: NaturalezaExport): {
+  filas: StockRow[]; omitidasSinLote: { filas: number; unidades: number }
+} {
+  const omitidasSinLote = { filas: 0, unidades: 0 }
+  const filas = rows.filter((r) => {
+    const tieneFisico = r.cantidadFisico !== 0
+    const tieneDigital = r.cantidadDigital !== 0
+    if (naturaleza === 'fisico') return tieneFisico
+    const loteNoSap = r.lote === LOTE_SIN_DEFINIR || r.lote === LOTE_FISICO_FERRETERIA
+    if (naturaleza === 'digital') {
+      if (!tieneDigital) return false
+      if (loteNoSap) { omitidasSinLote.filas += 1; omitidasSinLote.unidades += Math.abs(r.cantidadDigital); return false }
+      return true
+    }
+    return tieneFisico || tieneDigital
+  })
+  return { filas, omitidasSinLote }
+}
+
 /**
  * Arma y descarga el Excel. `rows` ya viene filtrado a las bodegas elegidas
  * (ver ExportarStockExcelModal) — acá solo se decide qué columnas mostrar
  * según `naturaleza` y se ordena igual que la tabla de Stock > Bodega
  * (Bodega, luego SKU, luego Lote).
  */
-export function generarStockExcel(rows: StockRow[], naturaleza: NaturalezaExport, bodegasLabel: string): void {
+export function generarStockExcel(rowsTodas: StockRow[], naturaleza: NaturalezaExport, bodegasLabel: string): { filas: number; omitidasSinLote: { filas: number; unidades: number } } {
+  const { filas: rows, omitidasSinLote } = filtrarFilasExport(rowsTodas, naturaleza)
   const incluyeFisico = naturaleza === 'fisico' || naturaleza === 'ambos'
   const incluyeDigital = naturaleza === 'digital' || naturaleza === 'ambos'
 
@@ -83,4 +117,5 @@ export function generarStockExcel(rows: StockRow[], naturaleza: NaturalezaExport
   const fecha = new Date().toISOString().slice(0, 10)
   const fileName = `Stock_${naturalezaLabel}_${slugify(bodegasLabel)}_${fecha}.xlsx`
   XLSX.writeFile(wb, fileName)
+  return { filas: rows.length, omitidasSinLote }
 }

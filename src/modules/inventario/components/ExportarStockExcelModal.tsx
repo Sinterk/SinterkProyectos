@@ -26,6 +26,7 @@ function ExportarStockExcelModal({ onClose }: { onClose: () => void }) {
   const [naturaleza, setNaturaleza] = useState<NaturalezaExport>('ambos')
   const [generando, setGenerando] = useState(false)
   const [error, setError] = useState<string | null>(null)
+  const [aviso, setAviso] = useState<string | null>(null)
 
   // Todas seleccionadas por defecto — lo más común es exportar todo y filtrar
   // en Excel después; destildar es más rápido que tildar una por una.
@@ -59,7 +60,12 @@ function ExportarStockExcelModal({ onClose }: { onClose: () => void }) {
       const bodegasLabel = seleccionadas.size === bodegas.length
         ? 'todas'
         : bodegas.filter((b) => seleccionadas.has(b.id)).map((b) => b.nombre).join('_')
-      generarStockExcel(rows, naturaleza, bodegasLabel)
+      const r = generarStockExcel(rows, naturaleza, bodegasLabel)
+      // Digital: lo que está en lotes 'SinDefinir'/'Físico' no se exporta — se avisa para que no pase desapercibido.
+      if (r.omitidasSinLote.filas > 0) {
+        setAviso(`Excel generado (${r.filas} filas). No se incluyeron ${r.omitidasSinLote.filas} fila(s) con digital en lote SinDefinir/Físico (${r.omitidasSinLote.unidades} unidades en total).`)
+        return
+      }
       onClose()
     } catch (err) {
       setError(err instanceof Error ? err.message : String(err))
@@ -111,6 +117,7 @@ function ExportarStockExcelModal({ onClose }: { onClose: () => void }) {
         </div>
 
         {error && <p className="text-xs text-red-400">{error}</p>}
+        {aviso && <p className="text-xs text-amber-400">{aviso}</p>}
 
         <button type="button" onClick={() => { generar().catch(() => {}) }} disabled={generando}
           className="w-full text-sm font-semibold py-2 rounded-xl bg-brand-600 hover:bg-brand-700 disabled:opacity-40 text-white">
