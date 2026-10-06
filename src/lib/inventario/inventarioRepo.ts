@@ -351,6 +351,74 @@ export async function getStock(opts?: {
     || r.materialDescripcion.toLowerCase().includes(q))
 }
 
+/** Una fila de stock en poder de un trabajador — para el buscador "¿a quién revisar?" de Stock → Técnico. */
+export interface StockDeTrabajador {
+  ownerUserId: string
+  materialId: string
+  materialSku: string
+  materialDescripcion: string
+  lote: string
+  cantidadFisico: number
+  cantidadDigital: number
+}
+
+/** Una página de PostgREST trae como máximo 1000 filas: se pide de a una hasta que venga incompleta. */
+const PAGINA = 1000
+
+/** TODO el stock que está en poder de los trabajadores (ubicaciones de tipo técnico), en una sola lectura. */
+export async function listStockDeTrabajadores(): Promise<StockDeTrabajador[]> {
+  const out: StockDeTrabajador[] = []
+  for (let desde = 0; ; desde += PAGINA) {
+    const { data, error } = await supabase
+      .from('stock')
+      .select('material_id, lote, cantidad_fisico, cantidad_digital, ubicaciones!inner(owner_user_id, tipo), materiales(sku, descripcion)')
+      .eq('ubicaciones.tipo', 'tecnico')
+      .order('ubicacion_id').order('material_id').order('lote')
+      .range(desde, desde + PAGINA - 1)
+    if (error) throw new Error(`stock.trabajadores: ${error.message}`)
+    const filas = data as unknown as {
+      material_id: string; lote: string; cantidad_fisico: number; cantidad_digital: number
+      ubicaciones: { owner_user_id: string | null } | null
+      materiales: { sku: string; descripcion: string } | null
+    }[]
+    for (const r of filas) {
+      if (!r.ubicaciones?.owner_user_id) continue
+      out.push({
+        ownerUserId: r.ubicaciones.owner_user_id, materialId: r.material_id,
+        materialSku: r.materiales?.sku ?? '', materialDescripcion: r.materiales?.descripcion ?? '',
+        lote: r.lote, cantidadFisico: Number(r.cantidad_fisico), cantidadDigital: Number(r.cantidad_digital),
+      })
+    }
+    if (filas.length < PAGINA) return out
+  }
+}
+
+/** Movimiento mínimo (sin joins) de un trabajador — solo para contar y fechar en el buscador. */
+export interface MovimientoDeTrabajador {
+  usuarioId: string
+  materialId: string
+  fecha: string
+  tipo: string
+}
+
+/** Movimientos a nombre de cada trabajador (mismo criterio que la lista de abajo: `usuario_id`), ligeros y paginados. */
+export async function listMovimientosDeTrabajadores(tipos: readonly string[]): Promise<MovimientoDeTrabajador[]> {
+  const out: MovimientoDeTrabajador[] = []
+  for (let desde = 0; ; desde += PAGINA) {
+    const { data, error } = await supabase
+      .from('movimientos')
+      .select('usuario_id, material_id, fecha, tipo')
+      .in('tipo', [...tipos])
+      .not('usuario_id', 'is', null)
+      .order('fecha', { ascending: false }).order('id')
+      .range(desde, desde + PAGINA - 1)
+    if (error) throw new Error(`movimientos.trabajadores: ${error.message}`)
+    const filas = data as { usuario_id: string; material_id: string; fecha: string; tipo: string }[]
+    for (const r of filas) out.push({ usuarioId: r.usuario_id, materialId: r.material_id, fecha: r.fecha, tipo: r.tipo })
+    if (filas.length < PAGINA) return out
+  }
+}
+
 // ---------------------------------------------------------------------------
 // Movimientos (pestaña Movimientos)
 // ---------------------------------------------------------------------------

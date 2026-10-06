@@ -22,8 +22,9 @@ import {
   listPaquetes, crearPaquete, eliminarPaquete, updatePaqueteMateriales,
   listConteos, getConteoLineas, abrirConteo, agregarLineaConteo, actualizarLineaConteo, cerrarConteo, descartarConteo,
   listEventosInventario, listEventosPorConteo, resolverEvento, importarFilasSapAConteo, listClavesStockNegativo, reconocerEventos,
+  listStockDeTrabajadores, listMovimientosDeTrabajadores,
 } from '@/lib/inventario/inventarioRepo'
-import type { ListMovimientosFilters, ImportarSapResultado } from '@/lib/inventario/inventarioRepo'
+import type { ListMovimientosFilters, ImportarSapResultado, StockDeTrabajador, MovimientoDeTrabajador } from '@/lib/inventario/inventarioRepo'
 import type {
   Movimiento, StockRow, Ubicacion, Material, MaterialTipo, Proveedor, Paquete,
   Conteo, ConteoLinea, EventoInventario, EventoResolucion, ResolucionTipo, ConsumoArea,
@@ -732,6 +733,163 @@ function impactoParaTecnico(m: Movimiento, tecnicoUbicacionId: string | null): n
   }
 }
 
+type TriFiltro = 'cualquiera' | 'si' | 'no'
+type PeriodoMov = 'todo' | '7' | '30' | '90'
+
+/**
+ * "¿A quién revisar?": una fila por trabajador con lo que tiene en posesión y
+ * sus movimientos, filtrable por material, por si tiene/no tiene material, por
+ * stock negativo y por si ha tenido movimientos (en todo el historial o en los
+ * últimos N días) — para ver rápido a cuáles técnicos conviene ir a revisarles
+ * el material. Con un material elegido, "posesión" y "movimientos" se refieren
+ * a ESE material. Un clic en la fila abre el detalle del trabajador, abajo.
+ */
+function BuscadorTrabajadores({ trabajadores, onElegir }: { trabajadores: Profile[]; onElegir: (id: string) => void }) {
+  const [materiales, setMateriales] = useState<Material[]>([])
+  const [stock, setStock] = useState<StockDeTrabajador[] | null>(null)
+  const [movs, setMovs] = useState<MovimientoDeTrabajador[] | null>(null)
+  const [error, setError] = useState<string | null>(null)
+
+  const [materialId, setMaterialId] = useState('')
+  const [posesion, setPosesion] = useState<TriFiltro>('cualquiera')
+  const [negativo, setNegativo] = useState(false)
+  const [conMovs, setConMovs] = useState<TriFiltro>('cualquiera')
+  const [periodo, setPeriodo] = useState<PeriodoMov>('todo')
+  const [busqueda, setBusqueda] = useState('')
+
+  useEffect(() => {
+    listMateriales().then(setMateriales).catch(() => {})
+    listStockDeTrabajadores().then(setStock).catch((err) => setError(err instanceof Error ? err.message : String(err)))
+    listMovimientosDeTrabajadores(TIPOS_TECNICO).then(setMovs).catch((err) => setError(err instanceof Error ? err.message : String(err)))
+  }, [])
+
+  const filas = useMemo(() => {
+    if (!stock || !movs) return null
+    const desdeMs = periodo === 'todo' ? 0 : Date.now() - Number(periodo) * 86400000
+    const stockPorUsuario = new Map<string, StockDeTrabajador[]>()
+    for (const r of stock) {
+      if (materialId && r.materialId !== materialId) continue
+      stockPorUsuario.set(r.ownerUserId, [...(stockPorUsuario.get(r.ownerUserId) ?? []), r])
+    }
+    const movsPorUsuario = new Map<string, MovimientoDeTrabajador[]>()
+    for (const m of movs) {
+      if (materialId && m.materialId !== materialId) continue
+      if (desdeMs && new Date(m.fecha).getTime() < desdeMs) continue
+      movsPorUsuario.set(m.usuarioId, [...(movsPorUsuario.get(m.usuarioId) ?? []), m])
+    }
+    return trabajadores.map((t) => {
+      const sr = (stockPorUsuario.get(t.id) ?? []).filter((r) => r.cantidadFisico !== 0 || r.cantidadDigital !== 0)
+      const ms = movsPorUsuario.get(t.id) ?? []
+      return {
+        id: t.id,
+        nombre: t.nombre?.trim() || t.email || '',
+        skus: new Set(sr.map((r) => r.materialId)).size,
+        fisico: sr.reduce((a, r) => a + r.cantidadFisico, 0),
+        digital: sr.reduce((a, r) => a + r.cantidadDigital, 0),
+        negativos: sr.filter((r) => r.cantidadFisico < 0 || r.cantidadDigital < 0).length,
+        movimientos: ms.length,
+        ultimo: ms.length > 0 ? ms.reduce((a, m) => (m.fecha > a ? m.fecha : a), ms[0].fecha).slice(0, 10) : null,
+      }
+    })
+  }, [stock, movs, trabajadores, materialId, periodo])
+
+  const visibles = useMemo(() => {
+    if (!filas) return null
+    const q = busqueda.trim().toLowerCase()
+    return filas
+      .filter((f) => !q || f.nombre.toLowerCase().includes(q))
+      .filter((f) => posesion === 'cualquiera' || (posesion === 'si' ? f.skus > 0 : f.skus === 0))
+      .filter((f) => !negativo || f.negativos > 0)
+      .filter((f) => conMovs === 'cualquiera' || (conMovs === 'si' ? f.movimientos > 0 : f.movimientos === 0))
+      .sort((a, b) => a.nombre.localeCompare(b.nombre))
+  }, [filas, busqueda, posesion, negativo, conMovs])
+
+  const hayFiltro = materialId !== '' || posesion !== 'cualquiera' || negativo || conMovs !== 'cualquiera' || periodo !== 'todo' || busqueda !== ''
+  const material = materiales.find((m) => m.id === materialId) ?? null
+  const selectCls = 'bg-slate-700 text-white text-xs rounded-lg px-2 py-1.5 border border-slate-600 focus:border-brand-500 focus:outline-none'
+  const alMaterial = material ? 'ese material' : 'material'
+
+  return (
+    <div className="space-y-2">
+      <h2 className="text-xs font-semibold text-brand-400 uppercase tracking-wide">🔎 ¿A quién revisar?</h2>
+      <div className="bg-slate-800/60 border border-slate-700 rounded-xl p-2.5 space-y-2">
+        <div className="flex flex-wrap items-center gap-2">
+          <div className="w-full sm:w-72">
+            <MaterialSelect materiales={materiales} value={materialId} onChange={setMaterialId} sinPaquetes
+              placeholder="Todos los materiales (o elige uno)…" />
+          </div>
+          <input value={busqueda} onChange={(e) => setBusqueda(e.target.value)} placeholder="Nombre…"
+            className={`${selectCls} w-36`} />
+        </div>
+        <div className="flex flex-wrap items-center gap-2">
+          <select value={posesion} onChange={(e) => setPosesion(e.target.value as TriFiltro)} className={selectCls} aria-label="Posesión">
+            <option value="cualquiera">En posesión: da igual</option>
+            <option value="si">Tiene {alMaterial}</option>
+            <option value="no">No tiene {alMaterial}</option>
+          </select>
+          <label className="flex items-center gap-1.5 text-xs text-slate-300 cursor-pointer">
+            <input type="checkbox" checked={negativo} onChange={(e) => setNegativo(e.target.checked)} />
+            Con stock negativo
+          </label>
+          <select value={conMovs} onChange={(e) => setConMovs(e.target.value as TriFiltro)} className={selectCls} aria-label="Movimientos">
+            <option value="cualquiera">Movimientos: da igual</option>
+            <option value="si">Con movimientos{material ? ' de ese material' : ''}</option>
+            <option value="no">Sin movimientos{material ? ' de ese material' : ''}</option>
+          </select>
+          <select value={periodo} onChange={(e) => setPeriodo(e.target.value as PeriodoMov)} className={selectCls} aria-label="Período">
+            <option value="todo">Todo el historial</option>
+            <option value="7">Últimos 7 días</option>
+            <option value="30">Últimos 30 días</option>
+            <option value="90">Últimos 90 días</option>
+          </select>
+          {hayFiltro && (
+            <button type="button" className="text-xs text-slate-400 hover:text-white"
+              onClick={() => { setMaterialId(''); setPosesion('cualquiera'); setNegativo(false); setConMovs('cualquiera'); setPeriodo('todo'); setBusqueda('') }}>
+              Quitar filtros
+            </button>
+          )}
+        </div>
+        {error && <p className="text-xs text-red-400">{error}</p>}
+        <p className="text-[11px] text-slate-400">
+          {visibles === null ? 'Calculando…' : `Mostrando ${visibles.length} de ${trabajadores.length} trabajadores`}
+          {material && <> · material: <span className="text-slate-300">{material.sku} — {material.apodo || material.descripcion}</span></>}
+        </p>
+      </div>
+
+      {visibles && visibles.length > 0 && (
+        <div className="overflow-auto rounded-xl border border-slate-700 max-h-72">
+          <table className="w-full text-xs border-collapse">
+            <thead className="sticky top-0">
+              <tr className="bg-slate-900 text-slate-400 text-left divide-x divide-slate-700">
+                <th className="px-2 py-1.5 font-medium">Trabajador</th>
+                <th className="px-2 py-1.5 font-medium text-right">{material ? 'Físico' : 'Materiales (SKU)'}</th>
+                {material && <th className="px-2 py-1.5 font-medium text-right">Digital</th>}
+                <th className="px-2 py-1.5 font-medium text-right">Negativos</th>
+                <th className="px-2 py-1.5 font-medium text-right">Movimientos</th>
+                <th className="px-2 py-1.5 font-medium">Último</th>
+              </tr>
+            </thead>
+            <tbody>
+              {visibles.map((f) => (
+                <tr key={f.id} onClick={() => onElegir(f.id)}
+                  className="border-t border-slate-700 divide-x divide-slate-700 bg-slate-800/60 hover:bg-slate-700/60 cursor-pointer">
+                  <td className="px-2 py-1.5 text-white whitespace-nowrap">{f.nombre}</td>
+                  <td className="px-2 py-1.5 text-right text-slate-200 whitespace-nowrap">{material ? f.fisico : f.skus}</td>
+                  {material && <td className="px-2 py-1.5 text-right text-slate-200 whitespace-nowrap">{f.digital}</td>}
+                  <td className={`px-2 py-1.5 text-right whitespace-nowrap ${f.negativos > 0 ? 'text-red-400 font-semibold' : 'text-slate-500'}`}>{f.negativos || '—'}</td>
+                  <td className="px-2 py-1.5 text-right text-slate-200 whitespace-nowrap">{f.movimientos}</td>
+                  <td className="px-2 py-1.5 text-slate-400 whitespace-nowrap">{f.ultimo ?? '—'}</td>
+                </tr>
+              ))}
+            </tbody>
+          </table>
+        </div>
+      )}
+      {visibles && visibles.length === 0 && <p className="text-xs text-slate-500">Ningún trabajador cumple esos filtros.</p>}
+    </div>
+  )
+}
+
 /**
  * Rediseño pedido por Andrés ("la sección... es confusa"): en vez de un
  * libro contable agrupado por proyecto (que repetía el mismo material en
@@ -752,6 +910,7 @@ function TecnicoTab() {
   // revisarse: por ahora es una advertencia global, no por trabajador).
   // Separados de los de Conteo (origen bodega), que se resuelven aparte.
   const [eventos, setEventos] = useState<EventoInventario[] | null>(null)
+  const detalleRef = useRef<HTMLDivElement>(null)
 
   async function reloadEventos() {
     try {
@@ -833,7 +992,12 @@ function TecnicoTab() {
         <p className="text-xs text-slate-500">No hay trabajadores registrados.</p>
       ) : (
         <>
-          <div>
+          <BuscadorTrabajadores trabajadores={tecnicos} onElegir={(id) => {
+            setUserId(id)
+            setTimeout(() => detalleRef.current?.scrollIntoView({ behavior: 'smooth', block: 'start' }), 50)
+          }} />
+
+          <div ref={detalleRef} className="scroll-mt-4">
             <label className="block text-xs font-semibold text-brand-400 uppercase tracking-wide mb-2">Trabajador</label>
             <select value={userId} onChange={(e) => setUserId(e.target.value)} className={`${inputCls} w-full`}>
               {tecnicos.map((t) => <option key={t.id} value={t.id}>{t.nombre?.trim() || t.email}</option>)}

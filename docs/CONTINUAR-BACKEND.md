@@ -33,6 +33,15 @@
   26. **Asignar códigos LPU en el Catálogo** (opcional) — Andrés (05-10): se resuelve **al hacer el conteo de los vehículos**, no antes. Incluye el cable (código + "Tipo de tendido"); mientras falte, el EP lo avisa como "sin código LPU".
 - **Deploy**: el push del 26-08 a `main` falló al desplegar por una interrupción real de GitHub Actions/Pages (confirmada en githubstatus.com, no un problema del repo) — falta reintentar el workflow ("Re-run all jobs") una vez que GitHub se recupere. Fuera de eso, `.github/workflows/deploy.yml` publica bien en cada push a `main`.
 
+## v2.40 — Stock → Técnico: buscador "¿A quién revisar?"
+
+Andrés (06-10): en el inventario por técnico, poder filtrar por el material que tienen o si han tenido movimientos, para ver rápido a qué técnicos revisarles el material.
+
+- **`BuscadorTrabajadores`** (`inventario/components/Home.tsx`, arriba del selector "Trabajador" de la pestaña Técnico): una fila por trabajador activo con **materiales en posesión (SKU)**, **negativos**, **movimientos** y **fecha del último**. Filtros: **material** (buscador; con uno elegido, "posesión" y "movimientos" se refieren a ese material y la tabla muestra Físico/Digital de él), **posesión** (da igual / tiene / no tiene), **con stock negativo**, **movimientos** (da igual / con / sin) y **período** (todo el historial, 7, 30 o 90 días), más búsqueda por nombre y "Quitar filtros". Un clic en la fila abre el detalle de ese trabajador (selector de abajo) y baja hasta él.
+- **Criterio de "movimientos"**: el mismo de la lista de abajo — `movimientos.usuario_id` con los tipos salida/instalado/traslado/rebaja/merma/ajuste/solicitud. "Posesión" = stock propio con físico o digital ≠ 0; "negativo" = físico o digital < 0.
+- **Repo** (`inventarioRepo.ts`): `listStockDeTrabajadores()` y `listMovimientosDeTrabajadores(tipos)`, ligeras (sin joins pesados) y **paginadas** de a 1000 (PostgREST corta ahí). Se cargan una vez al abrir la pestaña. Sin migración.
+- **Verificado en el navegador (cuenta jp)**: 42 trabajadores; los números de ANGELO (25 SKU, 5 negativos, 365 movimientos) coinciden con consultas directas a la BD; filtros: con material 14, con stock negativo 5, sin movimientos 26, con movimientos en 7 días 9; material 83635 → "tiene ese material" 7 y columnas Físico/Digital; el clic en una fila selecciona al trabajador en el detalle.
+
 ## v2.39 — Formato genérico de OyM: "Código" en vez de "Proyecto"
 
 Andrés (05-10): en Datos generales del formato en blanco de OyM la etiqueta pasa de "Proyecto" a **"Código"** (`generarHojaLogisticaGenericaOyM`). El botón 📄 Asignación ya estaba en las listas de Preventivos e Incidencias desde v2.38 (una pestaña abierta antes del cambio no lo mostraba hasta recargar).
