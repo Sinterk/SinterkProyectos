@@ -465,22 +465,12 @@ function BodegaTab() {
   useEffect(() => { reload() /* eslint-disable-next-line react-hooks/exhaustive-deps */ }, [ubicacionId, search])
 
   // Un lote en 0 físico y 0 digital no se muestra en el stock (queda solo en el
-  // historial de movimientos). Única excepción: un material con umbral mínimo
-  // que se agotó del todo en la bodega deja UNA fila "—" para que siga la
-  // alerta "Renovar" (y se pueda editar su umbral).
-  const filasVisibles = useMemo(() => {
-    if (!rows) return null
-    const conCantidad = new Set(
-      rows.filter((r) => r.cantidadFisico !== 0 || r.cantidadDigital !== 0).map((r) => `${r.ubicacionId}|${r.materialId}`))
-    const yaResumido = new Set<string>()
-    const out: StockRow[] = []
-    for (const r of rows) {
-      if (r.cantidadFisico !== 0 || r.cantidadDigital !== 0) { out.push(r); continue }
-      const k = `${r.ubicacionId}|${r.materialId}`
-      if (r.stockMinimo !== null && !conCantidad.has(k) && !yaResumido.has(k)) { yaResumido.add(k); out.push({ ...r, lote: '—' }) }
-    }
-    return out
-  }, [rows])
+  // historial de movimientos), sin excepciones: un material con umbral que se
+  // agotó (porque se repone con uno similar) tampoco deja fila. "Renovar" solo
+  // aparece mientras quede algo.
+  const filasVisibles = useMemo(
+    () => (rows ? rows.filter((r) => r.cantidadFisico !== 0 || r.cantidadDigital !== 0) : null),
+    [rows])
 
   const valuesByColumn = useMemo(() => {
     const result = {} as Record<StockColKey, string[]>

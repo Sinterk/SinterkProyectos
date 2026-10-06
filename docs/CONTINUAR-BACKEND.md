@@ -33,8 +33,18 @@
   26. **Asignar códigos LPU en el Catálogo** (opcional) — Andrés (05-10): se resuelve **al hacer el conteo de los vehículos**, no antes. Incluye el cable (código + "Tipo de tendido"); mientras falte, el EP lo avisa como "sin código LPU".
   27. ~~`adjust_stock` pierde el negativo cuando no existe la fila~~ — **arreglado en `0079`** (ver v2.45), pendiente de correrla (#28).
   28. ~~Correr `supabase/migrations/0079_entrega_sin_stock_sindefinir.sql`~~ — **corrida por Andrés el 06-10.**
-  29. **Correr `supabase/migrations/0080_stock_sin_lotes_vacios.sql`** (borra la fila de stock cuando un lote queda en 0/0 y limpia las 191 que ya existen, salvo las de materiales con umbral en bodegas). Al final trae una consulta de verificación: `vacias_que_no_deberian_quedar` debe dar 0. Ver v2.46.
+  29. ~~Correr `supabase/migrations/0080_stock_sin_lotes_vacios.sql`~~ — **corrida por Andrés el 06-10** (`stock` pasó de 607 a 427 filas).
+  30. **Correr `supabase/migrations/0081_stock_sin_lotes_vacios_sin_excepcion.sql`** (quita la excepción por umbral de la 0080: borra también las ~11 filas vacías que quedaron y hace que `adjust_stock` no deje ninguna). Verificación al final: debe dar 0. Ver v2.47.
 - **Deploy**: el push del 26-08 a `main` falló al desplegar por una interrupción real de GitHub Actions/Pages (confirmada en githubstatus.com, no un problema del repo) — falta reintentar el workflow ("Re-run all jobs") una vez que GitHub se recupere. Fuera de eso, `.github/workflows/deploy.yml` publica bien en cada push a `main`.
+
+## v2.47 — Sin excepción por umbral: un material agotado no deja fila (migración 0081)
+
+Andrés (06-10): sobre los SKU con umbral, la fila vacía también debe desaparecer — es común que cuando no queda de un tipo se reabastezca con uno similar (ej. se acaba el cable ADSS 32 y se compra ADSS 24), así que es natural que quede en 0. (Se interpretó "debe desaparecer".)
+
+- **`0081_stock_sin_lotes_vacios_sin_excepcion.sql`** (**pendiente de correr**, #30): reemplaza `adjust_stock` de la 0080 sin la cláusula del umbral (borra TODA fila que quede en 0 físico y 0 digital) y borra las 11 vacías que dejó la 0080. Generada desde el texto de la 0080 por script. Idempotente.
+- **Cliente**: Stock → Bodega descarta toda fila 0/0, sin la fila "—" de v2.46. La alerta **"Renovar" solo aparece mientras quede algo** (cantidad > 0 y ≤ umbral); un material agotado del todo ya no la muestra. El umbral se sigue editando en Catálogo → Mínimo.
+- **Efecto a tener presente**: ya no hay aviso de "se agotó" por umbral; si se quiere ver qué materiales con umbral están en 0 en una bodega, habría que hacerlo desde el Catálogo/KPI (no implementado).
+- **Verificado en el navegador**: con la 0080 corrida (`stock` 427 filas, 11 vacías en la BD) la pestaña Bodega muestra 283 filas y 0 vacías; 6 filas con "Renovar" (todas con cantidad).
 
 ## v2.46 — Lotes en 0 fuera del stock (solo en el historial) · migración 0080
 
