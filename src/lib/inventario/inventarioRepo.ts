@@ -400,6 +400,7 @@ export interface MovimientoDeTrabajador {
   materialId: string
   fecha: string
   tipo: string
+  cantidad: number
 }
 
 /** Movimientos a nombre de cada trabajador (mismo criterio que la lista de abajo: `usuario_id`), ligeros y paginados. */
@@ -408,14 +409,14 @@ export async function listMovimientosDeTrabajadores(tipos: readonly string[]): P
   for (let desde = 0; ; desde += PAGINA) {
     const { data, error } = await supabase
       .from('movimientos')
-      .select('usuario_id, material_id, fecha, tipo')
+      .select('usuario_id, material_id, fecha, tipo, cantidad')
       .in('tipo', [...tipos])
       .not('usuario_id', 'is', null)
       .order('fecha', { ascending: false }).order('id')
       .range(desde, desde + PAGINA - 1)
     if (error) throw new Error(`movimientos.trabajadores: ${error.message}`)
-    const filas = data as { usuario_id: string; material_id: string; fecha: string; tipo: string }[]
-    for (const r of filas) out.push({ usuarioId: r.usuario_id, materialId: r.material_id, fecha: r.fecha, tipo: r.tipo })
+    const filas = data as { usuario_id: string; material_id: string; fecha: string; tipo: string; cantidad: number }[]
+    for (const r of filas) out.push({ usuarioId: r.usuario_id, materialId: r.material_id, fecha: r.fecha, tipo: r.tipo, cantidad: Number(r.cantidad) })
     if (filas.length < PAGINA) return out
   }
 }

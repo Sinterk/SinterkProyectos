@@ -33,6 +33,17 @@
   26. **Asignar códigos LPU en el Catálogo** (opcional) — Andrés (05-10): se resuelve **al hacer el conteo de los vehículos**, no antes. Incluye el cable (código + "Tipo de tendido"); mientras falte, el EP lo avisa como "sin código LPU".
 - **Deploy**: el push del 26-08 a `main` falló al desplegar por una interrupción real de GitHub Actions/Pages (confirmada en githubstatus.com, no un problema del repo) — falta reintentar el workflow ("Re-run all jobs") una vez que GitHub se recupere. Fuera de eso, `.github/workflows/deploy.yml` publica bien en cada push a `main`.
 
+## v2.43 — Insumos: fuera de la "posesión" del técnico; en los KPI solo la entrega
+
+Andrés (06-10): los insumos tampoco deben aparecer en la posesión de stock de un técnico, y en los KPI solo debe registrarse la entrega. **Corrige lo dicho en v2.42**: el stock de insumos del técnico ya no se muestra (la entrega queda en los movimientos).
+
+- **Stock → Técnico (detalle)**: "Material actualmente en posesión" no lista insumos. En "Movimientos desde/hacia el trabajador" las entregas de insumos siguen apareciendo (es el registro de a quién se le entregó), pero **sin saldo** ("—") ni signo.
+- **Buscador "¿A quién revisar?"**: los insumos no cuentan en "Materiales (SKU)", "posesión" ni "negativos". Si se elige un insumo como material, la columna pasa a **"Entregado"** (suma de sus salidas, respetando el período), el filtro de posesión se deshabilita y "con movimientos" sirve para ver a qué técnicos se les entregó.
+- **Entrega/Conteo (AsignacionesForm)**: "Lo que tiene ahora" tampoco lista insumos; en OyM el "(n)" junto al técnico no se muestra para insumos.
+- **KPI** (`kpiRepo.ts`, en el cliente): `getKpiMateriales` deja de un insumo **solo `entregado`** (solicitado/instalado/devuelto/rebajado/merma/tránsito en 0); `getKpiConciliacionSap` **excluye los insumos** (no están en SAP: su saldo en técnicos daba una diferencia falsa de hasta −30). Conciliación pasó de 108 a 97 filas.
+- **No cambia**: el stock real de insumos en `stock` sigue existiendo en la BD (la entrega lo sube); solo se oculta. El **Conteo de un técnico** sigue trayendo sus líneas de insumos (las crea `abrir_conteo` en el servidor); ocultarlas exigiría un cambio en esa función.
+- **Verificado en el navegador (cuenta jp)**: Gilbert (solo insumos) → 0 materiales en posesión, "No tiene material en posesión", entregas con saldo "—"; buscador con Amarra 150 → columna Entregado, 6 técnicos con entregas; KPI: insumos con solo `entregado`, conciliación sin insumos. Sin escrituras en la BD.
+
 ## v2.42 — Insumos: solo se entregan, no cuentan como tránsito
 
 Andrés (06-10): los insumos son material cuyo consumo no se reporta, solo su entrega. Cambio general: solo se pueden **entregar** y **no se consideran en tránsito**; solo debe quedar el registro de a qué técnico se le entregó.

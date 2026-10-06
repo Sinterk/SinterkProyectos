@@ -292,7 +292,7 @@ export function AsignacionesForm({ onRegistered }: { onRegistered?: () => void }
         </label>
       </div>
 
-      {tipo !== 'devolucion' && tecnicoUserId && <StockTecnicoActual stockTecnico={stockTecnico} />}
+      {tipo !== 'devolucion' && tecnicoUserId && <StockTecnicoActual stockTecnico={stockDevolvible} />}
 
       {tipo === 'devolucion' ? (
         <div className="space-y-2">

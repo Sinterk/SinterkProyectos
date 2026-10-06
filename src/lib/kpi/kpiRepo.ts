@@ -128,7 +128,10 @@ export async function getKpiConciliacionSap(input: {
     p_bodega_stk_id: input.bodegaStkId,
   })
   if (error) throw new Error(`kpi_conciliacion_sap: ${error.message}`)
-  return (data as KpiConciliacionRpcRow[] | null ?? []).map((r) => ({
+  // Los insumos no están en SAP y solo se entregan (su saldo en técnicos no
+  // existe): compararlos acá daría una "diferencia" falsa, así que no entran.
+  const insumos = new Set((await listMateriales()).filter((m) => esTipoInsumo(m.tipo?.nombre)).map((m) => m.id))
+  return (data as KpiConciliacionRpcRow[] | null ?? []).filter((r) => !insumos.has(r.material_id)).map((r) => ({
     materialId: r.material_id,
     sku: r.sku,
     descripcion: r.descripcion,
@@ -170,18 +173,18 @@ export async function getKpiMateriales(input: {
     p_stock_ubicacion_ids: input.stockUbicacionIds && input.stockUbicacionIds.length > 0 ? input.stockUbicacionIds : null,
   })
   if (error) throw new Error(`kpi_materiales: ${error.message}`)
-  // El tránsito de un insumo no existe (solo se entrega): se pone en 0 acá, en el cliente.
+  // De un insumo solo se registra la ENTREGA: el resto de las columnas va en 0 (el cálculo es del RPC; se corrige acá, en el cliente).
   const insumos = new Set((await listMateriales()).filter((m) => esTipoInsumo(m.tipo?.nombre)).map((m) => m.id))
   return (data as KpiMaterialRpcRow[] | null ?? []).map((r) => ({
     materialId: r.material_id,
     sku: r.sku,
     descripcion: r.descripcion,
-    solicitado: Number(r.solicitado),
+    solicitado: insumos.has(r.material_id) ? 0 : Number(r.solicitado),
     entregado: Number(r.entregado),
-    instalado: Number(r.instalado),
-    devuelto: Number(r.devuelto),
-    rebajado: Number(r.rebajado),
-    merma: Number(r.merma),
+    instalado: insumos.has(r.material_id) ? 0 : Number(r.instalado),
+    devuelto: insumos.has(r.material_id) ? 0 : Number(r.devuelto),
+    rebajado: insumos.has(r.material_id) ? 0 : Number(r.rebajado),
+    merma: insumos.has(r.material_id) ? 0 : Number(r.merma),
     transito: insumos.has(r.material_id) ? 0 : Number(r.transito),
     origenBodega: r.origen_bodega,
     origenTecnico: r.origen_tecnico,

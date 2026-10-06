@@ -321,7 +321,8 @@ export function ResumenProyectoTable({ projectId, area, puntos, agregarPuntos, r
   /** Etiqueta del selector de Técnico — en OyM suma "(cantidad)" del material/lote de esa fila, para ver de cuál conviene sacarlo. */
   function tecnicoLabel(m: MemberProfile, materialId: string, lote: string): string {
     const nombre = m.nombre?.trim() || m.email || ''
-    return area === 'OyM' && materialId ? `${nombre} (${stockDeTecnico(m.id, materialId, lote)})` : nombre
+    const esInsumoMat = esTipoInsumo(materiales.find((x) => x.id === materialId)?.tipo?.nombre)
+    return area === 'OyM' && materialId && !esInsumoMat ? `${nombre} (${stockDeTecnico(m.id, materialId, lote)})` : nombre
   }
 
   useEffect(() => { if (!tecnicoEdicion && members.length > 0) setTecnicoEdicion(members[0].id) }, [members, tecnicoEdicion])

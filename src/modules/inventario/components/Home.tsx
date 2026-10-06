@@ -5,6 +5,7 @@ import { adminRepo } from '@/lib/adminRepo'
 import type { ProjectSummary, MemberProfile } from '@/lib/adminRepo'
 import { useAuth } from '@/lib/auth'
 import type { Profile } from '@/lib/auth'
+import { esTipoInsumo } from '@/lib/inventario/esInsumo'
 import { LpuCodigoSelect } from '@/ui/LpuCodigoSelect'
 import { MaterialSelect } from '@/ui/MaterialSelect'
 import { RegistrarMovimientoForm } from '@/ui/RegistrarMovimientoForm'
@@ -766,8 +767,11 @@ function BuscadorTrabajadores({ trabajadores, onElegir }: { trabajadores: Profil
   const filas = useMemo(() => {
     if (!stock || !movs) return null
     const desdeMs = periodo === 'todo' ? 0 : Date.now() - Number(periodo) * 86400000
+    // Los insumos solo se entregan: no tienen "posesión" ni stock negativo (ver esInsumo.ts).
+    const insumoIds = new Set(materiales.filter((m) => esTipoInsumo(m.tipo?.nombre)).map((m) => m.id))
     const stockPorUsuario = new Map<string, StockDeTrabajador[]>()
     for (const r of stock) {
+      if (insumoIds.has(r.materialId)) continue
       if (materialId && r.materialId !== materialId) continue
       stockPorUsuario.set(r.ownerUserId, [...(stockPorUsuario.get(r.ownerUserId) ?? []), r])
     }
@@ -788,10 +792,11 @@ function BuscadorTrabajadores({ trabajadores, onElegir }: { trabajadores: Profil
         digital: sr.reduce((a, r) => a + r.cantidadDigital, 0),
         negativos: sr.filter((r) => r.cantidadFisico < 0 || r.cantidadDigital < 0).length,
         movimientos: ms.length,
+        entregado: ms.filter((m) => m.tipo === 'salida').reduce((a, m) => a + m.cantidad, 0),
         ultimo: ms.length > 0 ? ms.reduce((a, m) => (m.fecha > a ? m.fecha : a), ms[0].fecha).slice(0, 10) : null,
       }
     })
-  }, [stock, movs, trabajadores, materialId, periodo])
+  }, [stock, movs, trabajadores, materialId, periodo, materiales])
 
   const visibles = useMemo(() => {
     if (!filas) return null
@@ -806,6 +811,7 @@ function BuscadorTrabajadores({ trabajadores, onElegir }: { trabajadores: Profil
 
   const hayFiltro = materialId !== '' || posesion !== 'cualquiera' || negativo || conMovs !== 'cualquiera' || periodo !== 'todo' || busqueda !== ''
   const material = materiales.find((m) => m.id === materialId) ?? null
+  const esInsumoElegido = esTipoInsumo(material?.tipo?.nombre)
   const selectCls = 'bg-slate-700 text-white text-xs rounded-lg px-2 py-1.5 border border-slate-600 focus:border-brand-500 focus:outline-none'
   const alMaterial = material ? 'ese material' : 'material'
 
@@ -822,7 +828,8 @@ function BuscadorTrabajadores({ trabajadores, onElegir }: { trabajadores: Profil
             className={`${selectCls} w-36`} />
         </div>
         <div className="flex flex-wrap items-center gap-2">
-          <select value={posesion} onChange={(e) => setPosesion(e.target.value as TriFiltro)} className={selectCls} aria-label="Posesión">
+          <select value={esInsumoElegido ? 'cualquiera' : posesion} disabled={esInsumoElegido} onChange={(e) => setPosesion(e.target.value as TriFiltro)} className={`${selectCls} disabled:opacity-50`} aria-label="Posesión"
+            title={esInsumoElegido ? 'Los insumos no tienen posesión: solo se registra su entrega' : undefined}>
             <option value="cualquiera">En posesión: da igual</option>
             <option value="si">Tiene {alMaterial}</option>
             <option value="no">No tiene {alMaterial}</option>
@@ -853,6 +860,7 @@ function BuscadorTrabajadores({ trabajadores, onElegir }: { trabajadores: Profil
         <p className="text-[11px] text-slate-400">
           {visibles === null ? 'Calculando…' : `Mostrando ${visibles.length} de ${trabajadores.length} trabajadores`}
           {material && <> · material: <span className="text-slate-300">{material.sku} — {material.apodo || material.descripcion}</span></>}
+          {esInsumoElegido && <> · insumo: solo se registra la entrega</>}
         </p>
       </div>
 
@@ -862,8 +870,8 @@ function BuscadorTrabajadores({ trabajadores, onElegir }: { trabajadores: Profil
             <thead className="sticky top-0">
               <tr className="bg-slate-900 text-slate-400 text-left divide-x divide-slate-700">
                 <th className="px-2 py-1.5 font-medium">Trabajador</th>
-                <th className="px-2 py-1.5 font-medium text-right">{material ? 'Físico' : 'Materiales (SKU)'}</th>
-                {material && <th className="px-2 py-1.5 font-medium text-right">Digital</th>}
+                <th className="px-2 py-1.5 font-medium text-right">{esInsumoElegido ? 'Entregado' : material ? 'Físico' : 'Materiales (SKU)'}</th>
+                {material && !esInsumoElegido && <th className="px-2 py-1.5 font-medium text-right">Digital</th>}
                 <th className="px-2 py-1.5 font-medium text-right">Negativos</th>
                 <th className="px-2 py-1.5 font-medium text-right">Movimientos</th>
                 <th className="px-2 py-1.5 font-medium">Último</th>
@@ -874,8 +882,8 @@ function BuscadorTrabajadores({ trabajadores, onElegir }: { trabajadores: Profil
                 <tr key={f.id} onClick={() => onElegir(f.id)}
                   className="border-t border-slate-700 divide-x divide-slate-700 bg-slate-800/60 hover:bg-slate-700/60 cursor-pointer">
                   <td className="px-2 py-1.5 text-white whitespace-nowrap">{f.nombre}</td>
-                  <td className="px-2 py-1.5 text-right text-slate-200 whitespace-nowrap">{material ? f.fisico : f.skus}</td>
-                  {material && <td className="px-2 py-1.5 text-right text-slate-200 whitespace-nowrap">{f.digital}</td>}
+                  <td className="px-2 py-1.5 text-right text-slate-200 whitespace-nowrap">{esInsumoElegido ? f.entregado : material ? f.fisico : f.skus}</td>
+                  {material && !esInsumoElegido && <td className="px-2 py-1.5 text-right text-slate-200 whitespace-nowrap">{f.digital}</td>}
                   <td className={`px-2 py-1.5 text-right whitespace-nowrap ${f.negativos > 0 ? 'text-red-400 font-semibold' : 'text-slate-500'}`}>{f.negativos || '—'}</td>
                   <td className="px-2 py-1.5 text-right text-slate-200 whitespace-nowrap">{f.movimientos}</td>
                   <td className="px-2 py-1.5 text-slate-400 whitespace-nowrap">{f.ultimo ?? '—'}</td>
@@ -955,7 +963,14 @@ function TecnicoTab() {
       .catch((err) => setError(err instanceof Error ? err.message : String(err)))
   }, [userId, tecnicoUbicacionId])
 
-  const enPosesion = useMemo(() => (posesion ?? []).filter((r) => r.cantidadFisico !== 0 || r.cantidadDigital !== 0), [posesion])
+  // Los insumos solo se entregan: no aparecen como "en posesión" (sí sus entregas, abajo).
+  const [insumoIds, setInsumoIds] = useState<Set<string>>(new Set())
+  useEffect(() => {
+    listMateriales().then((ms) => setInsumoIds(new Set(ms.filter((m) => esTipoInsumo(m.tipo?.nombre)).map((m) => m.id)))).catch(() => {})
+  }, [])
+  const enPosesion = useMemo(
+    () => (posesion ?? []).filter((r) => !insumoIds.has(r.materialId) && (r.cantidadFisico !== 0 || r.cantidadDigital !== 0)),
+    [posesion, insumoIds])
 
   // `listMovimientos` ya viene más reciente primero (fecha desc, created_at
   // desc) — se recorre al revés para acumular el saldo en orden cronológico
@@ -969,13 +984,14 @@ function TecnicoTab() {
     const saldoPorClave = new Map<string, number>()
     const conSaldo = [...movimientos].reverse().map((m) => {
       const clave = `${m.materialId}|${m.lote}`
-      const impacto = impactoParaTecnico(m, tecnicoUbicacionId)
+      // Un insumo no lleva saldo: solo queda el registro de la entrega.
+      const impacto = insumoIds.has(m.materialId) ? 0 : impactoParaTecnico(m, tecnicoUbicacionId)
       const saldo = (saldoPorClave.get(clave) ?? 0) + impacto
       saldoPorClave.set(clave, saldo)
       return { mov: m, saldo, impacto }
     })
     return conSaldo.reverse()
-  }, [movimientos, tecnicoUbicacionId])
+  }, [movimientos, tecnicoUbicacionId, insumoIds])
 
   return (
     <div className="space-y-4">
@@ -1078,10 +1094,10 @@ function TecnicoTab() {
                           <td className="px-2 py-2 max-w-[200px]"><p className="text-white truncate">{m.materialDescripcion}</p></td>
                           <td className="px-2 py-2 text-slate-300 whitespace-nowrap">{m.lote}</td>
                           <td className={`px-2 py-2 text-right font-semibold whitespace-nowrap ${impacto > 0 ? 'text-green-400' : impacto < 0 ? 'text-red-400' : 'text-slate-500'}`}
-                            title={titulo}>
-                            {impacto > 0 ? '+' : impacto < 0 ? '−' : '±'}{m.cantidad}
+                            title={insumoIds.has(m.materialId) ? 'Insumo: solo se registra la entrega, sin saldo' : titulo}>
+                            {insumoIds.has(m.materialId) ? '' : impacto > 0 ? '+' : impacto < 0 ? '−' : '±'}{m.cantidad}
                           </td>
-                          <td className="px-2 py-2 text-right text-white font-semibold whitespace-nowrap">{saldo}</td>
+                          <td className="px-2 py-2 text-right text-white font-semibold whitespace-nowrap">{insumoIds.has(m.materialId) ? '—' : saldo}</td>
                           <td className="px-2 py-2 text-slate-300 whitespace-nowrap">
                             {m.projectOtt ? `[${m.area === 'ATT' ? 'ATT' : 'Preventivo'}] ${m.projectOtt}` : SIN_PROYECTO_TEC}
                           </td>
