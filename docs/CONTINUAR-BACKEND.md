@@ -31,7 +31,19 @@
   24. ~~Correr `supabase/migrations/0077_ferreteria_normalizar_lote_fisico.sql`~~ — **corrida y confirmada por Andrés el 05-10: la consulta final dio 0/0/0.** Ver la entrada 0077 más abajo.
   25. ~~Correr `supabase/migrations/0078_ep_lineas_tipo_tendido.sql`~~ — **corrida por Andrés el 05-10.** Ver v2.33.
   26. **Asignar códigos LPU en el Catálogo** (opcional) — Andrés (05-10): se resuelve **al hacer el conteo de los vehículos**, no antes. Incluye el cable (código + "Tipo de tendido"); mientras falte, el EP lo avisa como "sin código LPU".
+  27. **`adjust_stock` pierde el negativo cuando no existe la fila** (hallazgo 06-10): al insertar usa `greatest(delta, 0)` (0025), así que una Entrega desde una bodega que no tiene fila de ese material/lote **crea la fila en 0/0** en vez de −N; la 2.ª entrega sí queda negativa (la fila ya existe). Efecto: el negativo de bodega queda subestimado y aparecen filas 0/0 "de la nada" (en C088: Amarra 150, Huincha Aislante, Plumón Blanco, DU08, Bajada Lateral). Arreglo: en el `insert` usar el delta tal cual cuando `p_permitir_negativo` es true (migración que correría Andrés; no cambia lo ya guardado). **Pendiente de decidir/hacer.**
 - **Deploy**: el push del 26-08 a `main` falló al desplegar por una interrupción real de GitHub Actions/Pages (confirmada en githubstatus.com, no un problema del repo) — falta reintentar el workflow ("Re-run all jobs") una vez que GitHub se recupere. Fuera de eso, `.github/workflows/deploy.yml` publica bien en cada push a `main`.
+
+## Hallazgo 06-10 — Origen de los materiales/lotes en 0/0 de C088 (consulta, sin cambios de datos)
+
+Andrés pidió ver en qué OTT se asignó cada material y por qué aparece como stock de C088. Resultado (movimientos reales):
+
+- **Amarra 150 / Huincha Aislante**: 1 u. cada uno, Entrega 15-09 a la **OTT 72603658272** (Gilbert Basanta). **Plumón Blanco**: 2 u., 10-08, **OTT 72603666644** (Angelo Campos). **DU08**: 100, 24-08, **OTT 72603670857** (Bryan Lagos). **Bajada Lateral**: 1 u., 19-08, **OTT 72603646630** (Andrés Barahona). Todas con lote `SinDefinir` y sin ninguna entrada previa a C088.
+- **Por qué hay fila**: `adjust_stock` crea la fila en 0/0 (no en negativo) cuando una Entrega sale de una bodega sin fila de ese material/lote → ver pendiente #27. Esas filas se arrastraban al Excel digital (arreglado en v2.44).
+- **CAJAMURALEVER** (`SinDefinir`): 13 entregas a OTT entre 10-08 y 09-09 (677331, 679098, 666644, 679140, 677815, 677084, 676776, 680041, 658272, 672890, 647175, 686860, 682203) y 7 devoluciones (661304, 680041 "No registra devolución", 676776, 672890, 658272, 666644, 682203). El Primer conteo del 19-08 (sistema −10 → 0) y el conteo del 21-09 (3 → 0) lo dejaron en 0; las 2 u. físicas actuales son las devoluciones del 23-09 (OTT 666644) y 06-10 (OTT 682203).
+- **STKCMIC lote 0109**: 1 u. devuelta a C088 el 09-09 desde la **OTT 72603682531** (Giovanni Reyes); el conteo físico del 21-09 contó 0 (evento "conteo", reconocido) → 0/0.
+- **51024 · lote 2/2 ENTEL**: no queda ningún movimiento con ese lote. La **OTT 72603659899** (activa) tiene una fila en 0 de ese lote en `proyecto_materiales` (se le entregó y se anuló); el conteo físico del 21-09 tenía sistema 1 y contó 0 → 0/0.
+- **SKU 220 · SinDefinir · 40 u. digital** (C088): Andrés confirma que era una entrada sin lote y que falta cargar el stock digital con su lote real para regularizar; no requiere acción mientras tanto.
 
 ## v2.44 — Excel de stock: sin lotes vacíos; en digital solo lotes reales de SAP
 
