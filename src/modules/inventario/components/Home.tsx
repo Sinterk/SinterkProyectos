@@ -759,6 +759,9 @@ function BuscadorTrabajadores({ trabajadores, onElegir }: { trabajadores: Profil
   const [movs, setMovs] = useState<MovimientoDeTrabajador[] | null>(null)
   const [error, setError] = useState<string | null>(null)
 
+  const [bodegas, setBodegas] = useState<Ubicacion[]>([])
+  /** Bodega de origen: de cuál bodega recibió el trabajador el material (Entregas). '' = cualquiera. */
+  const [bodegaId, setBodegaId] = useState('')
   const [materialId, setMaterialId] = useState('')
   const [posesion, setPosesion] = useState<TriFiltro>('cualquiera')
   const [negativo, setNegativo] = useState(false)
@@ -768,6 +771,7 @@ function BuscadorTrabajadores({ trabajadores, onElegir }: { trabajadores: Profil
 
   useEffect(() => {
     listMateriales().then(setMateriales).catch(() => {})
+    listUbicaciones({ tipo: 'bodega' }).then(setBodegas).catch(() => {})
     listStockDeTrabajadores().then(setStock).catch((err) => setError(err instanceof Error ? err.message : String(err)))
     listMovimientosDeTrabajadores(TIPOS_TECNICO).then(setMovs).catch((err) => setError(err instanceof Error ? err.message : String(err)))
   }, [])
@@ -783,18 +787,37 @@ function BuscadorTrabajadores({ trabajadores, onElegir }: { trabajadores: Profil
       if (materialId && r.materialId !== materialId) continue
       stockPorUsuario.set(r.ownerUserId, [...(stockPorUsuario.get(r.ownerUserId) ?? []), r])
     }
+    // Bodega(s) de origen de cada material+lote que tiene un trabajador: de las
+    // Entregas ('salida') que recibió — toda la historia, no solo el período.
+    // El stock de un trabajador no guarda de dónde vino; esto lo deduce por lote.
+    const origenes = new Map<string, Set<string>>()
+    for (const m of movs) {
+      if (m.tipo !== 'salida') continue
+      const k = `${m.usuarioId}|${m.materialId}|${m.lote}`
+      const set = origenes.get(k) ?? new Set<string>()
+      set.add(m.ubicacionId)
+      origenes.set(k, set)
+    }
+    const nombreBodega = new Map(bodegas.map((b) => [b.id, b.nombre]))
     const movsPorUsuario = new Map<string, MovimientoDeTrabajador[]>()
     for (const m of movs) {
       if (materialId && m.materialId !== materialId) continue
       if (desdeMs && new Date(m.fecha).getTime() < desdeMs) continue
+      // Con bodega de origen, "movimientos" son las Entregas desde esa bodega.
+      if (bodegaId && !(m.tipo === 'salida' && m.ubicacionId === bodegaId)) continue
       movsPorUsuario.set(m.usuarioId, [...(movsPorUsuario.get(m.usuarioId) ?? []), m])
     }
     return trabajadores.map((t) => {
-      const sr = (stockPorUsuario.get(t.id) ?? []).filter((r) => r.cantidadFisico !== 0 || r.cantidadDigital !== 0)
+      let sr = (stockPorUsuario.get(t.id) ?? []).filter((r) => r.cantidadFisico !== 0 || r.cantidadDigital !== 0)
+      // Con bodega de origen, solo cuenta lo que ese trabajador recibió de ESA bodega.
+      if (bodegaId) sr = sr.filter((r) => origenes.get(`${t.id}|${r.materialId}|${r.lote}`)?.has(bodegaId))
       const ms = movsPorUsuario.get(t.id) ?? []
+      const idsOrigen = new Set<string>()
+      for (const r of sr) for (const b of origenes.get(`${t.id}|${r.materialId}|${r.lote}`) ?? []) idsOrigen.add(b)
       return {
         id: t.id,
         nombre: t.nombre?.trim() || t.email || '',
+        origen: [...idsOrigen].map((id) => nombreBodega.get(id) ?? '?').sort().join(', '),
         skus: new Set(sr.map((r) => r.materialId)).size,
         fisico: sr.reduce((a, r) => a + r.cantidadFisico, 0),
         digital: sr.reduce((a, r) => a + r.cantidadDigital, 0),
@@ -804,7 +827,7 @@ function BuscadorTrabajadores({ trabajadores, onElegir }: { trabajadores: Profil
         ultimo: ms.length > 0 ? ms.reduce((a, m) => (m.fecha > a ? m.fecha : a), ms[0].fecha).slice(0, 10) : null,
       }
     })
-  }, [stock, movs, trabajadores, materialId, periodo, materiales])
+  }, [stock, movs, trabajadores, materialId, periodo, materiales, bodegaId, bodegas])
 
   const visibles = useMemo(() => {
     if (!filas) return null
@@ -817,7 +840,7 @@ function BuscadorTrabajadores({ trabajadores, onElegir }: { trabajadores: Profil
       .sort((a, b) => a.nombre.localeCompare(b.nombre))
   }, [filas, busqueda, posesion, negativo, conMovs])
 
-  const hayFiltro = materialId !== '' || posesion !== 'cualquiera' || negativo || conMovs !== 'cualquiera' || periodo !== 'todo' || busqueda !== ''
+  const hayFiltro = bodegaId !== '' || materialId !== '' || posesion !== 'cualquiera' || negativo || conMovs !== 'cualquiera' || periodo !== 'todo' || busqueda !== ''
   const material = materiales.find((m) => m.id === materialId) ?? null
   const esInsumoElegido = esTipoInsumo(material?.tipo?.nombre)
   const selectCls = 'bg-slate-700 text-white text-xs rounded-lg px-2 py-1.5 border border-slate-600 focus:border-brand-500 focus:outline-none'
@@ -834,6 +857,11 @@ function BuscadorTrabajadores({ trabajadores, onElegir }: { trabajadores: Profil
           </div>
           <input value={busqueda} onChange={(e) => setBusqueda(e.target.value)} placeholder="Nombre…"
             className={`${selectCls} w-36`} />
+          <select value={bodegaId} onChange={(e) => setBodegaId(e.target.value)} className={selectCls} aria-label="Bodega de origen"
+            title="De qué bodega recibió el material (según sus Entregas)">
+            <option value="">Bodega de origen: cualquiera</option>
+            {bodegas.map((b) => <option key={b.id} value={b.id}>Origen: {b.nombre}</option>)}
+          </select>
         </div>
         <div className="flex flex-wrap items-center gap-2">
           <select value={esInsumoElegido ? 'cualquiera' : posesion} disabled={esInsumoElegido} onChange={(e) => setPosesion(e.target.value as TriFiltro)} className={`${selectCls} disabled:opacity-50`} aria-label="Posesión"
@@ -859,7 +887,7 @@ function BuscadorTrabajadores({ trabajadores, onElegir }: { trabajadores: Profil
           </select>
           {hayFiltro && (
             <button type="button" className="text-xs text-slate-400 hover:text-white"
-              onClick={() => { setMaterialId(''); setPosesion('cualquiera'); setNegativo(false); setConMovs('cualquiera'); setPeriodo('todo'); setBusqueda('') }}>
+              onClick={() => { setBodegaId(''); setMaterialId(''); setPosesion('cualquiera'); setNegativo(false); setConMovs('cualquiera'); setPeriodo('todo'); setBusqueda('') }}>
               Quitar filtros
             </button>
           )}
@@ -870,6 +898,12 @@ function BuscadorTrabajadores({ trabajadores, onElegir }: { trabajadores: Profil
           {material && <> · material: <span className="text-slate-300">{material.sku} — {material.apodo || material.descripcion}</span></>}
           {esInsumoElegido && <> · insumo: solo se registra la entrega</>}
         </p>
+        {bodegaId && (
+          <p className="text-[11px] text-slate-500">
+            Origen {bodegas.find((b) => b.id === bodegaId)?.nombre}: solo cuenta lo que recibió de esa bodega
+            (por lote, según sus Entregas); "Movimientos" son las Entregas desde ella.
+          </p>
+        )}
       </div>
 
       {visibles && visibles.length > 0 && (
@@ -878,6 +912,7 @@ function BuscadorTrabajadores({ trabajadores, onElegir }: { trabajadores: Profil
             <thead className="sticky top-0">
               <tr className="bg-slate-900 text-slate-400 text-left divide-x divide-slate-700">
                 <th className="px-2 py-1.5 font-medium">Trabajador</th>
+                <th className="px-2 py-1.5 font-medium">Origen</th>
                 <th className="px-2 py-1.5 font-medium text-right">{esInsumoElegido ? 'Entregado' : material ? 'Físico' : 'Materiales (SKU)'}</th>
                 {material && !esInsumoElegido && <th className="px-2 py-1.5 font-medium text-right">Digital</th>}
                 <th className="px-2 py-1.5 font-medium text-right">Negativos</th>
@@ -890,6 +925,7 @@ function BuscadorTrabajadores({ trabajadores, onElegir }: { trabajadores: Profil
                 <tr key={f.id} onClick={() => onElegir(f.id)}
                   className="border-t border-slate-700 divide-x divide-slate-700 bg-slate-800/60 hover:bg-slate-700/60 cursor-pointer">
                   <td className="px-2 py-1.5 text-white whitespace-nowrap">{f.nombre}</td>
+                  <td className="px-2 py-1.5 text-slate-300 whitespace-nowrap" title="Bodega(s) de la que recibió lo que tiene en posesión">{f.origen || '—'}</td>
                   <td className="px-2 py-1.5 text-right text-slate-200 whitespace-nowrap">{esInsumoElegido ? f.entregado : material ? f.fisico : f.skus}</td>
                   {material && !esInsumoElegido && <td className="px-2 py-1.5 text-right text-slate-200 whitespace-nowrap">{f.digital}</td>}
                   <td className={`px-2 py-1.5 text-right whitespace-nowrap ${f.negativos > 0 ? 'text-red-400 font-semibold' : 'text-slate-500'}`}>{f.negativos || '—'}</td>

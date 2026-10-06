@@ -37,6 +37,15 @@
   30. ~~Correr `supabase/migrations/0081_stock_sin_lotes_vacios_sin_excepcion.sql`~~ — **corrida por Andrés el 06-10.**
 - **Deploy**: el push del 26-08 a `main` falló al desplegar por una interrupción real de GitHub Actions/Pages (confirmada en githubstatus.com, no un problema del repo) — falta reintentar el workflow ("Re-run all jobs") una vez que GitHub se recupere. Fuera de eso, `.github/workflows/deploy.yml` publica bien en cada push a `main`.
 
+## v2.50 — Stock → Técnico: filtro por bodega de origen
+
+Andrés (06-10): en el buscador por técnico, poder filtrar por la bodega de origen (ej. quién tiene Mufa M6 que sean de OyM —bodega C132— a diferencia de las de ATT que vienen de STK).
+
+- **`BuscadorTrabajadores`** (`inventario/components/Home.tsx`): selector **"Bodega de origen"** (C088, C103, C132, Insumos, STK) y columna **"Origen"** (bodega(s) de la que recibió lo que tiene). El stock de un trabajador no guarda de dónde vino: el origen se **deduce por lote** de las Entregas (`salida`) que recibió (`movimientos.ubicacion_id` = bodega de origen; toda la historia, no solo el período). Con una bodega elegida: la "posesión", los SKU, negativos y Físico/Digital cuentan **solo lo que recibió de esa bodega**, y "Movimientos" pasa a ser las **Entregas desde esa bodega**; se combina con el resto de los filtros (material, período, negativos…).
+- `listMovimientosDeTrabajadores` ahora trae también `lote` y `ubicacionId`. Sin migración.
+- **Límites**: si un trabajador recibió el mismo lote de dos bodegas, salen las dos; lo que llegó sin Entrega (Conteo/ajuste) queda con origen "—" y no entra al filtrar por bodega.
+- **Verificado en el navegador (Mufa M6, SKU 81647)**: sin filtro 4 trabajadores (Zambrano → STK, Basanta → C132+STK, Muñoz → C132, Navarrete → sin origen); origen C132 → Basanta y Muñoz; origen STK → Zambrano y Basanta; origen C088 → ninguno.
+
 ## v2.49 — Excel de stock: con filtros y ordenado por Bodega → SKU → Lote
 
 Andrés (06-10): el Excel debe salir con filtros y ordenado por defecto por bodega, SKU y lote, en ese orden.
