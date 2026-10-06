@@ -108,6 +108,10 @@ export function LoteSelect({
       && (naturaleza === 'fisico' ? r.cantidadFisico : r.cantidadDigital) !== 0)
   }
 
+  // Un lote en 0 físico y 0 digital no es stock (solo queda en el historial): no se ofrece.
+  // Se conserva el que ya está elegido para no perderlo del desplegable.
+  opciones = opciones.filter((r) => r.cantidadFisico !== 0 || r.cantidadDigital !== 0 || r.lote === value)
+
   return (
     <select value={value}
       onChange={(e) => {

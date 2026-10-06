@@ -32,8 +32,18 @@
   25. ~~Correr `supabase/migrations/0078_ep_lineas_tipo_tendido.sql`~~ — **corrida por Andrés el 05-10.** Ver v2.33.
   26. **Asignar códigos LPU en el Catálogo** (opcional) — Andrés (05-10): se resuelve **al hacer el conteo de los vehículos**, no antes. Incluye el cable (código + "Tipo de tendido"); mientras falte, el EP lo avisa como "sin código LPU".
   27. ~~`adjust_stock` pierde el negativo cuando no existe la fila~~ — **arreglado en `0079`** (ver v2.45), pendiente de correrla (#28).
-  28. **Correr `supabase/migrations/0079_entrega_sin_stock_sindefinir.sql`** (corrige `adjust_stock` y hace que una Entrega desde una bodega sin ese material quede con lote `SinDefinir`). El cliente de v2.45 ya lo refleja en el selector de lote, pero el servidor recién lo fuerza al correr la migración. Después, verificar (solo lectura): una entrega de un material que la bodega no tenga debe dejar `SinDefinir` con físico −N (antes quedaba 0).
+  28. ~~Correr `supabase/migrations/0079_entrega_sin_stock_sindefinir.sql`~~ — **corrida por Andrés el 06-10.**
+  29. **Correr `supabase/migrations/0080_stock_sin_lotes_vacios.sql`** (borra la fila de stock cuando un lote queda en 0/0 y limpia las 191 que ya existen, salvo las de materiales con umbral en bodegas). Al final trae una consulta de verificación: `vacias_que_no_deberian_quedar` debe dar 0. Ver v2.46.
 - **Deploy**: el push del 26-08 a `main` falló al desplegar por una interrupción real de GitHub Actions/Pages (confirmada en githubstatus.com, no un problema del repo) — falta reintentar el workflow ("Re-run all jobs") una vez que GitHub se recupere. Fuera de eso, `.github/workflows/deploy.yml` publica bien en cada push a `main`.
+
+## v2.46 — Lotes en 0 fuera del stock (solo en el historial) · migración 0080
+
+Andrés (06-10): "que no aparezcan los lotes en 0 en el stock, solo en el historial" + SQL para borrar los sobrantes. Cubre tanto el material al que un movimiento le dejó un lote vacío "de la nada" como el que se agotó y se repuso bajo otro lote.
+
+- **`0080_stock_sin_lotes_vacios.sql`** (**pendiente de correr**, #29): (1) `adjust_stock` (vigente en 0079) borra la fila si queda en **0 físico y 0 digital** — también al cerrar un conteo, que usa `adjust_stock`; (2) limpieza de las filas vacías que ya existen (hoy **191 de 607**: bodegas C088 30, C103 4, C132 13, Insumos 1, STK 9; técnicos 134). Idempotente. `stock` es solo el saldo actual, el historial vive en `movimientos`/conteos/eventos (con su lote), y nada referencia filas de `stock`.
+- **Excepción deliberada**: un material **con umbral mínimo** en una **bodega** conserva UNA fila vacía (una por bodega+material, y solo si no tiene otro lote con cantidad), porque es lo que sostiene la alerta "Renovar" cuando se agota. Hoy son ~11 (Amarra 150, Huincha, Plumón, DU08, Bajada Lateral y STKCMIC en C088; Abrazadera Sobredimensionada en C132; Fleje 1/2 en Insumos; 51024, Bajada Lateral y DU08 en STK). Si se prefiere que NO queden, se quita la cláusula del umbral (en la función y en la limpieza) y la alerta de agotado se perdería. Un umbral es por material (global), así que el "Renovar" aparece también en bodegas donde ese material no se maneja.
+- **Cliente**: Stock → Bodega no muestra filas 0/0 (una fila "—" por material con umbral agotado, para mantener "Renovar" y poder editar el umbral); `LoteSelect` tampoco ofrece lotes 0/0 (se conserva el ya elegido). Sirve antes y después de correr la migración. Los negativos y los lotes con físico o digital distinto de 0 se siguen mostrando. El Excel de stock ya los omitía (v2.44).
+- **Verificado en el navegador**: de 57 filas vacías en bodegas, la pestaña muestra solo las 11 de materiales con umbral (con lote "—"). El comportamiento del servidor no se pudo probar (migración sin correr).
 
 ## v2.45 — Entregar desde una bodega sin el material: lote SinDefinir (migración 0079)
 

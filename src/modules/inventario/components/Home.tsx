@@ -464,17 +464,35 @@ function BodegaTab() {
   }
   useEffect(() => { reload() /* eslint-disable-next-line react-hooks/exhaustive-deps */ }, [ubicacionId, search])
 
+  // Un lote en 0 físico y 0 digital no se muestra en el stock (queda solo en el
+  // historial de movimientos). Única excepción: un material con umbral mínimo
+  // que se agotó del todo en la bodega deja UNA fila "—" para que siga la
+  // alerta "Renovar" (y se pueda editar su umbral).
+  const filasVisibles = useMemo(() => {
+    if (!rows) return null
+    const conCantidad = new Set(
+      rows.filter((r) => r.cantidadFisico !== 0 || r.cantidadDigital !== 0).map((r) => `${r.ubicacionId}|${r.materialId}`))
+    const yaResumido = new Set<string>()
+    const out: StockRow[] = []
+    for (const r of rows) {
+      if (r.cantidadFisico !== 0 || r.cantidadDigital !== 0) { out.push(r); continue }
+      const k = `${r.ubicacionId}|${r.materialId}`
+      if (r.stockMinimo !== null && !conCantidad.has(k) && !yaResumido.has(k)) { yaResumido.add(k); out.push({ ...r, lote: '—' }) }
+    }
+    return out
+  }, [rows])
+
   const valuesByColumn = useMemo(() => {
     const result = {} as Record<StockColKey, string[]>
     for (const col of STOCK_COLUMNS) {
-      result[col.key] = sortColumnValues(col.key, [...new Set((rows ?? []).map((r) => stockColDisplayValue(r, col.key)))])
+      result[col.key] = sortColumnValues(col.key, [...new Set((filasVisibles ?? []).map((r) => stockColDisplayValue(r, col.key)))])
     }
     return result
-  }, [rows])
+  }, [filasVisibles])
 
   const displayRows = useMemo(() => {
-    if (!rows) return null
-    let out = rows
+    if (!filasVisibles) return null
+    let out = filasVisibles
     for (const key of Object.keys(colSelected) as StockColKey[]) {
       const set = colSelected[key]
       if (!set) continue
@@ -496,7 +514,7 @@ function BodegaTab() {
         || a.lote.localeCompare(b.lote))
     }
     return sorted
-  }, [rows, colSelected, sort])
+  }, [filasVisibles, colSelected, sort])
 
   return (
     <div className="space-y-3">
@@ -512,7 +530,7 @@ function BodegaTab() {
       {error && <p className="text-xs text-red-400">{error}</p>}
       {displayRows === null ? (
         <p className="text-xs text-slate-500">Cargando…</p>
-      ) : rows && rows.length === 0 ? (
+      ) : filasVisibles && filasVisibles.length === 0 ? (
         <p className="text-xs text-slate-500">Sin stock registrado.</p>
       ) : (
         <div className="overflow-x-auto rounded-xl border border-slate-700">
