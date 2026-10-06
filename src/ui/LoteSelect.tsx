@@ -37,11 +37,17 @@ interface Props {
    * conocido, no repetir "sin lote" con otro nombre.
    */
   soloConDisponible?: boolean
+  /**
+   * Para Entrega (sale de una bodega): si la bodega no tiene NADA físico de este
+   * material, el lote no se elige — queda 'SinDefinir' (el servidor lo fuerza
+   * igual, ver 0079_entrega_sin_stock_sindefinir.sql). Se puede entregar igual.
+   */
+  forzarSinDefinirSinStock?: boolean
 }
 
 export function LoteSelect({
   materialId, ubicacionId, naturaleza, checkAvailability, value, onChange, className,
-  buscarTodasBodegas, soloConDisponible,
+  buscarTodasBodegas, soloConDisponible, forzarSinDefinirSinStock,
 }: Props) {
   const [rows, setRows] = useState<StockRow[] | null>(null)
   const [creando, setCreando] = useState(false)
@@ -57,6 +63,21 @@ export function LoteSelect({
       .catch(() => { if (!cancelled) setRows([]) })
     return () => { cancelled = true }
   }, [materialId, ubicacionId, buscarTodasBodegas]) // eslint-disable-line react-hooks/exhaustive-deps
+
+  const sinStockEnBodega = !!forzarSinDefinirSinStock && !buscarTodasBodegas && buscar && rows !== null
+    && !rows.some((r) => r.cantidadFisico > 0)
+  useEffect(() => {
+    if (sinStockEnBodega && value !== '') onChange('')
+  }, [sinStockEnBodega]) // eslint-disable-line react-hooks/exhaustive-deps
+
+  if (sinStockEnBodega) {
+    return (
+      <select value="" disabled className={`${className ?? ''} opacity-70`}
+        title="La bodega no tiene este material: se entrega igual, con lote SinDefinir">
+        <option value="">SinDefinir (sin stock en la bodega)</option>
+      </select>
+    )
+  }
 
   if (!buscar) {
     return (

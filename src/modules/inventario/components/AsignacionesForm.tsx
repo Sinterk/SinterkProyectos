@@ -408,7 +408,7 @@ export function AsignacionesForm({ onRegistered }: { onRegistered?: () => void }
                             // en vez de caer al campo de texto libre (mismo
                             // comportamiento que en Logística/Registrar Movimiento).
                             <LoteSelect materialId={l.materialId} ubicacionId={l.ubicacionBodegaId || null} naturaleza="fisico"
-                              checkAvailability={tipo === 'entrega'} value={l.lote}
+                              checkAvailability={tipo === 'entrega'} forzarSinDefinirSinStock={tipo === 'entrega'} value={l.lote}
                               onChange={(lote) => updateLinea(l.localId, { lote })} className={`${inputCls} w-full`} />
                           )}
                         </td>

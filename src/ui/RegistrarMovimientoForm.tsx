@@ -494,6 +494,7 @@ export function RegistrarMovimientoForm({ fixedProject, puntos, lockTipoUI, solo
                             naturaleza={esEntrada ? 'digital' : ctx.naturaleza}
                             checkAvailability={ctx.checkAvailability} value={l.lote}
                             buscarTodasBodegas={esEntrada} soloConDisponible={esEntrada}
+                            forzarSinDefinirSinStock={!esEntrada && tipoUI === 'entrega'}
                             onChange={(lote) => updateLinea(l.localId, { lote })} className={`${inputCls} w-full`} />
                         )}
                       </td>
