@@ -112,6 +112,8 @@ export function generarStockExcel(
   const colWidths = [14, 46, 18, 16, 10, 10].slice(0, headers.length)
   ws['!cols'] = colWidths.map((w) => ({ wch: w }))
   ws['!rows'] = aoa.map((_, i) => ({ hpt: i === 0 ? 26 : 18 }))
+  // Filtros desplegables en el encabezado (orden de las filas: Bodega → SKU → Lote).
+  ws['!autofilter'] = { ref: XLSX.utils.encode_range({ s: { r: 0, c: 0 }, e: { r: Math.max(aoa.length - 1, 0), c: headers.length - 1 } }) }
 
   const wb = XLSX.utils.book_new()
   XLSX.utils.book_append_sheet(wb, ws, 'Stock')
@@ -135,7 +137,14 @@ function agregarHojaOtt(wb: XLSX.WorkBook, filas: FilaMaterialOtt[]): void {
   const headers = ['Área', 'OTT', 'Dirección', 'SKU', 'Descripción', 'Bodega origen', 'Lote',
     'Entregado', 'Instalado', 'Devuelto', 'Merma', 'Asignado a técnico', 'En tránsito']
   const numericas = new Set([7, 8, 9, 10, 11, 12])
-  const dataRows: (string | number)[][] = filas.map((f) => [
+  // Mismo orden por defecto que la hoja Stock: Bodega, SKU, Lote (y luego Área/OTT).
+  const ordenadas = [...filas].sort((a, b) =>
+    a.bodegaOrigen.localeCompare(b.bodegaOrigen)
+    || compareSku(a.sku, b.sku, 'asc')
+    || a.lote.localeCompare(b.lote)
+    || a.area.localeCompare(b.area)
+    || a.ott.localeCompare(b.ott, undefined, { numeric: true }))
+  const dataRows: (string | number)[][] = ordenadas.map((f) => [
     f.area, f.ott, f.direccion, f.sku, f.descripcion, f.bodegaOrigen, f.lote,
     f.entregado, f.instalado, f.devuelto, f.merma, f.asignadoATecnico, f.transito,
   ])
@@ -150,5 +159,6 @@ function agregarHojaOtt(wb: XLSX.WorkBook, filas: FilaMaterialOtt[]): void {
   }
   ws['!cols'] = [11, 16, 30, 14, 40, 14, 14, 10, 10, 10, 9, 12, 11].map((w) => ({ wch: w }))
   ws['!rows'] = aoa.map((_, i) => ({ hpt: i === 0 ? 30 : 18 }))
+  ws['!autofilter'] = { ref: XLSX.utils.encode_range({ s: { r: 0, c: 0 }, e: { r: Math.max(aoa.length - 1, 0), c: headers.length - 1 } }) }
   XLSX.utils.book_append_sheet(wb, ws, 'Tránsito e instalado OTT')
 }

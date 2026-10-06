@@ -37,6 +37,13 @@
   30. ~~Correr `supabase/migrations/0081_stock_sin_lotes_vacios_sin_excepcion.sql`~~ — **corrida por Andrés el 06-10.**
 - **Deploy**: el push del 26-08 a `main` falló al desplegar por una interrupción real de GitHub Actions/Pages (confirmada en githubstatus.com, no un problema del repo) — falta reintentar el workflow ("Re-run all jobs") una vez que GitHub se recupere. Fuera de eso, `.github/workflows/deploy.yml` publica bien en cada push a `main`.
 
+## v2.49 — Excel de stock: con filtros y ordenado por Bodega → SKU → Lote
+
+Andrés (06-10): el Excel debe salir con filtros y ordenado por defecto por bodega, SKU y lote, en ese orden.
+
+- `generarStockExcel.ts`: ambas hojas llevan **autofiltro** en el encabezado (`!autofilter`). Hoja **Stock**: ya venía ordenada Bodega → SKU (orden numérico de SKU, `compareSku`) → Lote; se mantiene. Hoja **Tránsito e instalado OTT**: ahora se ordena igual por **Bodega origen → SKU → Lote** (y luego Área/OTT) en vez de por OTT; la OTT se encuentra con el filtro.
+- **Verificado** leyendo el libro generado (Ambos, todas las bodegas): Stock 283 filas con filtro A1:F284 y OTT 89 filas con filtro A1:M90, ambas ordenadas Bodega → SKU → Lote sin ninguna fila fuera de orden.
+
 ## v2.48 — Excel de stock: hoja con el material en tránsito e instalado de las OTT abiertas
 
 Andrés (06-10): en la exportación a Excel, poder incluir el material en tránsito e instalado de las OTT abiertas, con el origen (bodega) y el lote si existe (Ferretería dirá "Físico"), en otra pestaña e incluyendo las OTT.
