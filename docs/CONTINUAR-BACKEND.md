@@ -34,7 +34,7 @@
   27. ~~`adjust_stock` pierde el negativo cuando no existe la fila~~ — **arreglado en `0079`** (ver v2.45), pendiente de correrla (#28).
   28. ~~Correr `supabase/migrations/0079_entrega_sin_stock_sindefinir.sql`~~ — **corrida por Andrés el 06-10.**
   29. ~~Correr `supabase/migrations/0080_stock_sin_lotes_vacios.sql`~~ — **corrida por Andrés el 06-10** (`stock` pasó de 607 a 427 filas).
-  30. **Correr `supabase/migrations/0081_stock_sin_lotes_vacios_sin_excepcion.sql`** (quita la excepción por umbral de la 0080: borra también las ~11 filas vacías que quedaron y hace que `adjust_stock` no deje ninguna). Verificación al final: debe dar 0. Ver v2.47.
+  30. ~~Correr `supabase/migrations/0081_stock_sin_lotes_vacios_sin_excepcion.sql`~~ — **corrida por Andrés el 06-10.**
 - **Deploy**: el push del 26-08 a `main` falló al desplegar por una interrupción real de GitHub Actions/Pages (confirmada en githubstatus.com, no un problema del repo) — falta reintentar el workflow ("Re-run all jobs") una vez que GitHub se recupere. Fuera de eso, `.github/workflows/deploy.yml` publica bien en cada push a `main`.
 
 ## v2.47 — Sin excepción por umbral: un material agotado no deja fila (migración 0081)
