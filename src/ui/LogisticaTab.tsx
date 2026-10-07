@@ -44,10 +44,12 @@ interface Props {
   datosGeneralesHoja?: { label: string; value: string }[]
   /** Fecha(s) para la esquina superior derecha de la Hoja de logística — 1 o 2 (ATT: inicio/término). */
   fechasHoja?: { label: string; value: string }[]
+  /** Solo Incidencias: formato de las tablas de rebaja = detalle del correo de rebaja masiva (ver ResumenProyectoTable). */
+  incidencia?: { codigo: string; ingeniero: string }
 }
 
 export function LogisticaTab({
-  projectId, area, puntos, agregarPuntos, incluirComentarios = true, ott, direccion, fechaInicio, tituloHoja, datosGeneralesHoja, fechasHoja,
+  projectId, area, puntos, agregarPuntos, incluirComentarios = true, ott, direccion, fechaInicio, tituloHoja, datosGeneralesHoja, fechasHoja, incidencia,
 }: Props) {
   const isTecnico = useAuth((s) => s.profile?.rol === 'tecnico')
   // EquipoSection y ResumenProyectoTable leen `project_members` cada uno por
@@ -71,7 +73,7 @@ export function LogisticaTab({
       )}
       <ResumenProyectoTable projectId={projectId} area={area} puntos={puntos} agregarPuntos={agregarPuntos} membersVersion={membersVersion}
         refreshKey={resumenKey} onChanged={() => setMovimientosKey((k) => k + 1)}
-        ott={ott} direccion={direccion} fechaInicio={fechaInicio} />
+        ott={ott} direccion={direccion} fechaInicio={fechaInicio} incidencia={incidencia} />
       {!isTecnico && area === 'OyM' && <AsignacionMaterialSection />}
       {!isTecnico && <MovimientosProyectoSection projectId={projectId} puntos={puntos} refreshKey={movimientosKey} onAnulado={() => setResumenKey((k) => k + 1)} />}
       {incluirComentarios && <ObservacionesSection projectId={projectId} />}

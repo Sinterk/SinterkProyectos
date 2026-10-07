@@ -37,6 +37,15 @@
   30. ~~Correr `supabase/migrations/0081_stock_sin_lotes_vacios_sin_excepcion.sql`~~ — **corrida por Andrés el 06-10.**
 - **Deploy**: el push del 26-08 a `main` falló al desplegar por una interrupción real de GitHub Actions/Pages (confirmada en githubstatus.com, no un problema del repo) — falta reintentar el workflow ("Re-run all jobs") una vez que GitHub se recupere. Fuera de eso, `.github/workflows/deploy.yml` publica bien en cada push a `main`.
 
+## v2.51 — Incidencias: las tablas de rebaja calzan con la del correo
+
+Andrés (07-10): cambiar la tabla de rebajas de Incidencias para que calce con la que se genera en el correo (rebaja masiva).
+
+- En una **Incidencia**, "Rebaja pendiente" y "Material digital (SAP)" (`ResumenProyectoTable.tsx`) pasan del formato de ATT (OTT, Dirección de trabajos, Fecha de instalación, RUT empresa, Dirección empresa, SKU, Material, Lote, Cantidad) al **detalle del correo**: **Incidencia | Nombre técnico // Nombre ingeniero | RUT | Material (SKU) | Descripción | Lote | Cantidad**. "Copiar tabla" copia exactamente esas 7 columnas en ese orden (sin encabezado, SKU como texto), igual que las filas del correo. En Rebaja pendiente siguen después Bodega / Origen / ✕ (uso interno).
+- Los datos son los mismos que usa `prepararRebajaMasiva`: **técnico(s) y RUT(s) = los asignados a la incidencia** (unidos con " / "), **ingeniero = el de la incidencia**, código = el de la incidencia (— si aún no tiene número).
+- Nueva prop `incidencia` (`{codigo, ingeniero}`) en `ResumenProyectoTable`/`LogisticaTab`, que solo pasa el editor de Incidencias; **ATT y Preventivos no cambian** (verificado: ATT sigue con OTT/Dirección/Fecha/RUT empresa…). Sin migración.
+- **Verificado en el navegador** (incidencia INC000009501686): ambas tablas muestran las 7 columnas y el texto copiado sale como `INC…⇥técnico⇥RUT⇥'SKU⇥descripción⇥lote⇥cantidad`. El RUT sale vacío si el técnico no lo tiene cargado en su perfil.
+
 ## v2.50 — Stock → Técnico: filtro por bodega de origen
 
 Andrés (06-10): en el buscador por técnico, poder filtrar por la bodega de origen (ej. quién tiene Mufa M6 que sean de OyM —bodega C132— a diferencia de las de ATT que vienen de STK).

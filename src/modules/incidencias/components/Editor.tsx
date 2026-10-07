@@ -95,6 +95,7 @@ export function Editor() {
             )}
           <LogisticaTab projectId={proyectoMaterialId(record)} area="OyM" incluirComentarios={false}
             agregarPuntos={!!record.preventivo}
+            incidencia={{ codigo: record.codigo || '', ingeniero: record.ingeniero || '' }}
             tituloHoja={`Incidencia ${record.codigo || (record.preventivo ? etiquetaPreventivo(record.preventivo) : 'sin código')}`}
             datosGeneralesHoja={[
               { label: 'Código', value: record.codigo || '' },

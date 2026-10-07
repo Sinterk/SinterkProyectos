@@ -57,7 +57,17 @@ interface Props {
   ott?: string
   direccion?: string
   fechaInicio?: string
+  /**
+   * Solo Incidencias: las tablas de rebaja (Rebaja pendiente / Material digital)
+   * salen en el MISMO formato del detalle del correo de rebaja masiva —
+   * INCIDENCIA | Nombre técnico // Nombre ingeniero | RUT | Material |
+   * Descripción | Lote | Cantidad (ver rebajaMasiva.ts) — en vez del de ATT.
+   */
+  incidencia?: { codigo: string; ingeniero: string }
 }
+
+/** Columnas del formato "correo" de Incidencias, ya resueltas para este proyecto. */
+interface FormatoInc { codigo: string; tecnicoIngeniero: string; rut: string }
 
 export function Stat({ label, value, highlight }: { label: string; value: number; highlight?: boolean }) {
   return (
@@ -209,7 +219,7 @@ interface LineaRebaja {
   origen: 'auto' | 'manual'
 }
 
-export function ResumenProyectoTable({ projectId, area, puntos, agregarPuntos, refreshKey = 0, onChanged, membersVersion = 0, ott, direccion, fechaInicio }: Props) {
+export function ResumenProyectoTable({ projectId, area, puntos, agregarPuntos, refreshKey = 0, onChanged, membersVersion = 0, ott, direccion, fechaInicio, incidencia }: Props) {
   const rol = useAuth((s) => s.profile?.rol)
   // registrar_movimiento exige técnico para tipoUI='rebajado' (0005) — no
   // afecta stock de nadie ahí, es solo quién queda como usuario_id del
@@ -245,6 +255,13 @@ export function ResumenProyectoTable({ projectId, area, puntos, agregarPuntos, r
   )
   const editableCamposVista: Campo[] = mostrandoTodosLosPuntos ? editableCampos.filter((c) => c !== 'cantInstalada') : editableCampos
   const [members, setMembers] = useState<MemberProfile[]>([])
+  // Igual que prepararRebajaMasiva: técnico(s) y RUT(s) de los asignados a la incidencia, unidos con " / ".
+  const formatoInc: FormatoInc | undefined = incidencia ? {
+    codigo: incidencia.codigo,
+    tecnicoIngeniero: [members.map((m) => m.nombre?.trim() || m.email || '').filter(Boolean).join(' / '), incidencia.ingeniero]
+      .filter(Boolean).join(' // '),
+    rut: members.map((m) => m.rut?.trim() || '').filter(Boolean).join(' / '),
+  } : undefined
   const [bodegas, setBodegas] = useState<Ubicacion[]>([])
   // Solo OyM: stock propio de cada técnico asignado, para mostrar "(cantidad)"
   // junto a su nombre al elegir de dónde sale un Instalado (ver ORIGEN_TECNICO_PREFIX).
@@ -1054,6 +1071,7 @@ export function ResumenProyectoTable({ projectId, area, puntos, agregarPuntos, r
               cellErrors={cellErrors}
               saving={saving}
               sugiriendo={sugiriendo}
+              formatoInc={formatoInc}
               ott={ott}
               direccion={direccion}
               fechaInstalacion={formatFechaExcel(fechaInicio)}
@@ -1068,6 +1086,7 @@ export function ResumenProyectoTable({ projectId, area, puntos, agregarPuntos, r
           <TablaDigital
             rows={displayRows}
             rowKey={rowKey}
+            formatoInc={formatoInc}
             ott={ott}
             direccion={direccion}
             fechaInstalacion={formatFechaExcel(fechaInicio)}
@@ -1168,9 +1187,10 @@ function celdaTextoTsv(v: string | number | null | undefined): string {
  * completo (mismo valor en cada fila) — los pasa `Editor.tsx` de ATT; en
  * Preventivos/Incidencias, que no los mandan, esas 3 columnas quedan vacías.
  */
-function TablaDigital({ rows, rowKey, ott, direccion, fechaInstalacion }: {
+function TablaDigital({ rows, rowKey, ott, direccion, fechaInstalacion, formatoInc }: {
   rows: ResumenMaterialProyecto[]
   rowKey: (r: ResumenMaterialProyecto) => string
+  formatoInc?: FormatoInc
   ott?: string
   direccion?: string
   fechaInstalacion?: string
@@ -1186,10 +1206,14 @@ function TablaDigital({ rows, rowKey, ott, direccion, fechaInstalacion }: {
     // (writeText, sin HTML) — así "pegar" y "pegar sin formato" quedan
     // exactamente igual, no hay una versión con estilos que Excel prefiera
     // sobre la otra.
-    const texto = filas.map((row) => [
+    const texto = filas.map((row) => (formatoInc ? [
+      // Formato del correo de rebaja masiva (Incidencias).
+      celdaTsv(formatoInc.codigo), celdaTsv(formatoInc.tecnicoIngeniero), celdaTsv(formatoInc.rut),
+      celdaTextoTsv(row.materialSku), celdaTsv(row.materialDescripcion), celdaTsv(row.lote), row.cantRebajada,
+    ] : [
       celdaTsv(ott), celdaTsv(direccion), celdaTsv(fechaInstalacion), celdaTsv(RUT_EMPRESA), celdaTsv(DIRECCION_EMPRESA),
       celdaTextoTsv(row.materialSku), celdaTsv(row.materialDescripcion), celdaTsv(row.lote), row.cantRebajada,
-    ].join('\t')).join('\n')
+    ]).join('\t')).join('\n')
     navigator.clipboard.writeText(texto)
       .then(() => setCopyMsg(`${filas.length} fila(s) copiada(s) — pega al final del control de rebajas.`))
       .catch(() => setCopyMsg('No se pudo copiar al portapapeles.'))
@@ -1203,7 +1227,7 @@ function TablaDigital({ rows, rowKey, ott, direccion, fechaInstalacion }: {
         <div>
           <h3 className="text-xs font-semibold text-brand-400 uppercase tracking-wide">Material digital (SAP)</h3>
           <p className="text-[11px] text-slate-500 leading-relaxed mt-1">
-            Baja contable en SAP, sin movimiento físico. Formato listo para copiar y pegar en el control de rebajas de Entel.
+            Baja contable en SAP, sin movimiento físico. {formatoInc ? 'Mismas columnas que la tabla de detalle del correo de rebaja.' : 'Formato listo para copiar y pegar en el control de rebajas de Entel.'}
           </p>
         </div>
         <button type="button" onClick={copiarTabla}
@@ -1216,13 +1240,25 @@ function TablaDigital({ rows, rowKey, ott, direccion, fechaInstalacion }: {
         <table className="w-full text-xs border-collapse">
           <thead>
             <tr className="bg-slate-900/60 text-slate-400 text-left divide-x divide-slate-700">
-              <th className="px-2 py-2 font-medium whitespace-nowrap">OTT</th>
-              <th className="px-2 py-2 font-medium">Dirección de trabajos</th>
-              <th className="px-2 py-2 font-medium whitespace-nowrap">Fecha de instalación</th>
-              <th className="px-2 py-2 font-medium whitespace-nowrap">RUT empresa</th>
-              <th className="px-2 py-2 font-medium">Dirección empresa</th>
-              <th className="px-2 py-2 font-medium whitespace-nowrap">SKU</th>
-              <th className="px-2 py-2 font-medium">Material</th>
+              {formatoInc ? (
+                <>
+                  <th className="px-2 py-2 font-medium whitespace-nowrap">Incidencia</th>
+                  <th className="px-2 py-2 font-medium">Nombre técnico // Nombre ingeniero</th>
+                  <th className="px-2 py-2 font-medium whitespace-nowrap">RUT</th>
+                  <th className="px-2 py-2 font-medium whitespace-nowrap">Material</th>
+                  <th className="px-2 py-2 font-medium">Descripción</th>
+                </>
+              ) : (
+                <>
+                  <th className="px-2 py-2 font-medium whitespace-nowrap">OTT</th>
+                  <th className="px-2 py-2 font-medium">Dirección de trabajos</th>
+                  <th className="px-2 py-2 font-medium whitespace-nowrap">Fecha de instalación</th>
+                  <th className="px-2 py-2 font-medium whitespace-nowrap">RUT empresa</th>
+                  <th className="px-2 py-2 font-medium">Dirección empresa</th>
+                  <th className="px-2 py-2 font-medium whitespace-nowrap">SKU</th>
+                  <th className="px-2 py-2 font-medium">Material</th>
+                </>
+              )}
               <th className="px-2 py-2 font-medium whitespace-nowrap">Lote</th>
               <th className="px-2 py-2 font-medium text-center whitespace-nowrap">Cantidad</th>
             </tr>
@@ -1232,13 +1268,25 @@ function TablaDigital({ rows, rowKey, ott, direccion, fechaInstalacion }: {
               const key = rowKey(row)
               return (
                 <tr key={key} className="border-t border-slate-700 divide-x divide-slate-700 bg-slate-800/60">
-                  <td className="px-2 py-2 text-slate-300 whitespace-nowrap">{ott || '—'}</td>
-                  <td className="px-2 py-2 max-w-[220px]"><p className="text-slate-300 truncate">{direccion || '—'}</p></td>
-                  <td className="px-2 py-2 text-slate-300 whitespace-nowrap">{fechaInstalacion || '—'}</td>
-                  <td className="px-2 py-2 text-slate-300 whitespace-nowrap">{RUT_EMPRESA}</td>
-                  <td className="px-2 py-2 text-slate-300 whitespace-nowrap">{DIRECCION_EMPRESA}</td>
-                  <td className="px-2 py-2 text-slate-300 whitespace-nowrap">{row.materialSku}</td>
-                  <td className="px-2 py-2 max-w-[220px]"><p className="text-white truncate">{row.materialDescripcion}</p></td>
+                  {formatoInc ? (
+                    <>
+                      <td className="px-2 py-2 text-slate-300 whitespace-nowrap">{formatoInc.codigo || '—'}</td>
+                      <td className="px-2 py-2 max-w-[260px]"><p className="text-slate-300 truncate" title={formatoInc.tecnicoIngeniero}>{formatoInc.tecnicoIngeniero || '—'}</p></td>
+                      <td className="px-2 py-2 text-slate-300 whitespace-nowrap">{formatoInc.rut || '—'}</td>
+                      <td className="px-2 py-2 text-slate-300 whitespace-nowrap">{row.materialSku}</td>
+                      <td className="px-2 py-2 max-w-[220px]"><p className="text-white truncate">{row.materialDescripcion}</p></td>
+                    </>
+                  ) : (
+                    <>
+                      <td className="px-2 py-2 text-slate-300 whitespace-nowrap">{ott || '—'}</td>
+                      <td className="px-2 py-2 max-w-[220px]"><p className="text-slate-300 truncate">{direccion || '—'}</p></td>
+                      <td className="px-2 py-2 text-slate-300 whitespace-nowrap">{fechaInstalacion || '—'}</td>
+                      <td className="px-2 py-2 text-slate-300 whitespace-nowrap">{RUT_EMPRESA}</td>
+                      <td className="px-2 py-2 text-slate-300 whitespace-nowrap">{DIRECCION_EMPRESA}</td>
+                      <td className="px-2 py-2 text-slate-300 whitespace-nowrap">{row.materialSku}</td>
+                      <td className="px-2 py-2 max-w-[220px]"><p className="text-white truncate">{row.materialDescripcion}</p></td>
+                    </>
+                  )}
                   <td className="px-2 py-2 text-slate-400 whitespace-nowrap">{row.lote || '—'}</td>
                   <td className="px-2 py-2 text-center whitespace-nowrap align-top">
                     <span className="text-white font-medium">{row.cantRebajada}</span>
@@ -1263,7 +1311,7 @@ function TablaDigital({ rows, rowKey, ott, direccion, fechaInstalacion }: {
  */
 function RebajaPendienteSection({
   lineas, materiales, bodegas, cellErrors, saving, sugiriendo,
-  ott, direccion, fechaInstalacion,
+  ott, direccion, fechaInstalacion, formatoInc,
   onSugerir, onAgregarManual, onActualizar, onQuitar, onAgregarPaquete,
 }: {
   lineas: LineaRebaja[]
@@ -1272,6 +1320,7 @@ function RebajaPendienteSection({
   cellErrors: Record<string, string>
   saving: boolean
   sugiriendo: boolean
+  formatoInc?: FormatoInc
   ott?: string
   direccion?: string
   fechaInstalacion?: string
@@ -1290,10 +1339,14 @@ function RebajaPendienteSection({
     // TablaDigital, sin encabezado (se pega al final de las filas que ya
     // existen en el control de Entel).
     const listas = lineas.filter((l) => l.materialId && Number(l.cantidad) > 0)
-    const texto = listas.map((l) => [
+    const texto = listas.map((l) => (formatoInc ? [
+      // Formato del correo de rebaja masiva (Incidencias).
+      celdaTsv(formatoInc.codigo), celdaTsv(formatoInc.tecnicoIngeniero), celdaTsv(formatoInc.rut),
+      celdaTextoTsv(l.materialSku), celdaTsv(l.materialDescripcion), celdaTsv(l.lote), l.cantidad,
+    ] : [
       celdaTsv(ott), celdaTsv(direccion), celdaTsv(fechaInstalacion), celdaTsv(RUT_EMPRESA), celdaTsv(DIRECCION_EMPRESA),
       celdaTextoTsv(l.materialSku), celdaTsv(l.materialDescripcion), celdaTsv(l.lote), l.cantidad,
-    ].join('\t')).join('\n')
+    ]).join('\t')).join('\n')
     navigator.clipboard.writeText(texto)
       .then(() => setCopyMsg(`${listas.length} fila(s) copiada(s) — pega al final del control de rebajas.`))
       .catch(() => setCopyMsg('No se pudo copiar al portapapeles.'))
@@ -1305,7 +1358,7 @@ function RebajaPendienteSection({
         <div>
           <h3 className="text-xs font-semibold text-brand-400 uppercase tracking-wide">Rebaja pendiente</h3>
           <p className="text-[11px] text-slate-500 leading-relaxed mt-1">
-            Registra nueva baja SAP. "Sugerir" propone lote y cantidad a partir de lo instalado, priorizando la bodega del área — revisa y ajusta antes de guardar. Formato listo para copiar y pegar en el control de rebajas de Entel, igual que "Material digital". Cable nunca se reparte entre lotes: usa el mismo lote físico si ya se conoce, o uno solo que alcance completo.
+            Registra nueva baja SAP. "Sugerir" propone lote y cantidad a partir de lo instalado, priorizando la bodega del área — revisa y ajusta antes de guardar. {formatoInc ? 'Mismas columnas que la tabla de detalle del correo de rebaja.' : 'Formato listo para copiar y pegar en el control de rebajas de Entel, igual que "Material digital".'} Cable nunca se reparte entre lotes: usa el mismo lote físico si ya se conoce, o uno solo que alcance completo.
           </p>
         </div>
         <div className="flex items-center gap-2 shrink-0">
@@ -1332,13 +1385,25 @@ function RebajaPendienteSection({
                     control de rebajas de Entel) — así al confirmar la
                     sugerencia se puede copiar igual, antes incluso de guardar.
                     Bodega/Origen/Acción van después, son de uso interno. */}
-                <th className="px-2 py-2 font-medium whitespace-nowrap">OTT</th>
-                <th className="px-2 py-2 font-medium">Dirección de trabajos</th>
-                <th className="px-2 py-2 font-medium whitespace-nowrap">Fecha de instalación</th>
-                <th className="px-2 py-2 font-medium whitespace-nowrap">RUT empresa</th>
-                <th className="px-2 py-2 font-medium">Dirección empresa</th>
-                <th className="px-2 py-2 font-medium whitespace-nowrap">SKU</th>
-                <th className="px-2 py-2 font-medium">Material</th>
+                {formatoInc ? (
+                  <>
+                    <th className="px-2 py-2 font-medium whitespace-nowrap">Incidencia</th>
+                    <th className="px-2 py-2 font-medium">Nombre técnico // Nombre ingeniero</th>
+                    <th className="px-2 py-2 font-medium whitespace-nowrap">RUT</th>
+                    <th className="px-2 py-2 font-medium whitespace-nowrap">Material</th>
+                    <th className="px-2 py-2 font-medium">Descripción</th>
+                  </>
+                ) : (
+                  <>
+                    <th className="px-2 py-2 font-medium whitespace-nowrap">OTT</th>
+                    <th className="px-2 py-2 font-medium">Dirección de trabajos</th>
+                    <th className="px-2 py-2 font-medium whitespace-nowrap">Fecha de instalación</th>
+                    <th className="px-2 py-2 font-medium whitespace-nowrap">RUT empresa</th>
+                    <th className="px-2 py-2 font-medium">Dirección empresa</th>
+                    <th className="px-2 py-2 font-medium whitespace-nowrap">SKU</th>
+                    <th className="px-2 py-2 font-medium">Material</th>
+                  </>
+                )}
                 <th className="px-2 py-2 font-medium whitespace-nowrap">Lote</th>
                 <th className="px-2 py-2 font-medium text-center whitespace-nowrap">Cantidad</th>
                 <th className="px-2 py-2 font-medium whitespace-nowrap">Bodega</th>
@@ -1354,11 +1419,21 @@ function RebajaPendienteSection({
                 const sinLote = l.origen === 'auto' && !l.lote
                 return (
                   <tr key={l.localId} className={`border-t border-slate-700 divide-x divide-slate-700 ${sinLote ? 'bg-amber-950/30' : 'bg-slate-800/60'}`}>
-                    <td className="px-2 py-2 text-slate-300 whitespace-nowrap">{ott || '—'}</td>
-                    <td className="px-2 py-2 max-w-[220px]"><p className="text-slate-300 truncate">{direccion || '—'}</p></td>
-                    <td className="px-2 py-2 text-slate-300 whitespace-nowrap">{fechaInstalacion || '—'}</td>
-                    <td className="px-2 py-2 text-slate-300 whitespace-nowrap">{RUT_EMPRESA}</td>
-                    <td className="px-2 py-2 text-slate-300 whitespace-nowrap">{DIRECCION_EMPRESA}</td>
+                    {formatoInc ? (
+                      <>
+                        <td className="px-2 py-2 text-slate-300 whitespace-nowrap">{formatoInc.codigo || '—'}</td>
+                        <td className="px-2 py-2 max-w-[260px]"><p className="text-slate-300 truncate" title={formatoInc.tecnicoIngeniero}>{formatoInc.tecnicoIngeniero || '—'}</p></td>
+                        <td className="px-2 py-2 text-slate-300 whitespace-nowrap">{formatoInc.rut || '—'}</td>
+                      </>
+                    ) : (
+                      <>
+                        <td className="px-2 py-2 text-slate-300 whitespace-nowrap">{ott || '—'}</td>
+                        <td className="px-2 py-2 max-w-[220px]"><p className="text-slate-300 truncate">{direccion || '—'}</p></td>
+                        <td className="px-2 py-2 text-slate-300 whitespace-nowrap">{fechaInstalacion || '—'}</td>
+                        <td className="px-2 py-2 text-slate-300 whitespace-nowrap">{RUT_EMPRESA}</td>
+                        <td className="px-2 py-2 text-slate-300 whitespace-nowrap">{DIRECCION_EMPRESA}</td>
+                      </>
+                    )}
                     <td className="px-2 py-2 align-top">
                       {l.materialId ? (
                         <span className="text-slate-300 whitespace-nowrap">{l.materialSku}</span>
