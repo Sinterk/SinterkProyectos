@@ -37,6 +37,10 @@
   30. ~~Correr `supabase/migrations/0081_stock_sin_lotes_vacios_sin_excepcion.sql`~~ — **corrida por Andrés el 06-10.**
 - **Deploy**: el push del 26-08 a `main` falló al desplegar por una interrupción real de GitHub Actions/Pages (confirmada en githubstatus.com, no un problema del repo) — falta reintentar el workflow ("Re-run all jobs") una vez que GitHub se recupere. Fuera de eso, `.github/workflows/deploy.yml` publica bien en cada push a `main`.
 
+## Hallazgo 09-10 — El −100 de digital en C088 / SKU 428 / SinDefinir (consulta, sin cambios de datos)
+
+Andrés, ajustando el stock digital, encontró `C088 · 428 (Cruceta, Ferretería) · SinDefinir · digital −100`. Causa (datos reales): la **Entrada de 100 u. del 23-09** (doc. "Traslado 4700511522", hoy con lote `949717`) se registró **sin lote**, antes de la migración 0074 (corrida el 30-09). Hasta 0074 una Entrada de Ferretería con lote SinDefinir **no acreditaba digital**; después se le puso el lote 949717 desde el editor de entradas (`corregir_movimiento`, 0074), que **revierte el digital del lote viejo (SinDefinir, −100) asumiendo que se había acreditado** y acredita el nuevo (949717, +100). Resultado: el 949717 quedó bien, y SinDefinir quedó con un −100 que nunca existió. Es el único caso de ese tipo hoy (los otros negativos digitales de bodega son −1 en la mufa 69968/947443 y −4 en 83635/946919). Solo puede repetirse al editar el lote de una Entrada hecha **antes de 0074** (no por las nuevas). Arreglo de datos: borrar esa fila de stock (equivale a ponerla en 0).
+
 ## v2.52 — Entrada: los lotes ofrecidos son los de la bodega de destino
 
 Andrés (09-10): al poner el lote en una Entrada se mezclaban los lotes de todas las bodegas; los lotes pueden parecer comunes entre bodegas pero son individuales por bodega. Pidió que al elegir lote solo salgan los de esa bodega para ese SKU (más poder tipearlo a mano) y que un lote tecleado que calce con uno existente se sume a ese.
