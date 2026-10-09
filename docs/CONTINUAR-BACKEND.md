@@ -37,6 +37,15 @@
   30. ~~Correr `supabase/migrations/0081_stock_sin_lotes_vacios_sin_excepcion.sql`~~ — **corrida por Andrés el 06-10.**
 - **Deploy**: el push del 26-08 a `main` falló al desplegar por una interrupción real de GitHub Actions/Pages (confirmada en githubstatus.com, no un problema del repo) — falta reintentar el workflow ("Re-run all jobs") una vez que GitHub se recupere. Fuera de eso, `.github/workflows/deploy.yml` publica bien en cada push a `main`.
 
+## v2.53 — Movimientos: los filtros por columna ya ven todo el historial
+
+Andrés (09-10): no aparecían los movimientos de rebaja de C088 anteriores a octubre.
+
+- **Causa**: la pestaña Movimientos sin filtros cargaba solo los **200 más recientes** (hoy: 28-09 → 08-10, de 1350) y los filtros por columna (tipo "Rebajado (SAP)", bodega C088…) se aplican **sobre lo ya cargado**. Las 202 rebajas de C088 (92 en agosto, 110 en septiembre, ninguna en octubre) quedaban fuera de esa ventana.
+- **Cambio** (`inventario/components/Home.tsx`): al **filtrar por una columna** (o al buscar) se carga el historial completo; además, aviso "Mostrando solo los 200 movimientos más recientes (desde …) · Cargar todos" cuando hay más.
+- **Segundo hallazgo**: "sin límite" (`limit: null`) devolvía como máximo **1000** filas porque PostgREST corta cada respuesta ahí (así que ni el buscador veía los más viejos). `listMovimientos` ahora **pagina de a 1000** y usa `id` como desempate estable. Afecta también al buscador de texto y a la lista por técnico.
+- **Verificado en el navegador**: "Cargar todos" trae 1350 filas (la más antigua, 03-08) y las rebajas de C088 son 202, igual que en la base. Sin migración.
+
 ## Hallazgo 09-10 — El −100 de digital en C088 / SKU 428 / SinDefinir (consulta, sin cambios de datos)
 
 Andrés, ajustando el stock digital, encontró `C088 · 428 (Cruceta, Ferretería) · SinDefinir · digital −100`. Causa (datos reales): la **Entrada de 100 u. del 23-09** (doc. "Traslado 4700511522", hoy con lote `949717`) se registró **sin lote**, antes de la migración 0074 (corrida el 30-09). Hasta 0074 una Entrada de Ferretería con lote SinDefinir **no acreditaba digital**; después se le puso el lote 949717 desde el editor de entradas (`corregir_movimiento`, 0074), que **revierte el digital del lote viejo (SinDefinir, −100) asumiendo que se había acreditado** y acredita el nuevo (949717, +100). Resultado: el 949717 quedó bien, y SinDefinir quedó con un −100 que nunca existió. Es el único caso de ese tipo hoy (los otros negativos digitales de bodega son −1 en la mufa 69968/947443 y −4 en 83635/946919). Solo puede repetirse al editar el lote de una Entrada hecha **antes de 0074** (no por las nuevas). Arreglo de datos: borrar esa fila de stock (equivale a ponerla en 0).

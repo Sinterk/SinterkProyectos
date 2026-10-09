@@ -510,6 +510,7 @@ export interface ListMovimientosFilters {
 }
 
 export async function listMovimientos(filters?: ListMovimientosFilters): Promise<Movimiento[]> {
+  const construir = () => {
   let query = supabase
     .from('movimientos')
     .select('*, materiales(sku,descripcion), origen:ubicaciones!ubicacion_id(nombre), destino:ubicaciones!ubicacion_destino_id(nombre), profiles(nombre,email), projects(ott)')
@@ -519,6 +520,7 @@ export async function listMovimientos(filters?: ListMovimientosFilters): Promise
     // real de inserción: es lo que hace que lo último quede primero.
     .order('fecha', { ascending: false })
     .order('created_at', { ascending: false })
+    .order('id') // desempate estable: con `range` (paginación) dos filas con la misma fecha y hora no pueden saltarse ni repetirse
 
   // `limit: null` = sin límite. El buscador de texto de MovimientosTab filtra
   // en el cliente sobre lo que YA se trajo — con el límite de 200 puesto
@@ -536,8 +538,24 @@ export async function listMovimientos(filters?: ListMovimientosFilters): Promise
   else if (filters?.tipos?.length) query = query.in('tipo', filters.tipos)
   if (filters?.desde) query = query.gte('fecha', filters.desde)
   if (filters?.hasta) query = query.lte('fecha', filters.hasta)
+  return query
+  }
 
-  const { data, error } = await query
+  // Sin límite: PostgREST corta cada respuesta en 1000 filas, así que se pide
+  // por páginas hasta que venga una incompleta (antes "sin límite" devolvía
+  // solo los 1000 más recientes y los más viejos nunca aparecían).
+  if (filters?.limit === null) {
+    const out: MovimientoJoinRow[] = []
+    for (let desde = 0; ; desde += PAGINA) {
+      const { data, error } = await construir().range(desde, desde + PAGINA - 1)
+      if (error) throw new Error(`movimientos.list: ${error.message}`)
+      out.push(...(data as unknown as MovimientoJoinRow[]))
+      if ((data as unknown[]).length < PAGINA) break
+    }
+    return out.map(movimientoFromJoinRow)
+  }
+
+  const { data, error } = await construir()
   if (error) throw new Error(`movimientos.list: ${error.message}`)
   return (data as unknown as MovimientoJoinRow[]).map(movimientoFromJoinRow)
 }

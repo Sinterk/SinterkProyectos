@@ -216,6 +216,12 @@ function MovimientosTab({ refreshKey }: { refreshKey: number }) {
   const [hasta, setHasta] = useState('')
   const [search, setSearch] = useState('')
   const [anulando, setAnulando] = useState<string | null>(null)
+  // Sin filtros se cargan solo los 200 movimientos más recientes (para que la
+  // pestaña abra rápido). Los filtros por columna (tipo, bodega…) se aplican
+  // sobre lo YA cargado, así que con ellos —o con el buscador— hace falta traer
+  // todo el historial; si no, un tipo/bodega "no aparece" solo porque sus
+  // movimientos son más viejos que esa ventana.
+  const [todos, setTodos] = useState(false)
 
   // Mismo patrón que BodegaTab: orden por defecto (acá, el que ya trae la API —
   // fecha desc) reemplazado por un solo clic en una columna; filtro tipo Google
@@ -232,13 +238,15 @@ function MovimientosTab({ refreshKey }: { refreshKey: number }) {
       // Con texto de búsqueda, se saca el límite de 200 (que existe solo para
       // que la vista "sin filtros" cargue rápido) — si no, el buscador nunca
       // encuentra un OTT/SKU viejo que quedó fuera de esa ventana reciente.
-      if (search.trim()) filters.limit = null
+      if (search.trim() || todos) filters.limit = null
       setRows(await listMovimientos(filters))
     } catch (err) {
       setError(err instanceof Error ? err.message : String(err))
     }
   }
-  useEffect(() => { reload() /* eslint-disable-next-line react-hooks/exhaustive-deps */ }, [desde, hasta, search, refreshKey])
+  useEffect(() => { reload() /* eslint-disable-next-line react-hooks/exhaustive-deps */ }, [desde, hasta, search, refreshKey, todos])
+  // Al filtrar por una columna se trae todo el historial (ver `todos`).
+  useEffect(() => { if (Object.keys(colSelected).length > 0) setTodos(true) }, [colSelected])
 
   async function handleAnular(m: Movimiento) {
     const detalle = `${TIPO_LABELS_MOV[m.tipo] ?? m.tipo} — ${m.materialSku} (${m.cantidad}) — ${m.fecha.slice(0, 10)}`
@@ -310,6 +318,13 @@ function MovimientosTab({ refreshKey }: { refreshKey: number }) {
       </div>
 
       {error && <p className="text-xs text-red-400">{error}</p>}
+      {rows !== null && rows.length >= 200 && !todos && !search.trim() && (
+        <p className="text-[11px] text-amber-400">
+          Mostrando solo los 200 movimientos más recientes (desde {rows[rows.length - 1].fecha.slice(0, 10)}).{' '}
+          <button type="button" onClick={() => setTodos(true)} className="underline font-semibold">Cargar todos</button>
+          {' '}— se cargan solos al filtrar por una columna o al buscar.
+        </p>
+      )}
       {rows === null ? (
         <p className="text-xs text-slate-500">Cargando…</p>
       ) : rows.length === 0 ? (
