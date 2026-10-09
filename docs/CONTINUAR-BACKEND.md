@@ -37,6 +37,14 @@
   30. ~~Correr `supabase/migrations/0081_stock_sin_lotes_vacios_sin_excepcion.sql`~~ — **corrida por Andrés el 06-10.**
 - **Deploy**: el push del 26-08 a `main` falló al desplegar por una interrupción real de GitHub Actions/Pages (confirmada en githubstatus.com, no un problema del repo) — falta reintentar el workflow ("Re-run all jobs") una vez que GitHub se recupere. Fuera de eso, `.github/workflows/deploy.yml` publica bien en cada push a `main`.
 
+## v2.52 — Entrada: los lotes ofrecidos son los de la bodega de destino
+
+Andrés (09-10): al poner el lote en una Entrada se mezclaban los lotes de todas las bodegas; los lotes pueden parecer comunes entre bodegas pero son individuales por bodega. Pidió que al elegir lote solo salgan los de esa bodega para ese SKU (más poder tipearlo a mano) y que un lote tecleado que calce con uno existente se sume a ese.
+
+- **Entrada** (`RegistrarMovimientoForm.tsx`) y el editor de entradas ya registradas (`ListaRegistros.tsx`, con la bodega de la propia línea): `LoteSelect` ya no usa `buscarTodasBodegas`; consulta el stock de **ese material en la bodega de destino**. `soloConDisponible` ahora saca los placeholders (SinDefinir / Físico) y muestra los lotes con algo físico o digital (antes: solo digital, de todas las bodegas). "+ Lote nuevo…" sigue permitiendo escribirlo a mano. Sin bodega elegida todavía, el campo es de texto libre.
+- **Lote tecleado = lote existente → se suma**: `LoteSelect.resolverLote` compara sin distinguir mayúsculas ni espacios de más contra los lotes de esa bodega y adopta el nombre del existente (" 938031 " → "938031", "f000018907" → "F000018907"); también corrige un valor ya tecleado cuando carga la lista. El servidor ya sumaba por (bodega, material, lote), así que con el nombre idéntico la entrada **suma** al lote en vez de crear uno casi igual. Un lote que existe en otra bodega pero no en esta queda como nuevo (no se mezcla).
+- **Verificado en el navegador (SKU 218)**: destino C088 → 938031 y 946276; destino C132 → F000018907; manual " 938031 " en C088 → 938031 (29); "f000018907" en C132 → F000018907 (24); "938031" en C132 (solo existe en C088) → queda como nuevo; "999999" → nuevo. No se registró ninguna entrada. Sin migración.
+
 ## v2.51 — Incidencias: las tablas de rebaja calzan con la del correo
 
 Andrés (07-10): cambiar la tabla de rebajas de Incidencias para que calce con la que se genera en el correo (rebaja masiva).

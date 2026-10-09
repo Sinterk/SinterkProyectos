@@ -335,9 +335,9 @@ function LineaRegistro({ linea, modo, puedeEditar, draft, autoFocus, error, guar
               // lo deja fijo en 'Físico'), pero el lote real que entrega SAP
               // igual importa para que el inventario digital calce con SAP
               // (ver 0066_entrada_ferreteria_con_lote.sql).
-              <LoteSelect materialId={linea.materialId} ubicacionId={null} naturaleza="digital"
+              <LoteSelect materialId={linea.materialId} ubicacionId={linea.ubicacionId} naturaleza="digital"
                 checkAvailability={false} value={draft.lote} onChange={(lote) => onDraftChange({ lote })}
-                buscarTodasBodegas soloConDisponible className={`${inputCls} min-w-[7rem]`} />
+                soloConDisponible className={`${inputCls} min-w-[7rem]`} />
             ) : (
               <input value={draft.lote} onChange={(e) => onDraftChange({ lote: e.target.value })}
                 placeholder="Sin lote" autoFocus={autoFocus} className={`${inputCls} min-w-[7rem]`} />

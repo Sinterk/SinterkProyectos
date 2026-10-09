@@ -31,10 +31,11 @@ interface Props {
    */
   buscarTodasBodegas?: boolean
   /**
-   * Filtra el desplegable a lotes que de verdad tienen algo en `naturaleza`
-   * (y saca los placeholders 'SinDefinir'/'Físico', que no son lotes reales
-   * de SAP) — para Entrada, donde el punto es reutilizar un lote digital ya
-   * conocido, no repetir "sin lote" con otro nombre.
+   * Filtra el desplegable a lotes REALES (saca los placeholders
+   * 'SinDefinir'/'Físico', que no son lotes de SAP) que tienen algo, físico o
+   * digital — para Entrada, donde el punto es reutilizar un lote ya conocido
+   * EN ESA BODEGA (los lotes son individuales por bodega, aunque algunos
+   * códigos se parezcan), no repetir "sin lote" con otro nombre.
    */
   soloConDisponible?: boolean
   /**
@@ -55,6 +56,17 @@ export function LoteSelect({
 
   const buscar = buscarTodasBodegas ? !!materialId : !!(materialId && ubicacionId)
 
+  /**
+   * Un lote tecleado a mano que calza con uno que ya existe (sin importar
+   * mayúsculas ni espacios de más) se toma tal cual el existente: así la
+   * Entrada se SUMA a ese lote en vez de crear uno casi igual ("abc123" vs "ABC123").
+   */
+  function resolverLote(texto: string): string {
+    const t = texto.trim()
+    const existente = (rows ?? []).find((r) => r.lote.trim().toLowerCase() === t.toLowerCase())
+    return existente ? existente.lote : t
+  }
+
   useEffect(() => {
     if (!buscar) { setRows(null); return }
     let cancelled = false
@@ -63,6 +75,12 @@ export function LoteSelect({
       .catch(() => { if (!cancelled) setRows([]) })
     return () => { cancelled = true }
   }, [materialId, ubicacionId, buscarTodasBodegas]) // eslint-disable-line react-hooks/exhaustive-deps
+
+  useEffect(() => {
+    if (!rows || !value) return
+    const canonico = resolverLote(value)
+    if (canonico !== value) onChange(canonico)
+  }, [rows]) // eslint-disable-line react-hooks/exhaustive-deps
 
   const sinStockEnBodega = !!forzarSinDefinirSinStock && !buscarTodasBodegas && buscar && rows !== null
     && !rows.some((r) => r.cantidadFisico > 0)
@@ -89,10 +107,10 @@ export function LoteSelect({
     return (
       <div className={`${className ?? ''} flex gap-1`}>
         <input autoFocus value={nuevo} onChange={(e) => setNuevo(e.target.value)}
-          onKeyDown={(e) => { if (e.key === 'Enter') { onChange(nuevo.trim()); setCreando(false) } }}
+          onKeyDown={(e) => { if (e.key === 'Enter') { onChange(resolverLote(nuevo)); setCreando(false) } }}
           placeholder="Lote nuevo…"
           className="flex-1 min-w-0 bg-slate-700 text-white rounded-lg px-2 py-1.5 border border-slate-600 focus:border-brand-500 focus:outline-none" />
-        <button type="button" onClick={() => { onChange(nuevo.trim()); setCreando(false) }}
+        <button type="button" onClick={() => { onChange(resolverLote(nuevo)); setCreando(false) }}
           className="text-xs text-slate-400 px-1 shrink-0">✓</button>
       </div>
     )
@@ -105,7 +123,7 @@ export function LoteSelect({
   if (soloConDisponible) {
     opciones = opciones.filter((r) =>
       r.lote !== LOTE_SIN_DEFINIR && r.lote !== LOTE_FISICO_FERRETERIA
-      && (naturaleza === 'fisico' ? r.cantidadFisico : r.cantidadDigital) !== 0)
+      && (r.cantidadFisico !== 0 || r.cantidadDigital !== 0))
   }
 
   // Un lote en 0 físico y 0 digital no es stock (solo queda en el historial): no se ofrece.
