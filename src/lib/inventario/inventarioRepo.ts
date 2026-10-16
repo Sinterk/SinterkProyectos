@@ -213,28 +213,48 @@ interface PaqueteRow {
   paquete_material_items: { material_id: string }[]
 }
 
-export async function listPaquetes(): Promise<Paquete[]> {
-  const { data, error } = await supabase.from('paquetes_material')
-    .select('id, nombre, paquete_material_items(material_id)').order('nombre')
-  if (error) throw new Error(`paquetes.list: ${error.message}`)
-  return (data as PaqueteRow[]).map((p) => ({
-    id: p.id, nombre: p.nombre, materialIds: p.paquete_material_items.map((i) => i.material_id),
-  }))
+// Cada MaterialSelect pide esta lista al montarse y un formulario tiene decenas
+// de selectores: sin caché eran cientos de llamadas idénticas en pocos minutos
+// (en los logs de Supabase, más de la mitad del tráfico). Se comparte la misma
+// promesa entre todas las instancias y se reutiliza un minuto; cualquier cambio
+// de paquetes la invalida.
+const PAQUETES_TTL_MS = 60_000
+let paquetesCache: { at: number; promesa: Promise<Paquete[]> } | null = null
+
+function invalidarPaquetes() { paquetesCache = null }
+
+export function listPaquetes(): Promise<Paquete[]> {
+  if (paquetesCache && Date.now() - paquetesCache.at < PAQUETES_TTL_MS) return paquetesCache.promesa
+  const promesa = (async () => {
+    const { data, error } = await supabase.from('paquetes_material')
+      .select('id, nombre, paquete_material_items(material_id)').order('nombre')
+    if (error) throw new Error(`paquetes.list: ${error.message}`)
+    return (data as PaqueteRow[]).map((p) => ({
+      id: p.id, nombre: p.nombre, materialIds: p.paquete_material_items.map((i) => i.material_id),
+    }))
+  })()
+  paquetesCache = { at: Date.now(), promesa }
+  // Si falla no se queda guardado el error: el siguiente intento vuelve a pedir.
+  promesa.catch(() => { if (paquetesCache?.promesa === promesa) paquetesCache = null })
+  return promesa
 }
 
 export async function crearPaquete(nombre: string): Promise<Paquete> {
   const { data, error } = await supabase.from('paquetes_material').insert({ nombre: nombre.trim() }).select('id, nombre').single()
   if (error) throw new Error(`paquetes.crear: ${error.message}`)
+  invalidarPaquetes()
   return { id: data.id, nombre: data.nombre, materialIds: [] }
 }
 
 export async function eliminarPaquete(paqueteId: string): Promise<void> {
   const { error } = await supabase.from('paquetes_material').delete().eq('id', paqueteId)
   if (error) throw new Error(`paquetes.eliminar: ${error.message}`)
+  invalidarPaquetes()
 }
 
 /** Reemplaza TODOS los SKU asignados al paquete por el set dado (borra + inserta) — mismo criterio que `updateMaterialProveedores`. */
 export async function updatePaqueteMateriales(paqueteId: string, materialIds: string[]): Promise<void> {
+  invalidarPaquetes()
   const { error: errDel } = await supabase.from('paquete_material_items').delete().eq('paquete_id', paqueteId)
   if (errDel) throw new Error(`paquete_material_items.reemplazar (borrar previos): ${errDel.message}`)
   if (materialIds.length > 0) {
@@ -242,6 +262,7 @@ export async function updatePaqueteMateriales(paqueteId: string, materialIds: st
       .insert(materialIds.map((materialId) => ({ paquete_id: paqueteId, material_id: materialId })))
     if (errIns) throw new Error(`paquete_material_items.reemplazar (insertar): ${errIns.message}`)
   }
+  invalidarPaquetes()
 }
 
 // ---------------------------------------------------------------------------
