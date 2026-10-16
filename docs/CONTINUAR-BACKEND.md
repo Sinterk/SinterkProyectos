@@ -37,12 +37,18 @@
   30. ~~Correr `supabase/migrations/0081_stock_sin_lotes_vacios_sin_excepcion.sql`~~ — **corrida por Andrés el 06-10.**
 - **Deploy**: el push del 26-08 a `main` falló al desplegar por una interrupción real de GitHub Actions/Pages (confirmada en githubstatus.com, no un problema del repo) — falta reintentar el workflow ("Re-run all jobs") una vez que GitHub se recupere. Fuera de eso, `.github/workflows/deploy.yml` publica bien en cada push a `main`.
 
+## v2.55 — Preventivos: las tarjetas de punto ya no repiten las mismas peticiones
+
+- **Origen**: la ráfaga de ~41 cargas en un minuto de una misma OTT (logs del 15-10) era un levantamiento Preventivo con ~40 puntos. `PuntoCard` abre expandida (`useState(true)`) y cada tarjeta monta `PuntoMaterialSection` (que pide `getResumenProyecto` del proyecto completo — 3 peticiones — más `listMateriales` y `listMembers`) y `ObservacionesSection`: unas 300 peticiones al abrir el cuadrante, casi todas idénticas.
+- **Arreglo**: nuevo `src/lib/compartirLlamada.ts`: las llamadas idénticas que llegan dentro de 300 ms comparten una sola petición. Aplicado a `getResumenProyecto`, `listMateriales`, `listUbicaciones` y `adminRepo.listMembers`. Una recarga hecha después (p. ej. al guardar algo) siempre pide datos frescos. Verificado: 40 tarjetas → 1 petición por tipo de dato.
+- **Queda**: `ObservacionesSection` sigue pidiendo una vez por punto (es por `puntoId`, 1 petición cada una). Si hace falta bajarlo más: abrir las tarjetas colapsadas por defecto.
+
 ## v2.54 — Menos tráfico a Supabase: la lista de paquetes se pide una sola vez
 
 - **Origen**: el uso de logs de Supabase (Log Ingestion) pasó el 1 GB del plan Free (1,06 GB, ciclo desde el 03-10; la métrica no se cobra hasta 2027). Se exportaron las últimas 24 h de logs (1000 filas) y 547 de ellas (55 %) eran `GET /rest/v1/paquetes_material`, en ráfagas de ~150 por minuto de un solo usuario.
 - **Causa**: cada `MaterialSelect` pedía `listPaquetes()` al montarse (un fetch por instancia) y un formulario con decenas de líneas monta decenas de selectores.
 - **Arreglo**: `listPaquetes` (`inventarioRepo.ts`) comparte una misma promesa entre todas las instancias y la reutiliza 60 s; `crearPaquete`, `eliminarPaquete` y `updatePaqueteMateriales` la invalidan. Verificado: 60 selectores → 1 llamada.
-- **Hallazgo aparte (sin resolver)**: el 15-10 a las 17:59 UTC la misma OTT (`d2465b5d-0565-4646-808d-33a118a46ab6`) cargó ~41 veces en un minuto el conjunto de Logística (observaciones, equipo, materiales, proyecto_materiales y movimientos salida/solicitud). Parece un remonte repetido de la pestaña Logística, o muchas acciones seguidas; no se encontró un bucle en el código. Si vuelve a verse en los logs, revisar qué OTT es y qué se estaba haciendo.
+- **Ráfaga de la OTT `d2465b5d…` (15-10, 17:59 UTC)**: explicada y corregida en v2.55.
 
 ## v2.53 — Movimientos: los filtros por columna ya ven todo el historial
 

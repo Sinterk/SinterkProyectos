@@ -6,6 +6,7 @@
 // permisos; este archivo solo hace lecturas + wrappers tipados de esas RPC.
 
 import { supabase } from '../supabaseClient'
+import { compartirLlamada } from '../compartirLlamada'
 import type {
   Material, MaterialTipo, Proveedor, Paquete, Ubicacion, UbicacionTipo, StockRow, Movimiento,
   RegistrarMovimientoInput, ReasignarTransitoInput,
@@ -64,7 +65,13 @@ function materialFromRow(m: MaterialRow): Material {
 }
 
 /** Todos los materiales activos. El filtrado por texto (SKU/descripción/apodo) se hace en el cliente. */
-export async function listMateriales(): Promise<Material[]> {
+// Varias tarjetas/selectores de una misma pantalla piden esto a la vez: se junta
+// en una sola petición (ver compartirLlamada).
+export function listMateriales(): Promise<Material[]> {
+  return compartirLlamada('materiales', listMaterialesDirecto)
+}
+
+async function listMaterialesDirecto(): Promise<Material[]> {
   const { data, error } = await supabase.from('materiales')
     .select('*, material_tipos(id, nombre), material_proveedores(proveedores(id, nombre))')
     .eq('activo', true).order('sku')
@@ -281,7 +288,11 @@ function ubicacionFromRow(u: UbicacionRow): Ubicacion {
   return { id: u.id, nombre: u.nombre, tipo: u.tipo, ownerUserId: u.owner_user_id, activo: u.activo }
 }
 
-export async function listUbicaciones(opts?: { tipo?: UbicacionTipo }): Promise<Ubicacion[]> {
+export function listUbicaciones(opts?: { tipo?: UbicacionTipo }): Promise<Ubicacion[]> {
+  return compartirLlamada(`ubicaciones:${opts?.tipo ?? ''}`, () => listUbicacionesDirecto(opts))
+}
+
+async function listUbicacionesDirecto(opts?: { tipo?: UbicacionTipo }): Promise<Ubicacion[]> {
   let query = supabase.from('ubicaciones').select('*').eq('activo', true).order('nombre')
   if (opts?.tipo) query = query.eq('tipo', opts.tipo)
   const { data, error } = await query
@@ -842,7 +853,11 @@ interface EntregaJoinRow {
  * default del área (C088) al reabrir la OTT, aunque se hubiera entregado
  * de otra — el override solo vivía en estado de React, se perdía al recargar.
  */
-export async function getResumenProyecto(projectId: string): Promise<ResumenMaterialProyecto[]> {
+export function getResumenProyecto(projectId: string): Promise<ResumenMaterialProyecto[]> {
+  return compartirLlamada(`resumen:${projectId}`, () => getResumenProyectoDirecto(projectId))
+}
+
+async function getResumenProyectoDirecto(projectId: string): Promise<ResumenMaterialProyecto[]> {
   const [pmRes, solRes, entRes] = await Promise.all([
     supabase
       .from('proyecto_materiales')

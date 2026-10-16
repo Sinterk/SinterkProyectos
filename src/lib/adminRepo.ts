@@ -9,6 +9,7 @@
 
 import type { FunctionsHttpError } from '@supabase/supabase-js'
 import { supabase } from './supabaseClient'
+import { compartirLlamada } from './compartirLlamada'
 import type { Profile } from './auth'
 
 /**
@@ -144,15 +145,17 @@ export const adminRepo = {
   },
 
   /** Miembros (técnicos asignados) de un proyecto. */
-  async listMembers(projectId: string): Promise<MemberProfile[]> {
-    const { data, error } = await supabase
-      .from('project_members')
-      .select('user_id, profiles(id, nombre, email, rut)')
-      .eq('project_id', projectId)
-    if (error) throw new Error(`project_members.list: ${error.message}`)
-    return (data as unknown as MemberRow[] ?? [])
-      .map((row) => row.profiles)
-      .filter((p): p is MemberProfile => p !== null)
+  listMembers(projectId: string): Promise<MemberProfile[]> {
+    return compartirLlamada(`members:${projectId}`, async () => {
+      const { data, error } = await supabase
+        .from('project_members')
+        .select('user_id, profiles(id, nombre, email, rut)')
+        .eq('project_id', projectId)
+      if (error) throw new Error(`project_members.list: ${error.message}`)
+      return (data as unknown as MemberRow[] ?? [])
+        .map((row) => row.profiles)
+        .filter((p): p is MemberProfile => p !== null)
+    })
   },
 
   async addMember(projectId: string, userId: string): Promise<void> {
