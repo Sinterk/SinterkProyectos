@@ -4,9 +4,11 @@ import { usePreventivoStore } from '../store'
 import { savePhotoBlob, deletePhotoBlob } from '@/core/offline/photoStore'
 import { compressImage } from '@/core/utils/compressImage'
 import type { FotoKey } from '../types'
+import { resolveRecordId } from '@/core/utils/resolveRecordId'
 
-export function usePreventivo(preventivoId: string) {
+export function usePreventivo(urlId: string) {
   const store = usePreventivoStore()
+  const preventivoId = resolveRecordId(store, urlId)
   const record = store.records[preventivoId]
 
   const processPhoto = useCallback(

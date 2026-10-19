@@ -37,6 +37,17 @@
   30. ~~Correr `supabase/migrations/0081_stock_sin_lotes_vacios_sin_excepcion.sql`~~ — **corrida por Andrés el 06-10.**
 - **Deploy**: el push del 26-08 a `main` falló al desplegar por una interrupción real de GitHub Actions/Pages (confirmada en githubstatus.com, no un problema del repo) — falta reintentar el workflow ("Re-run all jobs") una vez que GitHub se recupere. Fuera de eso, `.github/workflows/deploy.yml` publica bien en cada push a `main`.
 
+## v2.56 — Fix real: el campo OTT (y análogos) perdía el foco a mitad de tipeo en un informe nuevo
+
+Andrés (19-10): "al escribir el número de una OTT, se deselecciona el cuadro de texto a mitad de escribir". Era el "resto sin resolver" que quedó en v2.11.
+
+- **Causa, confirmada en el navegador con un MutationObserver** (no teoría): el primer guardado de un borrador local hace `rekey` (nanoid → uuid) — borra `records[idViejo]` y crea `records[uuid]` — pero la URL, y con ella el id que usa el Editor, se pone al día recién un render después (`navigate` corre cuando `persistToServer` ya volvió). En ese render intermedio:
+  - **ATT**: el "puente" de v2.11 mostraba el último record conocido, que trae el id VIEJO; las secciones de Info de proyecto buscaban `records[idViejo]`, ya borrado, devolvían `null` y se desmontaban con el input enfocado adentro (se iban Datos, Descripción, Infraestructura y Fotos). Se volvían a montar al instante, sin foco, y lo que se seguía tecleando se perdía.
+  - **Incidencias y Preventivos**: no tenían puente — se desmontaba el editor completo (mismo síntoma).
+- **Fix** (`src/core/utils/resolveRecordId.ts`): `rekey` deja un alias `idViejo → uuid` en el store (campo `aliases`, solo en memoria, fuera de `partialize`). `useAtt`/`useIncidencia`/`usePreventivo` y los tres hooks de autoguardado resuelven el id con ese alias, así que el record nunca falta en la transición y el árbol de React no cambia.
+- **De paso, en el autoguardado**: un debounce armado antes del rekey llegaba a `runSave` con el id viejo y salía por el `return` de "ya no existe" — lo tecleado durante el primer guardado quedaba sin subir hasta la siguiente edición. `runSave` ahora resuelve el id.
+- **Verificado en el navegador** (guardado simulado con 700 ms de latencia y TODA escritura a Supabase bloqueada — no se escribió nada en la BD): ATT tecleando dígito a dígito a través del cambio de id → mismo `<input>` con foco de principio a fin, 0 `focusout`, 0 nodos desmontados, valor completo `72603666881` y segundo guardado con el valor completo. Antes del fix, la misma prueba: foco a `BODY` y las 4 secciones desmontadas. Incidencias, igual (`IN-004567`). **Preventivos no se probó en el navegador**: mismo cambio, compila.
+
 ## v2.55 — Preventivos: las tarjetas de punto ya no repiten las mismas peticiones
 
 - **Origen**: la ráfaga de ~41 cargas en un minuto de una misma OTT (logs del 15-10) era un levantamiento Preventivo con ~40 puntos. `PuntoCard` abre expandida (`useState(true)`) y cada tarjeta monta `PuntoMaterialSection` (que pide `getResumenProyecto` del proyecto completo — 3 peticiones — más `listMateriales` y `listMembers`) y `ObservacionesSection`: unas 300 peticiones al abrir el cuadrante, casi todas idénticas.

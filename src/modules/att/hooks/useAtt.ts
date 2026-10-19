@@ -3,9 +3,11 @@ import { nanoid } from '@/core/utils/nanoid'
 import { useAttStore } from '../store'
 import { savePhotoBlob, deletePhotoBlob } from '@/core/offline/photoStore'
 import { compressImage } from '@/core/utils/compressImage'
+import { resolveRecordId } from '@/core/utils/resolveRecordId'
 
-export function useAtt(recordId: string) {
+export function useAtt(urlId: string) {
   const store = useAttStore()
+  const recordId = resolveRecordId(store, urlId)
   const record = store.records[recordId]
 
   const processPhoto = useCallback(

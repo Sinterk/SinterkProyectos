@@ -75,6 +75,8 @@ interface IncidenciaState {
    *  confirmar — a propósito no compara timestamps de relojes distintos.
    *  Por eso se persiste (`partialize`, más abajo). */
   syncedAt: Record<string, number>
+  /** id de borrador local → uuid que le asignó `rekey`. Solo en memoria; ver `resolveRecordId`. */
+  aliases: Record<string, string>
 
   createNew: () => string
   remove: (id: string) => Promise<RemoveResult>
@@ -102,6 +104,7 @@ export const useIncidenciaStore = create<IncidenciaState>()(
     (set, get) => ({
       records: {},
       syncedAt: {},
+      aliases: {},
 
       createNew() {
         const id = nanoid()
@@ -225,6 +228,8 @@ export const useIncidenciaStore = create<IncidenciaState>()(
           const old = s.records[oldId]
           const next = { ...s.records }
           delete next[oldId]
+          // El Editor sigue con el id viejo en la URL hasta el próximo render.
+          const aliases = { ...s.aliases, [oldId]: saved.id }
 
           // Ver el comentario grande en `rekey` de att/store.ts — mismo bug,
           // mismo fix: si se sigue editando mientras este guardado viajaba a
@@ -233,7 +238,7 @@ export const useIncidenciaStore = create<IncidenciaState>()(
           // en el store, sin confirmar.
           if (keepLocalUnconfirmed && old) {
             next[saved.id] = { ...old, id: saved.id, createdAt: saved.createdAt }
-            return { records: next, syncedAt: s.syncedAt }
+            return { records: next, syncedAt: s.syncedAt, aliases }
           }
 
           const fotos = saved.fotos.map((f, i) => {
@@ -241,7 +246,7 @@ export const useIncidenciaStore = create<IncidenciaState>()(
             return prev ? { ...f, previewUrl: prev.previewUrl, previewUrlAt: prev.previewUrlAt, blobId: prev.blobId } : f
           })
           next[saved.id] = { ...saved, fotos }
-          return { records: next, syncedAt: { ...s.syncedAt, [saved.id]: saved.updatedAt } }
+          return { records: next, syncedAt: { ...s.syncedAt, [saved.id]: saved.updatedAt }, aliases }
         })
       },
 

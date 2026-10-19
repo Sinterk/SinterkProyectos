@@ -1,5 +1,6 @@
 import { useEffect, useRef, useState } from 'react'
 import { usePreventivoStore } from '../store'
+import { resolveRecordId } from '@/core/utils/resolveRecordId'
 
 export type AutosaveStatus = 'idle' | 'saving' | 'saved' | 'error'
 
@@ -16,8 +17,9 @@ const DEBOUNCE_MS = 800
  * avisa por `onIdChange` para que el Editor actualice la URL.
  */
 export function usePreventivoAutosave(recordId: string, onIdChange?: (newId: string) => void) {
-  const record = usePreventivoStore((s) => s.records[recordId])
-  const syncedAt = usePreventivoStore((s) => s.syncedAt[recordId])
+  // Resuelto: tras el primer guardado `recordId` (de la URL) puede seguir siendo el id local un render más.
+  const record = usePreventivoStore((s) => s.records[resolveRecordId(s, recordId)])
+  const syncedAt = usePreventivoStore((s) => s.syncedAt[resolveRecordId(s, recordId)])
 
   const [status, setStatus] = useState<AutosaveStatus>('idle')
   const [errorMessage, setErrorMessage] = useState<string | null>(null)
@@ -27,7 +29,11 @@ export function usePreventivoAutosave(recordId: string, onIdChange?: (newId: str
   const isSaving = useRef(false)
   const pendingRetry = useRef(false)
 
-  async function runSave(id: string): Promise<void> {
+  async function runSave(requestedId: string): Promise<void> {
+    // Un debounce armado antes de que el primer guardado rekeara el borrador
+    // llega con el id local: sin resolverlo, salía por el `return` de abajo
+    // y lo tecleado durante ese guardado quedaba sin subir.
+    const id = resolveRecordId(usePreventivoStore.getState(), requestedId)
     if (isSaving.current) { pendingRetry.current = true; return }
     isSaving.current = true
     setStatus('saving')

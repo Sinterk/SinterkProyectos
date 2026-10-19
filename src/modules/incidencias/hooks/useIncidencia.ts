@@ -3,9 +3,11 @@ import { nanoid } from '@/core/utils/nanoid'
 import { useIncidenciaStore } from '../store'
 import { savePhotoBlob } from '@/core/offline/photoStore'
 import { compressImage } from '@/core/utils/compressImage'
+import { resolveRecordId } from '@/core/utils/resolveRecordId'
 
-export function useIncidencia(recordId: string) {
+export function useIncidencia(urlId: string) {
   const store = useIncidenciaStore()
+  const recordId = resolveRecordId(store, urlId)
   const record = store.records[recordId]
 
   const processPhoto = useCallback(

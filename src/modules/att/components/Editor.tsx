@@ -91,14 +91,16 @@ export function Editor() {
   // SeccionFotos.tsx (ATT e Incidencias) y SeccionDescripcion.tsx — React
   // detectaba "Rendered fewer hooks than expected" en ese instante y, sin
   // ningún error boundary, tiraba abajo TODA la app (confirmado con
-  // `console.error` real en el navegador, no solo teoría). Con ese arreglo
-  // ya no hay crash ni pérdida de texto — verificado que el valor tipeado
-  // llega completo. Con este puente además puesto, sigue quedando un
-  // resto MENOR: el campo pierde el foco (hay que volver a hacer clic) en
-  // ese mismo instante, sin perder lo escrito — no se identificó la causa
-  // exacta de ese resto (no es un desmonte de Editor, confirmado con
-  // logging en vivo), parece una reconciliación de React más fina. Queda
-  // para otra pasada si sigue molestando en la práctica.
+  // `console.error` real en el navegador, no solo teoría).
+  //
+  // El resto que quedaba (el campo perdía el foco y lo que se seguía
+  // tecleando se perdía) era este mismo puente: el record puenteado trae el
+  // id VIEJO, así que las secciones buscaban `records[idViejo]`, ya borrado
+  // por `rekey`, y se desmontaban un render con el input enfocado adentro
+  // (confirmado con un MutationObserver: se iban Datos, Descripción,
+  // Infraestructura y Fotos). Ahora `useAtt` resuelve el id viejo al uuid
+  // nuevo (`resolveRecordId`), así que `liveRecord` nunca falta en esa
+  // transición y el puente queda solo como resguardo.
 
   // Trae la versión del servidor al abrir (deep-link / recarga); no pisa
   // ediciones locales más nuevas (ver `mergeFromServer` en el store). El

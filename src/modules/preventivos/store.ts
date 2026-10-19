@@ -100,6 +100,8 @@ interface PreventivoState {
    *  local sin confirmar — a propósito no compara timestamps de relojes
    *  distintos. Por eso se persiste (`partialize`, más abajo). */
   syncedAt: Record<string, number>
+  /** id de borrador local → uuid que le asignó `rekey`. Solo en memoria; ver `resolveRecordId`. */
+  aliases: Record<string, string>
 
   upsert: (p: Preventivo) => void
   createNew: () => string
@@ -158,6 +160,7 @@ export const usePreventivoStore = create<PreventivoState>()(
     (set, get) => ({
       records: {},
       syncedAt: {},
+      aliases: {},
 
       upsert: (p) => set((s) => ({ records: { ...s.records, [p.id]: p } })),
 
@@ -285,6 +288,8 @@ export const usePreventivoStore = create<PreventivoState>()(
           const old = s.records[oldId]
           const next = { ...s.records }
           delete next[oldId]
+          // El Editor sigue con el id viejo en la URL hasta el próximo render.
+          const aliases = { ...s.aliases, [oldId]: saved.id }
 
           // Ver el comentario grande en `rekey` de att/store.ts — mismo bug,
           // mismo fix: si se sigue editando mientras este guardado viajaba a
@@ -293,7 +298,7 @@ export const usePreventivoStore = create<PreventivoState>()(
           // en el store, sin confirmar.
           if (keepLocalUnconfirmed && old) {
             next[saved.id] = { ...old, id: saved.id, createdAt: saved.createdAt }
-            return { records: next, syncedAt: s.syncedAt }
+            return { records: next, syncedAt: s.syncedAt, aliases }
           }
 
           const oldFotos = collectFotosByPath(old)
@@ -315,7 +320,7 @@ export const usePreventivoStore = create<PreventivoState>()(
             })),
           }
           next[saved.id] = merged
-          return { records: next, syncedAt: { ...s.syncedAt, [saved.id]: saved.updatedAt } }
+          return { records: next, syncedAt: { ...s.syncedAt, [saved.id]: saved.updatedAt }, aliases }
         })
       },
 

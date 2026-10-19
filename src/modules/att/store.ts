@@ -142,6 +142,8 @@ interface AttState {
    *    cambios de otro dispositivo/usuario para ese record.
    */
   syncedAt: Record<string, number>
+  /** id de borrador local → uuid que le asignó `rekey`. Solo en memoria; ver `resolveRecordId`. */
+  aliases: Record<string, string>
 
   createNew: () => string
   /** Borra (admin) o cierra (jp/invitado) según lo que la RLS permita al rol actual. */
@@ -204,6 +206,7 @@ export const useAttStore = create<AttState>()(
     (set, get) => ({
       records: {},
       syncedAt: {},
+      aliases: {},
 
       createNew() {
         const id = nanoid()
@@ -339,6 +342,8 @@ export const useAttStore = create<AttState>()(
           const old = s.records[oldId]
           const next = { ...s.records }
           delete next[oldId]
+          // El Editor sigue con el id viejo en la URL hasta el próximo render.
+          const aliases = { ...s.aliases, [oldId]: saved.id }
 
           // Bug real reportado por Andrés (texto de OTT cortado a la mitad
           // mientras se anotaba): una pausa natural al tipear un OTT largo
@@ -355,7 +360,7 @@ export const useAttStore = create<AttState>()(
           // suba tal cual quedaron.
           if (keepLocalUnconfirmed && old) {
             next[saved.id] = { ...old, id: saved.id, createdAt: saved.createdAt }
-            return { records: next, syncedAt: s.syncedAt }
+            return { records: next, syncedAt: s.syncedAt, aliases }
           }
 
           // Conserva previews/blobId locales de fotos ya capturadas (mismo orden que se guardó).
@@ -368,7 +373,7 @@ export const useAttStore = create<AttState>()(
             : saved.fotoAerea
           next[saved.id] = { ...saved, fotos, fotoAerea }
           // El uuid recién asignado por el servidor no es una edición pendiente.
-          return { records: next, syncedAt: { ...s.syncedAt, [saved.id]: saved.updatedAt } }
+          return { records: next, syncedAt: { ...s.syncedAt, [saved.id]: saved.updatedAt }, aliases }
         })
       },
 
