@@ -37,6 +37,15 @@
   30. ~~Correr `supabase/migrations/0081_stock_sin_lotes_vacios_sin_excepcion.sql`~~ — **corrida por Andrés el 06-10.**
 - **Deploy**: el push del 26-08 a `main` falló al desplegar por una interrupción real de GitHub Actions/Pages (confirmada en githubstatus.com, no un problema del repo) — falta reintentar el workflow ("Re-run all jobs") una vez que GitHub se recupere. Fuera de eso, `.github/workflows/deploy.yml` publica bien en cada push a `main`.
 
+## v2.57 — Conteo: anular un conteo cerrado (requiere correr `0082_anular_conteo.sql`)
+
+Andrés (21-10): se cerró un conteo de prueba y no había forma de borrarlo (`descartar_conteo` solo sirve para uno abierto).
+
+- **`anular_conteo(p_conteo_id)`** (`supabase/migrations/0082_anular_conteo.sql`, solo admin): revierte el ajuste exacto que aplicó `cerrar_conteo` en cada línea con diferencia (`adjust_stock` con −(contado − sistema)), borra los eventos del conteo y el conteo (líneas por cascade).
+- **Solo el último conteo**: un conteo ancla el stock (stock = contado + movimientos posteriores); revertirlo deja "conteo anterior + movimientos desde entonces" solo si ningún conteo posterior volvió a anclar el mismo material/lote. Por eso se niega si hay otro conteo de la misma ubicación/naturaleza con alguno de esos material/lote **creado después** o **todavía abierto** (su foto del sistema ya incluye el ajuste), y si alguna diferencia del conteo ya tiene **resoluciones** (pueden haber generado movimientos). El mensaje dice qué conteo anular primero.
+- **App**: botón "Anular conteo" en el detalle de un conteo cerrado, solo para rol admin, con confirmación.
+- **Ensayado contra la BD real dentro de una transacción con ROLLBACK** (`C:\Code\migracion\ensayo-anular-conteo.sql`, no versionado): conteo `632f39ca…` (13-10, C088 digital, conteo de prueba) → SKU 55637 lote 872992 digital 1 → 0 (su ajuste al cerrar fue +1), conteo borrado; nada quedó cambiado. **Ese conteo NO se anuló**: Andrés lo deja para que el equipo pruebe el botón. **No se probó el botón en el navegador** (requiere cuenta admin y la migración corrida).
+
 ## v2.56 — Fix real: el campo OTT (y análogos) perdía el foco a mitad de tipeo en un informe nuevo
 
 Andrés (19-10): "al escribir el número de una OTT, se deselecciona el cuadro de texto a mitad de escribir". Era el "resto sin resolver" que quedó en v2.11.

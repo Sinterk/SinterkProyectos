@@ -21,7 +21,7 @@ import {
   listMaterialTipos, crearMaterialTipo, updateMaterialApodo, updateMaterialDescripcion, updateMaterialTipo,
   listProveedores, crearProveedor, updateMaterialProveedores,
   listPaquetes, crearPaquete, eliminarPaquete, updatePaqueteMateriales,
-  listConteos, getConteoLineas, abrirConteo, agregarLineaConteo, actualizarLineaConteo, cerrarConteo, descartarConteo,
+  listConteos, getConteoLineas, abrirConteo, agregarLineaConteo, actualizarLineaConteo, cerrarConteo, descartarConteo, anularConteo,
   listEventosInventario, listEventosPorConteo, resolverEvento, importarFilasSapAConteo, listClavesStockNegativo, reconocerEventos,
   listStockDeTrabajadores, listMovimientosDeTrabajadores,
 } from '@/lib/inventario/inventarioRepo'
@@ -1363,6 +1363,8 @@ function ConteoDetail({ conteoId, onBack }: { conteoId: string; onBack: () => vo
   const [error, setError] = useState<string | null>(null)
   const [closing, setClosing] = useState(false)
   const [discarding, setDiscarding] = useState(false)
+  const [annulling, setAnnulling] = useState(false)
+  const isAdmin = useAuth((s) => s.profile?.rol === 'admin')
 
   async function reload() {
     try {
@@ -1414,6 +1416,20 @@ function ConteoDetail({ conteoId, onBack }: { conteoId: string; onBack: () => vo
     }
   }
 
+  async function anular() {
+    if (!confirm('¿Anular este conteo cerrado?\n\nSe revierte el ajuste de stock que hizo al cerrarse (el stock vuelve a lo que habría sin este conteo) y se borran el conteo y sus diferencias. No se puede deshacer.')) return
+    setAnnulling(true)
+    setError(null)
+    try {
+      await anularConteo(conteoId)
+      onBack()
+    } catch (err) {
+      setError(err instanceof Error ? err.message : String(err))
+    } finally {
+      setAnnulling(false)
+    }
+  }
+
   const abierto = conteo?.estado === 'abierto'
 
   return (
@@ -1457,7 +1473,15 @@ function ConteoDetail({ conteoId, onBack }: { conteoId: string; onBack: () => vo
               </button>
             </>
           ) : (
-            <p className="text-xs text-slate-500 text-center">Conteo cerrado — el stock ya quedó ajustado.</p>
+            <>
+              <p className="text-xs text-slate-500 text-center">Conteo cerrado — el stock ya quedó ajustado.</p>
+              {isAdmin && (
+                <button type="button" onClick={anular} disabled={annulling}
+                  className="w-full text-xs font-semibold py-1.5 rounded-xl border border-red-800 text-red-400 hover:bg-red-950/40 disabled:opacity-40">
+                  {annulling ? 'Anulando…' : 'Anular conteo'}
+                </button>
+              )}
+            </>
           )}
         </>
       )}

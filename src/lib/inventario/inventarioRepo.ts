@@ -1276,6 +1276,16 @@ export async function descartarConteo(conteoId: string): Promise<void> {
   if (error) throw new Error(`descartar_conteo: ${error.message}`)
 }
 
+/**
+ * Anula un conteo CERRADO: revierte su ajuste de stock y borra sus eventos
+ * (ver 0082_anular_conteo.sql). Solo admin, y solo si es el último conteo
+ * que tocó esos materiales en esa ubicación — la BD se niega si no.
+ */
+export async function anularConteo(conteoId: string): Promise<void> {
+  const { error } = await supabase.rpc('anular_conteo', { p_conteo_id: conteoId })
+  if (error) throw new Error(error.message)
+}
+
 const EVENTO_SELECT = `
   id, conteo_linea_id, material_id, ubicacion_id, lote, diferencia, estado, cantidad_resuelta,
   nota, resuelto_por, fecha_resolucion, created_at, movimiento_id,
